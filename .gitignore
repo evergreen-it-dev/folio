@@ -1,0 +1,8 @@
+node_modules/
+web/dist/
+data/
+.env
+.env.*
+!.env.example
+!.env.dev.example
+*.log

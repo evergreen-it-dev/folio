@@ -1,0 +1,1182 @@
+{
+  "_language": "English",
+  "auth": {
+    "loading": "Loading…",
+    "connectionError": "Could not reach the Folio server.",
+    "retry": "Retry",
+    "name": "Name",
+    "password": "Password",
+    "login": {
+      "title": "Log in to Folio",
+      "subtitle": "Log in to continue.",
+      "failed": "Could not log in",
+      "loggingIn": "Logging in…",
+      "submit": "Log in",
+      "google": "Continue with Google",
+      "orDivider": "or",
+      "googleError": {
+        "domain": "Sign-in with Google is only available for corporate domains.",
+        "unverified": "Your Google email isn't verified — sign in another way.",
+        "disabled": "This account is disabled.",
+        "generic": "Could not sign in with Google. Please try again."
+      }
+    },
+    "setup": {
+      "title": "First run",
+      "subtitle": "This is a fresh Folio instance. Create an administrator account to get started.",
+      "passwordLabel": "Password (at least 8 characters)",
+      "failed": "Could not create the account",
+      "creating": "Creating…",
+      "submit": "Create and log in"
+    },
+    "userMenu": {
+      "label": "User menu",
+      "settings": "Settings",
+      "users": "Users",
+      "spaces": "Spaces",
+      "help": "Tips",
+      "signOut": "Sign out",
+      "sections": {
+        "tools": "Tools",
+        "admin": "Administration"
+      }
+    }
+  },
+  "settings": {
+    "title": "Personal settings",
+    "name": {
+      "label": "Name",
+      "placeholder": "your name",
+      "required": "Name can't be empty",
+      "saveFailed": "Couldn't save the name"
+    },
+    "width": {
+      "label": "Width",
+      "narrow": "Narrow",
+      "wide": "Wide"
+    },
+    "theme": {
+      "label": "Theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "language": {
+      "label": "Language"
+    },
+    "username": {
+      "label": "Username (@…)",
+      "placeholder": "username",
+      "taken": "That username is already taken",
+      "saveFailed": "Couldn't save the username",
+      "willBeSaved": "Will be saved as @{{username}}"
+    }
+  },
+  "history": {
+    "justNow": "just now",
+    "minutesAgo_one": "{{count}} minute ago",
+    "minutesAgo_other": "{{count}} minutes ago",
+    "hoursAgo_one": "{{count}} hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago",
+    "panel": {
+      "title": "Page history",
+      "loadFailed": "Could not load the history.",
+      "empty": "No history yet.",
+      "selectVersion": "Select a version on the left.",
+      "selectVersionRight": "Select a version on the right.",
+      "showDiff": "Show changes",
+      "hideDiff": "Hide changes",
+      "loadingDiff": "Comparing versions…",
+      "restored": "Version restored",
+      "restoreFailed": "Could not restore the version",
+      "versionFrom": "Version from {{date}}",
+      "restoreThisVersion": "Restore this version",
+      "loadingVersion": "Loading version…",
+      "contentLoadFailed": "Could not load the version's content.",
+      "versionEmpty": "This version is empty.",
+      "restoreConfirmTitle": "Restore this version?",
+      "restoreConfirmAction": "Restore",
+      "restoreConfirmBody": "The page's current content will be replaced by the version from {{date}}. This becomes a new edit (through the live document), not a history rollback.",
+      "boardVersionAlt": "Board version"
+    }
+  },
+  "header": {
+    "showSidebar": "Show sidebar",
+    "hideSidebar": "Hide sidebar",
+    "history": "History",
+    "moreActions": "More actions",
+    "searchAndGo": "Search and jump to…",
+    "breadcrumbs": {
+      "label": "Breadcrumbs",
+      "navigateFailed": "Could not navigate",
+      "renameFailed": "Could not rename the page",
+      "rename": "Rename"
+    },
+    "presence": {
+      "you": "you",
+      "summary": "{{count}} people here now: {{names}}"
+    }
+  },
+  "pageAccess": {
+    "button": "Page access",
+    "title": "Page access",
+    "description": "Choose which actual space members may view and edit this page.",
+    "spaceWide": "Available to all space members",
+    "restricted": "Access is restricted",
+    "everyone": "All space members",
+    "everyoneHint": "Permissions are inherited from the space.",
+    "onlyMe": "Only me",
+    "onlyMeHint": "Only you can see this page.",
+    "custom": "Selected people",
+    "customHint": "Give specific people view or edit access.",
+    "owner": "owner",
+    "roleFor": "Role for {{name}}",
+    "noAccess": "No access",
+    "viewer": "Can view",
+    "editor": "Can edit",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Page access updated",
+    "saveFailed": "Could not update page access"
+  },
+  "star": {
+    "noun": {
+      "space": "space",
+      "page": "page"
+    },
+    "add": "Star this {{noun}}",
+    "remove": "Unstar this {{noun}}"
+  },
+  "roles": {
+    "viewer": "Viewer",
+    "editor": "Editor",
+    "admin": "Admin"
+  },
+  "errors": {
+    "invalidCredentials": "Wrong email or password.",
+    "authRequired": "Please sign in — your session has ended.",
+    "tooManyAttempts": "Too many attempts. Try again in a minute.",
+    "setupDone": "Initial setup has already been completed.",
+    "requiresRole": "Needs the “{{role}}” role or higher in this space.",
+    "requiresRolePage": "Needs the “{{role}}” role or higher in this page's space.",
+    "requiresSpaceAdmin": "Needs the admin role in this space.",
+    "requiresInstanceAdmin": "Needs Folio administrator rights.",
+    "tokenWriteScope": "This access token is read-only.",
+    "notViaToken": "This action isn't available to an API token — sign in to the app.",
+    "onlyCreator": "Only its creator or a space admin can change or revoke this.",
+    "spaceNotFound": "No such space.",
+    "pageNotFound": "No such page.",
+    "formTableNotFound": "The table paired with this form was not found (looked for the path \"{{path}}\").",
+    "userNotFound": "No such user.",
+    "shareNotFound": "Share link not found — it may have been revoked.",
+    "inviteNotFound": "Invite not found.",
+    "revisionNotFound": "That version is no longer in the history.",
+    "assetNotFound": "File not found.",
+    "trashItemNotFound": "That item is no longer in the trash.",
+    "inviteInvalid": "This invite is no longer valid — exhausted, revoked, or expired.",
+    "lastSpaceAdmin": "That's the last admin of this space — appoint another one first.",
+    "lastInstanceAdmin": "That's the last active Folio administrator — appoint another one first.",
+    "pageSlugTaken": "A page with this address already exists in this folder.",
+    "pageExistsAtDestination": "The destination folder already has a page with this name.",
+    "emailTaken": "A user with this email already exists.",
+    "usernameTaken": "That username is already taken.",
+    "spaceSlugTaken": "A space with this address already exists.",
+    "undoUnsafe": "The page changed after this action. Automatic undo could erase newer changes.",
+    "undoUnavailable": "This change can no longer be safely undone.",
+    "invalidRepoUrl": "Invalid repository URL.",
+    "repoUrlRequired": "Enter a repository URL.",
+    "titleRequired": "Enter a title.",
+    "spaceNameRequired": "Enter a space name.",
+    "invalidSlug": "Invalid address: latin letters, digits and hyphens only.",
+    "pathEscapes": "The path points outside the space.",
+    "notAPageId": "That's a folder, not a page — this action doesn't apply to it.",
+    "unavailable": "The server is temporarily unavailable (it may be updating). Try again in a minute.",
+    "status": {
+      "badRequest": "The server rejected the request: {{detail}}",
+      "unauthorized": "Please sign in — your session has ended.",
+      "forbidden": "You don't have permission to do that.",
+      "notFound": "Not found.",
+      "conflict": "That can't be done — it conflicts with the current state.",
+      "gone": "This link is no longer valid.",
+      "tooLarge": "The file is too large.",
+      "tooManyRequests": "Too many requests. Wait a moment and try again.",
+      "server": "Server error: {{detail}}",
+      "unknown": "Something went wrong."
+    },
+    "gitBranchesFailed": "Could not list the repository's branches — check the URL and your access.",
+    "gitDirsFailed": "Could not list the folders — check the branch and your access.",
+    "spaceAlreadyConnected": "This space is already connected to a git repository.",
+    "repoNotEmpty": "The repository is not empty. The space already has its own content and git history, and two histories cannot be merged automatically. Create a new space from that repository instead.",
+    "emptyBoardOverwrite": "An empty scene cannot replace a non-empty board. Reload the board."
+  },
+  "admin": {
+    "noAccess": "You don't have access to this page.",
+    "backHome": "Go home",
+    "role": "Role",
+    "isAdmin": "Administrator",
+    "editUser": {
+      "title": "User: {{name}}",
+      "saving": "Saving…",
+      "save": "Save",
+      "newPassword": "New password",
+      "newPasswordPlaceholder": "Leave blank to keep it unchanged",
+      "disabled": "Disabled",
+      "failed": "Could not save the changes"
+    },
+    "spaces": {
+      "notLive": "The server hasn't been updated yet — the spaces section is coming soon.",
+      "empty": "No spaces yet.",
+      "name": "Name",
+      "slug": "Slug",
+      "pages": "Pages",
+      "git": "Git repository",
+      "local": "Local space",
+      "actions": "Space actions",
+      "exportZip": "ZIP",
+      "syncNow": "Sync now",
+      "syncComplete": "Git sync finished",
+      "syncFailed": "Could not sync with Git",
+      "rename": "Rename",
+      "renameTitle": "Rename “{{name}}”",
+      "renameLabel": "New space name",
+      "renamed": "Space renamed",
+      "renameFailed": "Could not rename the space",
+      "delete": "Delete space",
+      "deleteTitle": "Delete “{{name}}”?",
+      "deleteBody": "The space and its {{count}} pages will be moved to Trash and can be restored.",
+      "deleted": "Space moved to Trash",
+      "deleteFailed": "Could not delete the space",
+      "lastSync": "{{date}} · {{name}}",
+      "neverSynced": "Not synced yet",
+      "system": "Folio",
+      "members_one": "{{count}} member",
+      "members_other": "{{count}} members"
+    }
+  },
+  "routes": {
+    "notFound": {
+      "generic": "This page doesn't exist.",
+      "maybeNoAccess": "The page or space may exist but you might not have access to it. Ask the space administrator to grant you access.",
+      "title": "Not found",
+      "pageNotFound": "Page not found."
+    },
+    "root": {
+      "connectionError": "Could not reach the Folio server. Make sure the server is running, then reload the page.",
+      "welcome": "Welcome to Folio",
+      "noSpacesYet": "No spaces yet. Create the first one to start your wiki — from scratch or from an existing git repository.",
+      "createSpace": "Create a space"
+    },
+    "spaceHome": {
+      "loading": "Loading the space…",
+      "notFound": "Space \"{{space}}\" not found.",
+      "openFailed": "Could not open the space"
+    },
+    "board": {
+      "empty": "This board is empty for now.",
+      "readOnly": "View only — you don't have permission to edit this board."
+    },
+    "pdf": {
+      "openInNewTab": "Open in a new tab",
+      "download": "Download"
+    },
+    "office": {
+      "loading": "Loading document…",
+      "renderFailed": "This file could not be shown in the browser."
+    },
+    "table": {
+      "connecting": "Connecting to the table…",
+      "invalid": "This table file could not be read: {{message}}",
+      "rowMissing": "The row this link points at is no longer in the table."
+    },
+    "form": {
+      "invalid": "This form file could not be read: {{message}}",
+      "createFromTable": "Create a form",
+      "createFromTableFailed": "Could not create the form: {{message}}",
+      "viewTable": "View table",
+      "editDefinition": "Edit form",
+      "fieldTitle": "Form title",
+      "fieldDescription": "Description",
+      "fieldSubmitButton": "Submit button text",
+      "submitButtonPlaceholder": "Submit",
+      "fieldPublic": "Allow anonymous responses via a share link",
+      "publicHint": "Works together with this page's own \"Share\" link — turn on both for the form to accept responses without signing in.",
+      "fieldsHeading": "Fields",
+      "fieldHelpPlaceholder": "Help text (optional)",
+      "fieldRequired": "Required field",
+      "addField": "+ Add field",
+      "newFieldNamePlaceholder": "Field name",
+      "deleteField": "Delete field",
+      "deleteFieldHint": "Removes the field from the form only — the column and any answers already collected stay in the table.",
+      "tableNotReady": "Waiting for the linked table to load — try again in a moment.",
+      "tableNotFound": "Could not save: {{message}}",
+      "save": "Save",
+      "saving": "Saving…"
+    },
+    "folder": {
+      "loadFailed": "Could not load the folder.",
+      "notFound": "No such folder — it may now have an index.md/README.md and become a regular page.",
+      "syntheticHint": "A synthetic listing page — view only, there's no file on disk.",
+      "empty": "This folder is empty."
+    },
+    "page": {
+      "crashed": "This page could not be shown.",
+      "loading": "Loading the page…",
+      "notFound": "This page wasn't found — it may have been deleted or moved.",
+      "forbidden": "You don't have access to this page.",
+      "loadFailed": "Could not load the page"
+    }
+  },
+  "outline": {
+    "show": "Show outline",
+    "hide": "Hide outline",
+    "label": "Outline"
+  },
+  "notes": {
+    "label": "Notes",
+    "hide": "Hide the notes",
+    "show": "Show notes",
+    "tasksDone": "{{done}} of {{total}} checked"
+  },
+  "pageChrome": {
+    "saveFailed": "Could not save",
+    "uploadFailed": "Could not upload the image",
+    "change": "Change",
+    "remove": "Remove",
+    "icon": "Page icon",
+    "favoritesFailed": "Could not save some of your favorite emoji",
+    "addCover": "Add a cover",
+    "emojiPicker": {
+      "search": "Search emoji…",
+      "favorites": "Favorites",
+      "nothingFound": "Nothing found",
+      "custom": "Custom icon (emoji)…",
+      "clear": "Remove icon",
+      "addFavorite": "Add {{emoji}} to favorites",
+      "removeFavorite": "Remove {{emoji}} from favorites",
+      "categories": {
+        "business": "Business",
+        "smileys": "Smileys & emotion",
+        "people": "People & gestures",
+        "nature": "Animals & nature",
+        "food": "Food & drink",
+        "activity": "Activities",
+        "travel": "Travel & places",
+        "symbols": "Symbols"
+      }
+    }
+  },
+  "help": {
+    "title": "Editor commands",
+    "shortcuts": {
+      "slash": {
+        "trigger": "/",
+        "desc": "block insert menu (table, Mermaid diagram, image, callout…)"
+      },
+      "pageLink": {
+        "trigger": "[[",
+        "desc": "link to a page (search by title)"
+      },
+      "emojiPicker": {
+        "trigger": "((",
+        "desc": "quick emoji insert (favorites first)"
+      },
+      "emojiName": {
+        "trigger": ":name",
+        "desc": "emoji by name (e.g. :plus)"
+      },
+      "quickSwitcher": {
+        "trigger": "⌘K",
+        "desc": "search and jump to"
+      },
+      "pageSearch": {
+        "trigger": "⌘F",
+        "desc": "search within the page"
+      },
+      "sidebarToggle": {
+        "trigger": "⌘B / Ctrl+B · ⌥T / Alt+T",
+        "desc": "show or hide the sidebar"
+      },
+      "dragDrop": {
+        "trigger": "Drag a file into the text",
+        "desc": "upload and insert"
+      },
+      "diagram": {
+        "trigger": "Click a diagram",
+        "desc": "source + preview; \"Edit\" opens the full editor"
+      },
+      "toolbar": {
+        "trigger": "⌥⇧P / Alt+Shift+P",
+        "desc": "show or hide the command toolbar"
+      },
+      "tableMerge": {
+        "trigger": "||| and ^^",
+        "desc": "merge cells: ||| spans columns, ^^ inherits the cell above (github shows empty cells and literal ^^)"
+      },
+      "tableMeta": {
+        "trigger": "[//]: # (folio-table: …)",
+        "desc": "invisible table metadata: cell backgrounds and column widths"
+      }
+    }
+  },
+  "switcher": {
+    "createPage": "Create a page",
+    "createBoard": "Create a board",
+    "createTable": "Create a data table",
+    "createForm": "Create a form",
+    "cycleTheme": "Toggle theme (now: {{theme}})",
+    "syncSpace": "Sync the space",
+    "label": "Quick switcher",
+    "placeholder": "Page name or an action…",
+    "recent": "Recent",
+    "searching": "Searching…",
+    "searchResults": "Search results",
+    "noResults": "Nothing found for \"{{query}}\"",
+    "actions": "Actions",
+    "emptyHint": "Start typing to find a page or an action."
+  },
+  "share": {
+    "button": "Share",
+    "mode": {
+      "view": "View",
+      "edit": "Edit"
+    },
+    "linkCopied": "Link copied",
+    "linkCreatedNoCopy": "Link created — copy it from the list",
+    "createFailed": "Could not create the link",
+    "revokeFailed": "Could not revoke the link",
+    "revokeConfirmTitle": "Revoke this link?",
+    "revokeConfirmBody": "The \"{{mode}}\" link will stop working immediately — anyone who already opened it loses access.",
+    "copyLink": "Copy link",
+    "revokeLink": "Revoke link",
+    "creating": "Creating…",
+    "createLink": "Create link",
+    "public": {
+      "pill": "Opened via link · {{mode}}",
+      "editMode": "Edit",
+      "viewMode": "View only",
+      "invalid": "This link is invalid — it was revoked or never existed.",
+      "loadFailed": "Could not load the page through this link.",
+      "navLabel": "Pages",
+      "navRoot": "Root page"
+    },
+    "mdCopied": "MD link copied",
+    "mdCopyFailed": "Could not copy the MD link — copy it manually",
+    "copyFailed": "Could not copy — copy the link manually",
+    "includeChildren": "Include child pages",
+    "includeChildrenHint": "The link also shows the child pages, and in exports and the MD link they are collated into a single document.",
+    "asMarkdown": "Markdown for an agent",
+    "asMarkdownHint": "Shows and copies a link to this page's raw markdown — to feed it to an AI agent or a script in one command."
+  },
+  "export": {
+    "button": "Export",
+    "exporting": "Exporting…",
+    "format": {
+      "md": "Markdown (.md)",
+      "pdf": "PDF (.pdf)",
+      "docx": "Word (.docx)",
+      "yaml": "YAML (.yaml)"
+    },
+    "includeChildren": "Include child pages",
+    "includeChildrenHint": "The page and all its descendants are collated into a single document.",
+    "failed": "Could not export the page",
+    "pdfUnavailable": "PDF export is unavailable: the server has no chromium. Ask an administrator — Markdown and DOCX still work.",
+    "truncated": {
+      "pages": "The document was truncated: the page limit was exceeded. Pages saved: {{pages}}.",
+      "bytes": "The document was truncated: the size limit was exceeded. Pages saved: {{pages}}.",
+      "rows": "The document was truncated: a table had too many rows. Pages saved: {{pages}}.",
+      "generic": "The document was truncated by the assembly limits. Pages saved: {{pages}}."
+    },
+    "tableView": "Table view",
+    "settings": {
+      "title": "PDF header & footer",
+      "intro": "Running header and footer for the PDF export of every page in this space. HTML is allowed (no scripts); an empty field keeps the default footer with the page number.",
+      "headerLabel": "Header",
+      "footerLabel": "Footer",
+      "placeholdersHint": "Placeholders:",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "loadFailed": "Could not load the settings",
+      "saveFailed": "Could not save the settings"
+    }
+  },
+  "members": {
+    "menuLabel": "Members",
+    "setRoleFailed": "Could not change the role",
+    "removeFailed": "Could not remove the member",
+    "title": "Members of \"{{space}}\"",
+    "loadFailed": "Could not load members.",
+    "empty": "No members in this space yet.",
+    "removeNamed": "Remove {{name}}",
+    "removeConfirmTitle": "Remove this member?",
+    "removeConfirmBody": "\"{{name}}\" will lose access to \"{{space}}\".",
+    "user": "User",
+    "noCandidates": "No available users",
+    "selectUser": "Select…",
+    "add": "Add",
+    "instanceAdminAccess": "instance-admin access",
+    "accessLogLink": "Access changes",
+    "visibility": {
+      "label": "Visibility",
+      "changed": "Space visibility updated.",
+      "confirmInstanceTitle": "Make “{{space}}” visible to the whole instance?",
+      "confirmInstanceBody": "Every active Folio user will be able to read this space without an invitation. Editing stays with explicit members only.",
+      "confirmPrivateTitle": "Make “{{space}}” private?",
+      "confirmPrivateBody": "Only the explicit members listed above will see the space."
+    }
+  },
+  "invites": {
+    "title": "Share invites",
+    "notLive": "The server hasn't been updated yet — invites are coming soon.",
+    "accept": {
+      "alreadyLoggedIn": "You're already logged in as {{name}}.",
+      "signingOut": "Signing out…",
+      "loadFailed": "Could not load the invite.",
+      "reasonExpired": "This invite link has expired.",
+      "reasonRevoked": "This invite link was revoked.",
+      "reasonExhausted": "This invite link has already been used the maximum number of times.",
+      "reasonNotFound": "This invite wasn't found.",
+      "title": "{{name}} invited you",
+      "spacesIntro": "to:",
+      "subtitle": "Create an account to accept the invite.",
+      "emailPinnedHint": "This email is pinned to the invite",
+      "chooseTheme": "Choose a theme",
+      "failed": "Could not accept the invite",
+      "accepting": "Accepting…",
+      "submit": "Accept and log in"
+    },
+    "empty": "No active invites yet.",
+    "createLink": "Invite by link",
+    "linkCreated": "The link was created and already copied to the clipboard.",
+    "linkCopied": "Link copied",
+    "revokeFailed": "Could not revoke the invite",
+    "revokeConfirmTitle": "Revoke this invite?",
+    "revokeConfirmBody": "The link will stop working immediately — anyone who already accepted it keeps their access; this can't be undone.",
+    "instanceAdmin": "instance admin",
+    "usesOf": "{{uses}}/{{max}} used",
+    "expiresAt": "until {{date}}",
+    "presetSpace": "Space \"{{space}}\", role:",
+    "grantInstanceAdmin": "Grant instance-admin",
+    "expiresInDays": "Expires in, days",
+    "maxUses": "Use limit",
+    "unlimited": "unlimited",
+    "emailOptional": "Email (optional — pin to this address)",
+    "createFailed": "Could not create the invite",
+    "creating": "Creating…"
+  },
+  "import": {
+    "title": "Import from Confluence",
+    "pageUrl": "Confluence page URL",
+    "authKind": {
+      "label": "Authorization type",
+      "pat": "On-prem (PAT)",
+      "basic": "Cloud (email + token)"
+    },
+    "email": "Email",
+    "pat": "Personal Access Token",
+    "apiToken": "API token",
+    "target": {
+      "label": "Import into",
+      "new": "New space",
+      "existing": "Existing space"
+    },
+    "newSpaceName": "New space name",
+    "existingSpace": "Space",
+    "targetPath": "Path inside the space",
+    "includeChildren": "Include child pages",
+    "start": "Start import",
+    "starting": "Starting…",
+    "progress": "Imported {{done}} of {{total}}",
+    "doneCount_one": "Imported {{count}} page",
+    "doneCount_other": "Imported {{count}} pages",
+    "openSpace": "Open the space",
+    "runInBackground": "Keep running in the background",
+    "savedCredential": {
+      "using": "Use the saved token ({{label}})",
+      "useManual": "Enter another"
+    },
+    "saveForNextTime": "Save for future imports",
+    "errors": {
+      "requiredUrl": "Enter a Confluence page link",
+      "required": "Fill in the page URL and access token",
+      "spaceName": "Enter a name for the new space",
+      "generic": "The import failed",
+      "confluence": {
+        "unauthorized": "The token is invalid or has expired",
+        "forbidden": "The token is valid but has no access to this page or space",
+        "notFound": "Page not found — check the link (Confluence hides a missing page and missing access to it the same way)",
+        "rateLimited": "Too many requests to Confluence — try again later",
+        "unavailable": "Confluence is currently unavailable"
+      }
+    }
+  },
+  "git": {
+    "conflictBanner": {
+      "intro": "This space has unresolved git conflicts — open the pages with",
+      "outro": "markers and resolve them as plain text.",
+      "affectedPages": "Affected pages:"
+    },
+    "status": {
+      "local": "local",
+      "synced": "Synced",
+      "syncing": "Syncing…",
+      "pendingChanges": "There are unpushed/unpulled changes",
+      "conflict": "Conflict",
+      "syncError": "Sync error"
+    },
+    "resetToRemote": {
+      "menuLabel": "Take the version from git",
+      "confirmTitle": "Take the version from git?",
+      "confirmBody": "Local changes not yet in git will be replaced by the git version. A backup of the current state is kept on the server.",
+      "confirmButton": "Take the version from git",
+      "success": "Took the version from git — files changed: {{count}}",
+      "failed": "Could not take the version from git"
+    },
+    "pageConflictBanner": {
+      "text": "This page has an unresolved git merge conflict."
+    },
+    "confluenceCredentials": {
+      "intro": "Saved Confluence tokens are filled in automatically when the link's host matches.",
+      "notLive": "This feature is not available yet.",
+      "empty": "No saved Confluence credentials yet.",
+      "deleteNamed": "Delete credential \"{{name}}\"",
+      "deleteFailed": "Could not delete the credential",
+      "deleteConfirmTitle": "Delete credential?",
+      "deleteConfirmBody": "The next import from this host will have to be authorised manually.",
+      "kind": {
+        "pat": "On-prem (PAT)",
+        "cloud": "Cloud (email + token)"
+      }
+    },
+    "credentials": {
+      "title": "Git access",
+      "intro": "Saved tokens are used automatically when creating a space from a repository on the same host — no need to enter it again.",
+      "loadFailed": "Could not load saved credentials.",
+      "empty": "No saved credentials yet.",
+      "deleteFailed": "Could not delete the credential",
+      "deleteNamed": "Delete the \"{{name}}\" credential",
+      "saved": "Credential saved",
+      "connectPrompt": "Connect GitLab/GitHub",
+      "deleteConfirmTitle": "Delete this credential?",
+      "deleteConfirmBody": "Spaces already created with it will keep working — a new one will need the token entered manually.",
+      "provider": "Provider",
+      "host": "Host",
+      "token": "Access token (PAT)",
+      "label": "Label",
+      "labelPlaceholder": "optional, e.g. \"personal\"",
+      "saveFailed": "Could not save the credential",
+      "connecting": "Connecting…",
+      "connect": "Connect"
+    }
+  },
+  "sidebar": {
+    "branchField": {
+      "emptyRepo": "the repository is empty — a main branch will be created",
+      "fetchError": "couldn't fetch branches — enter one manually"
+    },
+    "templates": {
+      "createFailed": "Could not create a page from the template"
+    },
+    "resizeHandle": {
+      "label": "Resize the sidebar",
+      "title": "Drag to resize — double-click to reset"
+    },
+    "changes": {
+      "title": "My recent changes",
+      "undoLatest": "Undo",
+      "undoing": "Undoing…",
+      "undoThis": "Undo this change",
+      "undoNewerFirst": "Undo newer changes first",
+      "loading": "Loading changes…",
+      "empty": "No structural changes to undo yet.",
+      "undone": "Latest change undone",
+      "undoFailed": "Could not undo the change",
+      "rename": "{{before}} → {{after}}",
+      "move": "Moved: {{before}} → {{after}}",
+      "slug": "Address: {{before}} → {{after}}",
+      "create": "Page created",
+      "copy": "Page copy created",
+      "delete": "Deleted \"{{title}}\""
+    },
+    "newBoard": "New board",
+    "newTable": "New data table",
+    "newForm": "New form",
+    "newPage": "New page",
+    "uploadFile": "Upload file",
+    "createPageFailed": "Could not create the page",
+    "uploadPdfFailed": "Could not upload the file",
+    "syncFailed": "Could not sync the space",
+    "fromTemplate": "From template: \"{{title}}\"",
+    "spaceHome": "Space home",
+    "spaceMenu": {
+      "label": "Space menu",
+      "sync": "Sync",
+      "exportSettings": "PDF header & footer",
+      "openRepo": "Open repository",
+      "connectGit": "Connect git"
+    },
+    "newPageMenu": {
+      "label": "New page at the space root"
+    },
+    "spaceSwitcher": {
+      "label": "Switch space",
+      "noSpaces": "No spaces",
+      "newSpace": "New space"
+    },
+    "starred": {
+      "title": "Starred",
+      "unavailable": "Unavailable",
+      "deleted": "Page deleted",
+      "deletedHint": "This page is gone. If it was deleted, it can be restored from the trash.",
+      "noAccess": "No access",
+      "noAccessHint": "The page exists, but you have no access to its space.",
+      "remove": "Remove from favourites"
+    },
+    "tree": {
+      "loading": "Loading the tree…",
+      "loadFailed": "Could not load the page tree.",
+      "empty": "No other pages in this space yet.",
+      "label": "Page tree",
+      "collapse": "Collapse",
+      "expand": "Expand",
+      "addPage": "Add a page",
+      "conflictMarker": "This page has an unresolved git merge conflict",
+      "moreActions": "More actions",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "move": "Move",
+      "copyTo": "Copy to…",
+      "duplicate": "Duplicate",
+      "duplicateTitle": "{{title}} (copy)",
+      "duplicateFailed": "Could not duplicate the page",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "reorderFailed": "Could not reorder the pages",
+      "deleteFailed": "Could not delete the page",
+      "deleteConfirmTitle": "Delete this page?",
+      "deleteConfirmBody": "\"{{title}}\" will be moved to",
+      "deleteConfirmBodyWithChildren": "\"{{title}}\" and all its child pages will be moved to"
+    },
+    "agent": {
+      "empty": "No rules pages yet — add the first one with «+».",
+      "about": "These pages go into the AI assistant’s context on every request in this space. Visible to admins only.",
+      "hint": "Rules for this space’s AI assistant: added to the context of every request. Admins only."
+    },
+    "move": {
+      "failed": "Could not move the page",
+      "title": "Move \"{{title}}\"",
+      "moving": "Moving…",
+      "action": "Move",
+      "subtitle": "Choose a new directory in \"{{space}}\".",
+      "spaceRoot": "Space root",
+      "current": "current"
+    },
+    "copy": {
+      "failed": "Could not copy the page",
+      "title": "Copy “{{title}}”",
+      "copying": "Copying…",
+      "action": "Copy",
+      "space": "Space",
+      "destination": "Destination",
+      "spaceRoot": "Space root",
+      "includeChildren": "Copy child pages too",
+      "hint": "Choose a page to create the copy under."
+    },
+    "slug": {
+      "menuLabel": "Change slug",
+      "title": "Change slug — \"{{title}}\"",
+      "current": "Current slug: {{slug}}",
+      "label": "New slug",
+      "hint": "lowercase letters, digits, hyphen",
+      "invalid": "Only lowercase latin letters, digits and hyphens are allowed (no leading hyphen)",
+      "preview": "New path: {{path}}",
+      "warning": "Incoming links will be updated automatically",
+      "conflict": "That slug is already taken",
+      "notLive": "The server hasn't been updated yet — changing the slug is coming soon",
+      "failed": "Could not change the slug",
+      "changing": "Changing…",
+      "action": "Change"
+    },
+    "createSpace": {
+      "title": "New space",
+      "creating": "Creating…",
+      "tabEmpty": "Empty space",
+      "tabGit": "From a git repository",
+      "name": "Name",
+      "credential": "Credential",
+      "repository": "Repository",
+      "loadingRepos": "Loading repositories…",
+      "reposFailed": "Could not fetch the list — enter the URL manually below",
+      "selectRepo": "Select a repository…",
+      "noRepos": "No repositories found",
+      "repoUrl": "Repository URL",
+      "branch": "Branch",
+      "rootPath": "Root path inside the repository",
+      "rootPathPlaceholder": "empty = repository root",
+      "rootPathHint": "Leave empty to use the whole repository. Set a subfolder when one repo holds several spaces.",
+      "rootPathTreeLabel": "Or pick from the repository's folder tree:",
+      "rootPathTreeRoot": "Repository root",
+      "rootPathTreeToggle": "Expand / collapse folder",
+      "rootPathTreeEmpty": "No subfolders",
+      "usingSavedToken": "Using the saved token",
+      "enterManually": "Enter manually",
+      "tokenPlaceholder": "for private https repositories",
+      "multiSpaceHint": "Multiple spaces can point at the same repo with different roots.",
+      "failed": "Could not create the space",
+      "progress": {
+        "preparing": "Preparing import…",
+        "checking": "Checking repository…",
+        "cloning": "Downloading repository…",
+        "scanning": "Indexing pages…",
+        "finalizing": "Finishing setup…",
+        "done": "Import complete",
+        "error": "Import failed",
+        "files": "{{done}} of {{total}} files",
+        "waiting": "Counting files…"
+      }
+    },
+    "connectGit": {
+      "title": "Connect a git repository",
+      "description": "This space already has its own files and its own git history. Connecting is only possible to an EMPTY repository — all of the space's existing content will be pushed to it as the initial commit.",
+      "connecting": "Connecting…",
+      "action": "Connect",
+      "notEmptyWarning": "This repository isn't empty — connecting would create a conflict between two unrelated histories. Create a new space from this repository instead of connecting this one.",
+      "tokenPlaceholder": "for a private https repository",
+      "savedTokenHint": "If a token for this host is already saved, you can leave this blank.",
+      "failed": "Could not connect the repository",
+      "probeFailed": "Could not check whether this repository is empty. You can try to connect anyway — the server re-checks and refuses if it already has a history of its own."
+    }
+  },
+  "tokens": {
+    "title": "API tokens",
+    "notLive": "The server hasn't been updated yet — the API tokens section is coming soon.",
+    "empty": "No tokens yet.",
+    "createToken": "Create token",
+    "revealOnce": "Copy it now — we won't show it again.",
+    "copiedDismiss": "I've copied it, hide",
+    "createdAt": "created {{date}}",
+    "lastUsedAt": "used {{date}}",
+    "neverUsed": "never used",
+    "revokeNamed": "Revoke {{name}}",
+    "revoke": "Revoke",
+    "name": "Name",
+    "namePlaceholder": "e.g. MCP on my laptop",
+    "creating": "Creating…",
+    "createFailed": "Could not create the token",
+    "revokeFailed": "Could not revoke the token",
+    "revokeConfirmTitle": "Revoke this token?",
+    "revokeConfirmBody": "The token \"{{name}}\" will stop working immediately — this can't be undone.",
+    "scope": {
+      "read": "Read",
+      "write": "Write"
+    },
+    "tokenPlaceholder": "<your token>",
+    "mcp": {
+      "title": "Connect MCP",
+      "tabOther": "Other",
+      "cursorHint": "Paste into ~/.cursor/mcp.json",
+      "replaceHint": "Replace the token placeholder with a real one — create a new one above or paste an existing one."
+    }
+  },
+  "ui": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "pleaseWait": "Please wait…",
+    "close": "Close",
+    "loading": "Loading…",
+    "create": "Create",
+    "copy": "Copy",
+    "delete": "Delete",
+    "back": "Back",
+    "revoke": "Revoke",
+    "remove": "Remove"
+  },
+  "access": {
+    "title": "Access",
+    "loadFailed": "Could not load the access matrix.",
+    "tabs": {
+      "people": "People",
+      "matrix": "Matrix",
+      "spaces": "Spaces"
+    },
+    "addPerson": {
+      "title": "Add a person",
+      "save": "Save",
+      "failed": "Could not save the person",
+      "methodLabel": "How will they sign in?",
+      "methodPassword": "Set a password",
+      "methodInvite": "Create an invite link",
+      "adminWarning": "Manages users and access; does not get access to any space's content."
+    },
+    "block": {
+      "title": "Access",
+      "spaceLabel": "Space",
+      "roleLabel": "Role",
+      "selectSpace": "Select a space…",
+      "addSpace": "Add a space",
+      "copyFrom": "Copy access from",
+      "selectUser": "Select a person…",
+      "copyApply": "Copy"
+    },
+    "people": {
+      "searchPlaceholder": "Search by name or email…",
+      "filterAll": "All",
+      "filterNoAccess": "No access",
+      "filterAdmins": "Instance admins",
+      "filterDisabled": "Disabled",
+      "empty": "No matching people.",
+      "toggleNamed": "Toggle {{name}}'s access",
+      "editAccount": "Edit account",
+      "noMemberships": "No explicit access yet.",
+      "addSpace": "Add",
+      "recentChanges": "Recent changes",
+      "changeFailed": "Could not change the access"
+      ,"person": "Person",
+      "access": "Access",
+      "status": "Status",
+      "actions": "Actions",
+      "active": "Active",
+      "disabled": "Deactivated",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "deactivateTitle": "Deactivate {{name}}?",
+      "deactivateBody": "They will be signed out and will not be able to sign in until reactivated."
+    },
+    "matrix": {
+      "searchUsers": "Search people…",
+      "searchSpaces": "Search spaces…",
+      "person": "Person",
+      "implicitViewer": "viewer (all)",
+      "selectedCount": "{{count}} selected",
+      "revoke": "— revoke —",
+      "applyBulk": "Set the role",
+      "undo": "Undo",
+      "undone": "Reverted",
+      "bulkApplied": "Changed access for {{count}} people",
+      "bulkPartialFailure": "{{count}} changes failed — see the rows",
+      "changeFailed": "Could not change the access",
+      "spaceActions": "Actions for \"{{name}}\"",
+      "goToSpace": "Open the space",
+      "copyMembersFrom": "Add all members from…"
+    },
+    "spaces": {
+      "visibility": "Visibility",
+      "visibilityPrivate": "Private",
+      "visibilityInstance": "Instance-wide",
+      "members": "Members",
+      "addMember": "Add a member",
+      "oneAdminWarning": "This space has only one admin",
+      "toggleLog": "Access log for \"{{name}}\"",
+      "logTitle": "Access changes",
+      "logEmpty": "No access changes yet.",
+      "logFailed": "Could not load the access log.",
+      "visibilityFailed": "Could not change the visibility",
+      "makePrivate": "Make private",
+      "makeInstance": "Make instance-wide"
+    },
+    "visibility": {
+      "toInstanceTitle": "Make \"{{space}}\" instance-wide?",
+      "toInstanceBody": "\"{{space}}\" will become visible to all {{count}} users of the instance, as read-only viewers.",
+      "toPrivateTitle": "Make \"{{space}}\" private?",
+      "toPrivateBody": "\"{{space}}\" will only be visible to its explicit members. These people will lose access:",
+      "toPrivateNoneLost": "No one loses access — everyone who can see this space is already an explicit member."
+    },
+    "log": {
+      "access_grant": "granted access",
+      "access_revoke": "revoked access",
+      "access_self_grant": "granted themselves access",
+      "space_visibility": "changed visibility"
+    }
+  },
+  "trash": {
+    "title": "Trash",
+    "empty": "The trash is empty.",
+    "loadFailed": "Failed to load the trash.",
+    "columns": {
+      "what": "What",
+      "kind": "Type",
+      "where": "Original location",
+      "who": "Deleted by",
+      "when": "When"
+    },
+    "kinds": {
+      "doc": "Page",
+      "board": "Board",
+      "table": "Table",
+      "pdf": "PDF",
+      "office": "Office file",
+      "form": "Form",
+      "folder": "Folder",
+      "space": "Space"
+    },
+    "childrenCount": "+{{count}} pages",
+    "unknownUser": "unknown",
+    "filters": {
+      "space": "Space",
+      "kind": "Type",
+      "from": "From",
+      "to": "To",
+      "allSpaces": "All spaces",
+      "allKinds": "All types"
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} of {{total}}",
+      "prev": "Back",
+      "next": "Next"
+    },
+    "restore": "Restore",
+    "restoreFailed": "Failed to restore.",
+    "restored": "Restored: {{path}}",
+    "restoredConflict": "The path was taken — restored alongside as: {{path}}",
+    "restoredSpace": "Space restored: {{space}}",
+    "open": "Open",
+    "deleteForever": "Delete forever",
+    "deleteForeverTitle": "Delete forever?",
+    "deleteForeverText": "\"{{title}}\" will be deleted permanently, with no way to restore it.",
+    "deleteFailed": "Failed to delete.",
+    "emptyTrash": "Empty trash",
+    "emptyTrashTitle": "Empty the trash?",
+    "emptyTrashText": "Every item in the trash will be deleted permanently.",
+    "emptyTrashTextSpace": "Every trash item of the \"{{space}}\" space will be deleted permanently.",
+    "emptied": "Trash emptied: {{count}}",
+    "retention": {
+      "label": "Keep deleted items (days)",
+      "hint": "Leave empty for no auto-purge: by default the trash is never cleaned automatically.",
+      "save": "Save",
+      "saved": "Setting saved.",
+      "failed": "Failed to save the setting."
+    }
+  },
+  "assistant": {
+    "menu": { "label": "Folio AI" },
+    "settings": {
+      "title": "Folio AI (Cursor)",
+      "source": "Key source",
+      "sources": { "personal": "My key", "environment": "Server key", "none": "Not configured" },
+      "keyName": "Key name",
+      "connected": "Connected",
+      "runtimeUnavailable": "Cursor SDK needs Node.js 22.13 or newer. Update the server runtime.",
+      "encryptionUnavailable": "FOLIO_SECRET isn't configured on the server, so a personal key can't be stored securely.",
+      "keyLabel": "Cursor API key",
+      "keyPlaceholder": "Paste a Cursor API key",
+      "keyHint": "The key is checked against Cursor and stored encrypted.",
+      "save": "Check & connect",
+      "savedAs": "Key connected: {{name}}",
+      "check": "Check saved key",
+      "checkOk": "Cursor confirmed the key: {{name}}",
+      "checkFailed": "Cursor didn't confirm the key. Check it or create a new one.",
+      "saveFailed": "Couldn't check and save the key.",
+      "disconnect": "Forget my key",
+      "forgetConfirmBody": "The key will be removed from the server. Continue?",
+      "forgetFailed": "Couldn't remove the key.",
+      "model": "Model",
+      "autoModel": "Auto",
+      "modelHint": "Cursor picks the model automatically. This setting applies to new conversations.",
+      "modelsFailed": "Cursor model catalog unavailable",
+      "modelSaveFailed": "Couldn't save the model."
+    },
+    "chat": {
+      "title": "Folio AI",
+      "shortTitle": "Ask AI",
+      "close": "Close chat",
+      "minimize": "Minimize",
+      "expand": "Expand",
+      "new": "New conversation",
+      "history": "History",
+      "noHistory": "No conversations yet.",
+      "untitled": "Untitled conversation",
+      "notConfiguredTitle": "Connect Cursor first",
+      "notConfiguredDescription": "The agent needs your Cursor API key and a compatible server runtime.",
+      "openSettings": "Open settings",
+      "emptyTitle": "How can I help?",
+      "status": {
+        "starting": "Starting the agent…",
+        "thinking": "The agent is analyzing the request…",
+        "tool": "Working with {{tool}}…",
+        "writing": "The agent is writing a reply…"
+      },
+      "stop": "Stop",
+      "finished": "Agent finished",
+      "reconnecting": "Reconnecting…",
+      "sendFailed": "Couldn't send the message. Try again or check your Cursor key in settings.",
+      "placeholder": "Ask about Folio…",
+      "send": "Send",
+      "modes": { "ask": "Ask", "agent": "Agent" },
+      "modeHints": { "ask": "Read-only", "agent": "Can make allowed changes" },
+      "agentRules": ".agent rules ({{count}})",
+      "agentRulesHint": "Rules for the AI assistant in this space — admins maintain them.",
+      "errors": {
+        "keyRequired": "Connect your Cursor key in settings first.",
+        "busy": "Please wait, the previous request is still running.",
+        "generic": "Couldn't get a reply. Please try again."
+      }
+    }
+  },
+  "notifications": {
+    "bell": "Notifications",
+    "bellUnread": "Notifications ({{count}} unread)",
+    "empty": "No notifications yet.",
+    "decideFailed": "Could not save the decision",
+    "request": {
+      "asks": "{{name}} is asking for access to \u201c{{space}}\u201d",
+      "roleLabel": "Role",
+      "approve": "Grant access",
+      "deny": "Deny",
+      "someone": "An administrator",
+      "approvedBy": "{{name}} granted access \u2014 {{role}}",
+      "deniedBy": "{{name}} denied the request"
+    },
+    "decision": {
+      "approved": "Access to \u201c{{space}}\u201d granted \u2014 {{role}}",
+      "denied": "Access to \u201c{{space}}\u201d was denied"
+    },
+    "requestAccess": {
+      "action": "Request access",
+      "sending": "Sending\u2026",
+      "sent": "Request sent \u2014 the space administrators will see it.",
+      "already": "You already have access to this space \u2014 try reloading the page.",
+      "failed": "Could not send the request"
+    }
+  },
+  "offline": {
+    "pageUnavailable": "This page is not available offline: it has not been opened on this device yet. It will load by itself as soon as the connection is back.",
+    "status": {
+      "offline": "Offline",
+      "degraded": "Poor connection",
+      "syncing": "Syncing…",
+      "pending": "Not synced: {{count}}"
+    },
+    "title": {
+      "offline": "The server cannot be reached. New pages and edits are kept on this device and sent as soon as the connection is back.",
+      "degraded": "The connection is slow or unstable. Saving may lag; nothing is lost."
+    },
+    "panel": {
+      "heading": "Waiting to sync",
+      "empty": "Everything is synced.",
+      "unsyncedEdits": "Pages with unsent edits: {{count}}",
+      "syncNow": "Sync now",
+      "retry": "Retry",
+      "state": {
+        "pending": "waiting for a connection",
+        "syncing": "sending",
+        "failed": "refused by the server"
+      }
+    },
+    "toast": {
+      "offline": "You are offline. Changes are kept on this device.",
+      "degraded": "Poor connection — saving may lag.",
+      "online": "Connection restored.",
+      "synced": "Synced with the server: {{count}}"
+    },
+    "createdLocally": "Created on this device. It will reach the server when the connection is back.",
+    "unsupportedKind": "Only pages and boards can be created without a connection.",
+    "tree": {
+      "localMarker": "Not synced with the server yet",
+      "discard": "Discard draft",
+      "discardConfirmTitle": "Discard this draft?",
+      "discardConfirmBody": "“{{title}}” exists on this device only. Once discarded it cannot be recovered."
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "submit": "Надіслати",
+  "submitting": "Надсилання…",
+  "required": "Обов'язкове поле",
+  "successTitle": "Дякуємо! Відповідь надіслано.",
+  "submitAnother": "Надіслати ще одну відповідь",
+  "genericError": "Не вдалося надіслати форму",
+  "fieldRequiredError": "Це поле обов'язкове",
+  "fieldInvalidError": "Некоректне значення",
+  "loading": "Завантаження форми…",
+  "notFound": "Форму не знайдено",
+  "viewTable": "Переглянути таблицю",
+  "checkboxYes": "Так"
+}

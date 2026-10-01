@@ -1,0 +1,42 @@
+{
+  "pagetree": {
+    "loading": "Loading page tree…",
+    "empty": "No child pages",
+    "fallback": "page tree"
+  },
+  "form": {
+    "loading": "Loading form…",
+    "notFound": "Form not found",
+    "fallback": "form"
+  },
+  "alerts": {
+    "note": "Note",
+    "tip": "Tip",
+    "important": "Important",
+    "warning": "Warning",
+    "caution": "Caution"
+  },
+  "table": {
+    "switchToScroll": "Show original column widths (scroll)",
+    "switchToFit": "Fit table to container width"
+  },
+  "backlinks": {
+    "title": "Backlinks"
+  },
+  "collapsible": {
+    "toggleLabel": "Collapse section",
+    "hiddenBlocks_one": "{{count}} hidden block",
+    "hiddenBlocks_other": "{{count}} hidden blocks"
+  },
+  "link": {
+    "shareUnavailable": "This page isn't available via this link",
+    "notFound": "Page not found: {{path}}"
+  },
+  "image": {
+    "viewer": "Image viewer",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "resetZoom": "Reset zoom",
+    "close": "Close"
+  }
+}

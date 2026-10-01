@@ -1,0 +1,41 @@
+# Development dependencies only (PostgreSQL, Redis, MinIO) on non-default
+# local ports. The app itself runs from source: `npm run dev`.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: folio
+      POSTGRES_PASSWORD: folio
+      POSTGRES_DB: folio
+    ports:
+      - "127.0.0.1:5490:5432"
+    volumes:
+      - folio-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U folio"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    # Transient data only: persistence is off on purpose.
+    image: redis:7-alpine
+    command: redis-server --save '' --appendonly no
+    ports:
+      - "127.0.0.1:6390:6379"
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9101"
+    environment:
+      MINIO_ROOT_USER: folio
+      MINIO_ROOT_PASSWORD: folio-minio-dev
+    ports:
+      - "127.0.0.1:9100:9000"
+      - "127.0.0.1:9101:9101"
+    volumes:
+      - folio-minio:/data
+
+volumes:
+  folio-pg:
+  folio-minio:

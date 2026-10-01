@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+/*
+ * Redefines Tailwind's `dark:` variant (default: prefers-color-scheme only)
+ * so every `dark:` utility across the shell — Sidebar, Header, every
+ * dialog/panel — also honors an explicit data-theme="light"/"dark" on
+ * <html> (SettingsProvider, web/src/app/settings.tsx), not just the OS
+ * setting:
+ *   - data-theme="dark" anywhere up the tree -> dark, regardless of OS;
+ *   - no data-theme anywhere up the tree ("system") -> dark only when the
+ *     OS prefers it (the original default behavior, unchanged for that case);
+ *   - data-theme="light" -> neither branch matches -> light, regardless of OS.
+ * markdown.css and the plain-CSS rules below use the equivalent
+ * hand-written form of this same pattern (they're not Tailwind utilities,
+ * so this variant doesn't apply to them) — see settings.tsx's docblock for
+ * the full reasoning and its one known gap (editor.css and
+ * diagrams/colorScheme.ts don't read this attribute).
+ */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme] *)) {
+      @slot;
+    }
+  }
+}
+
+:root { color-scheme: light dark; }
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
+
+/*
+ * overflow: hidden here is deliberate, not redundant with Shell.tsx's own
+ * `h-screen overflow-hidden` root div — this is the fix for a real "double
+ * scroll" bug (P1): CodeMirror's built-in tooltip plugin
+ * (@codemirror/view, ViewPlugin `createContainer()`) is configured by
+ * editor/markdown-setup.ts's `tooltips({parent: document.body})` — a
+ * deliberate, reasonable choice so hover/autocomplete popups escape the
+ * editor's own clipping (same rationale as this app's own Menu.tsx portal).
+ * That container is a bare <div> CodeMirror appends directly to <body>,
+ * and stamps with `view.themeClasses` — ALL of the EditorView's active
+ * theme classes, indiscriminately, including editor/markdown-setup.ts's
+ * `folioTheme`'s root rule (`'&': { height: '100%', ... }`, which compiles
+ * to a *bare* generated class, not `.cm-editor.<class>` — CodeMirror's `&`
+ * theme selector doesn't compound with the element's other classes). That
+ * bare-class height:100% rule ends up matching the tooltip container too,
+ * even though it was never meant to receive editor-content sizing. With
+ * `html`/`body` at `height:100%` (below) but no overflow constraint, that
+ * stray, empty, full-viewport-tall div inflates <body>'s own scrollable
+ * content height, making the *window* scroll in addition to whichever
+ * scroll container already exists inside the app shell (main, or the
+ * editor's own .folio-editor__reading / .cm-scroller) — two scrollbars
+ * fighting, confirmed live via a Node.prototype.appendChild intercept
+ * pinpointing the exact stack (createContainer, @codemirror/view) and by
+ * toggling this exact rule on/off against a running page.
+ *
+ * This closes it for any current or future stray body-level element
+ * (not just this one), which is why it belongs here rather than as a
+ * narrow, CodeMirror-internals-specific patch: `main` (Shell.tsx) is the
+ * only element in this app meant to scroll the page area; the sidebar
+ * scrolls independently via its own nav's overflow-y-auto; nothing should
+ * ever make the window/body itself scroll.
+ */
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #171717;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) body { background: #0a0a0a; color: #f5f5f5; }
+}
+html[data-theme='dark'] body { background: #0a0a0a; color: #f5f5f5; }
+
+/*
+ * Text selection. Without this rule the whole page outside the editor
+ * (reading mode, the sidebar, dialogs) stayed on the browser default: in the
+ * dark theme that is a pale lilac background under light text, on which
+ * selected text reads worse than unselected (the owner's report, 11.09). The
+ * colors are deliberately the same the editor already has
+ * (--folio-ed-selection in editor/editor.css), so that a selection looks the
+ * same in prose, in source code and in a preview.
+ *
+ * `color` is set explicitly: otherwise links and code inside a selection keep
+ * their own color and can lose contrast on the new background — exactly what
+ * this rule cures.
+ *
+ * Three branches — exactly as in body above: light by default, the system
+ * dark one (under the guard of :not([data-theme='light']), so that an
+ * explicit choice of "light" overrides the system one), and the explicit dark one.
+ */
+::selection { background: #cfe3f2; color: #171717; }
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) ::selection { background: #23445c; color: #f5f5f5; }
+}
+html[data-theme='dark'] ::selection { background: #23445c; color: #f5f5f5; }
+
+/*
+ * Assistant chat markdown (AssistantPanel.tsx's `AssistantMessageContent`,
+ * rendered via app/assistant/chatMarkdown.ts). Most of the compaction lives
+ * as Tailwind arbitrary-variant utilities right on the wrapper div
+ * (CHAT_MARKDOWN_CLASS) — this covers only what those can't reach: a tight
+ * line-height so multi-line replies don't feel airy in a ~440px panel.
+ */
+.folio-chat-md {
+  line-height: 1.45;
+}
+

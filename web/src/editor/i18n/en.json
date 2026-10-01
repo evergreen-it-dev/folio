@@ -1,0 +1,348 @@
+{
+  "mode": {
+    "source": "Source",
+    "live": "Live edit",
+    "reading": "Reading",
+    "sourceTitle": "Edit raw Markdown",
+    "liveTitle": "Edit with live formatting",
+    "readingTitle": "View the rendered page",
+    "aria": "Editor mode",
+    "pick": "Mode: {{mode}}. Change"
+  },
+  "status": {
+    "connected": "connected",
+    "connecting": "connecting",
+    "offline": "offline",
+    "title": "Collaboration: {{state}}",
+    "peers": "· {{count}} more"
+  },
+  "readonly": "Read-only",
+  "loadingPage": "Loading page…",
+  "unavailableOffline": "This page is not available offline: it has not been opened on this device yet. It will load by itself as soon as the connection is back.",
+  "connecting": "Connecting…",
+  "placeholder": "Write markdown — “/” inserts a block, ⌘F searches the page.",
+  "pagesHeader": "Search pages — start typing",
+  "emptyHint": {
+    "insert": " — insert a block (table, diagram, image…)",
+    "links": " — link to a page      (( — emoji      :name — emoji by name",
+    "search": " — search and navigation"
+  },
+  "table": {
+    "addRow": "Row",
+    "addRowTitle": "Add row",
+    "addColumn": "Column",
+    "addColumnTitle": "Add column",
+    "source": "Source",
+    "sourceTitle": "Show markdown source",
+    "deleteColumn": "Delete column",
+    "deleteRow": "Delete row",
+    "headerPlaceholder": "Column {{n}}",
+    "errorMoved": "The table changed — edit not applied",
+    "errorParse": "Could not parse the table — edit not applied",
+    "columnMenu": "Column {{n}}: menu",
+    "rowMenu": "Row {{n}}: menu",
+    "cellMenu": "Cell: menu",
+    "insertColumnHere": "Insert a column here",
+    "insertRowHere": "Insert a row here",
+    "insertColumnBefore": "Insert column to the left",
+    "insertColumnAfter": "Insert column to the right",
+    "insertRowAbove": "Insert row above",
+    "insertRowBelow": "Insert row below",
+    "alignLeft": "Align left",
+    "alignCenter": "Align centre",
+    "alignRight": "Align right",
+    "alignNone": "No alignment",
+    "merge": "Merge cells",
+    "unmerge": "Unmerge cells",
+    "background": "Background",
+    "emoji": "Emoji…",
+    "resetWidth": "Auto column widths",
+    "columnWidth": "Column {{n}} width — drag",
+    "bg": {
+      "yellow": "Yellow",
+      "green": "Green",
+      "teal": "Teal",
+      "blue": "Blue",
+      "purple": "Purple",
+      "red": "Pink",
+      "orange": "Orange",
+      "gray": "Grey",
+      "none": "No background"
+    }
+  },
+  "cellSlash": {
+    "aria": "Insert content into the cell",
+    "bullet": "Bulleted list",
+    "task": "Checklist",
+    "ordered": "Numbered list",
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "heading3": "Heading 3",
+    "link": "Link",
+    "linkPlaceholder": "text"
+  },
+  "format": {
+    "aria": "Text formatting",
+    "bold": "Bold",
+    "italic": "Italic",
+    "underline": "Underline",
+    "strike": "Strikethrough",
+    "code": "Code",
+    "highlight": "Highlight",
+    "highlightColor": "Highlight colour",
+    "highlightNone": "No highlight",
+    "quote": "Quote",
+    "link": "Link"
+  },
+  "toolbar": {
+    "aria": "Command toolbar",
+    "more": "More commands",
+    "unpin": "Hide the toolbar ({{key}})",
+    "show": "Show the command toolbar ({{key}})",
+    "hint": "Toolbar hidden. Bring it back with the button beside the mode switch, or {{key}}; «/» inserts a block.",
+    "indent": "Nest list item",
+    "dedent": "Un-nest list item"
+  },
+  "html": {
+    "title": "HTML block — edit it in the source"
+  },
+  "details": {
+    "toggle": "Expand or collapse",
+    "untitled": "Details",
+    "empty": "Nothing inside yet",
+    "editHint": "Collapsible block — edit it in the source"
+  },
+  "preview": {
+    "loading": "Loading…",
+    "missing": "Page not found"
+  },
+  "image": {
+    "clickToEdit": "Click to open the markdown source",
+    "edit": "Edit image",
+    "description": "Description",
+    "descriptionPlaceholder": "Describe the image",
+    "size": "Size",
+    "sizeAuto": "Automatic",
+    "cancel": "Cancel",
+    "save": "Save",
+    "notFound": "Image not found: {{src}}"
+  },
+  "task": {
+    "done": "Task done",
+    "notDone": "Task not done"
+  },
+  "upload": {
+    "placeholder": "Uploading {{name}}…",
+    "failed": "Could not upload {{name}}",
+    "onlyImages": "Only images can be inserted"
+  },
+  "pasteChooser": {
+    "title": "Pasted a markdown document",
+    "lines": "Pasted a markdown document ({{count}} lines)",
+    "body": "Insert into the body",
+    "link": "Create a child page and insert a link",
+    "cancel": "Cancel",
+    "failed": "Could not create the page",
+    "untitled": "Pasted document"
+  },
+  "emoji": {
+    "searchPlaceholder": "Search emoji…"
+  },
+  "mermaid": {
+    "edit": "Edit diagram",
+    "notFound": "Could not find the diagram block",
+    "doubleClickToEdit": "Drag to move, Ctrl/⌘ + wheel to zoom, double-click to edit",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomReset": "Fit the diagram",
+    "modalAria": "Diagram editor",
+    "modalTitle": "Mermaid diagram",
+    "fullscreen": "Open full screen",
+    "restore": "Exit full screen",
+    "close": "Close",
+    "templates": "Templates",
+    "replaceConfirm": "Replace the current code with this template?",
+    "hint": "⌘/Ctrl + Enter — save · Esc — cancel",
+    "cancel": "Cancel",
+    "save": "Save",
+    "deleted": "The diagram block was deleted — changes not saved",
+    "changed": "The diagram block changed — changes not saved",
+    "visualLoading": "Loading the visual editor…",
+    "visualFailed": "The visual editor could not handle this diagram — edit the code on the left, preview on the right",
+    "connect": "Connect",
+    "connectTitle": "Connect mode: drag from one node to another",
+    "addHint": "(+) adds a connected element, the handle beside it drags a link; (+) on a link inserts into it",
+    "linkTitle": "Drag from here to another element to connect them",
+    "addTitle": "Add {{thing}} to the canvas",
+    "addHintFlat": "(+) on an element adds one more",
+    "addHintSequence": "(+) on a lifeline inserts an event; drag it to another participant to connect them",
+    "plus": {
+      "grow": "Add {{thing}} and connect it",
+      "split": "Insert {{thing}} into this connection",
+      "child": "Add {{thing}} inside",
+      "append": "Add {{thing}}"
+    },
+    "label": {
+      "node": "Node",
+      "state": "State",
+      "class": "Class",
+      "entity": "Entity",
+      "participant": "Participant",
+      "task": "Task",
+      "slice": "Slice",
+      "period": "Period",
+      "idea": "Idea",
+      "item": "Item"
+    },
+    "thing": {
+      "node": "a node",
+      "state": "a state",
+      "class": "a class",
+      "entity": "an entity",
+      "participant": "a participant",
+      "task": "a task",
+      "slice": "a slice",
+      "period": "a period",
+      "idea": "an idea",
+      "item": "an item"
+    },
+    "new": {
+      "node": "New node",
+      "state": "New state",
+      "class": "NewClass",
+      "entity": "NEW_ENTITY",
+      "participant": "New participant",
+      "task": "New task",
+      "slice": "New slice",
+      "period": "New period : New event",
+      "idea": "New idea",
+      "item": "New item"
+    }
+  },
+  "template": {
+    "flowchart": "Flowchart",
+    "sequence": "Sequence",
+    "class": "Classes",
+    "state": "States",
+    "er": "ER diagram",
+    "gantt": "Gantt",
+    "timeline": "Timeline",
+    "pie": "Pie",
+    "mindmap": "Mind map"
+  },
+  "fence": {
+    "mermaid": "A diagram instead of code"
+  },
+  "templateCode": {
+    "flowchart": "flowchart TD\n  A[Start] --> B{Condition?}\n  B -- yes --> C[Action]\n  B -- no --> D[Other]\n  C --> E[End]\n  D --> E",
+    "sequence": "sequenceDiagram\n  participant A as Client\n  participant S as Server\n  A->>S: Request\n  S-->>A: Response\n  Note over A,S: exchange complete",
+    "class": "classDiagram\n  class Page {\n    +string id\n    +string title\n    +render()\n  }\n  class Space\n  Space \"1\" --> \"*\" Page",
+    "state": "stateDiagram-v2\n  [*] --> Draft\n  Draft --> Published: publish\n  Published --> Archived: archive\n  Archived --> [*]",
+    "er": "erDiagram\n  SPACE ||--o{ PAGE : contains\n  PAGE ||--o{ ASSET : embeds\n  PAGE {\n    string id\n    string title\n  }",
+    "gantt": "gantt\n  title Work plan\n  dateFormat YYYY-MM-DD\n  section Stage 1\n  Analysis :a1, 2026-01-05, 7d\n  Development :after a1, 14d",
+    "timeline": "timeline\n  title Project history\n  2024 : Idea\n  2025 : Prototype : First users\n  2026 : Release",
+    "pie": "pie showData\n  title Time split\n  \"Development\" : 45\n  \"Review\" : 25\n  \"Meetings\" : 30",
+    "mindmap": "mindmap\n  root((Folio))\n    Pages\n      Markdown\n      Diagrams\n    Collaboration\n      CRDT\n      Cursors"
+  },
+  "slash": {
+    "heading1": {
+      "name": "Heading 1",
+      "description": "Large section heading"
+    },
+    "heading2": {
+      "name": "Heading 2",
+      "description": "Subheading"
+    },
+    "heading3": {
+      "name": "Heading 3",
+      "description": "Third-level heading"
+    },
+    "text": {
+      "name": "Plain text",
+      "description": "A paragraph with no formatting"
+    },
+    "list": {
+      "name": "Bulleted list",
+      "description": "Items with bullets"
+    },
+    "ordered": {
+      "name": "Numbered list",
+      "description": "Items in order"
+    },
+    "task": {
+      "name": "Checklist",
+      "description": "Tasks with checkboxes"
+    },
+    "table": {
+      "name": "Table",
+      "description": "A grid you edit right on the page"
+    },
+    "columns2": { "name": "2 columns", "description": "Borderless two-column page layout" },
+    "columns3": { "name": "3 columns", "description": "Borderless three-column page layout" },
+    "columns4": { "name": "4 columns", "description": "Borderless four-column page layout" },
+    "columns5": { "name": "5 columns", "description": "Borderless five-column page layout" },
+    "code": {
+      "name": "Code block",
+      "description": "Monospaced block with highlighting"
+    },
+    "mermaid": {
+      "name": "Mermaid diagram",
+      "description": "A diagram from text, drawn automatically",
+      "code": "flowchart TD\nA[Start] --> B[End]"
+    },
+    "image": {
+      "name": "Image",
+      "description": "Upload a file from your computer"
+    },
+    "link": {
+      "name": "Link",
+      "description": "Wrap the selection in a link"
+    },
+    "imageLink": {
+      "name": "Image by URL",
+      "description": "Insert the markup with a path by hand"
+    },
+    "quote": {
+      "name": "Quote",
+      "description": "A set-off quotation"
+    },
+    "note": {
+      "name": "Note",
+      "description": "A callout with neutral information"
+    },
+    "tip": {
+      "name": "Tip",
+      "description": "A callout with a hint"
+    },
+    "important": {
+      "name": "Important",
+      "description": "A callout with the key point"
+    },
+    "warning": {
+      "name": "Warning",
+      "description": "A callout about a risk"
+    },
+    "expand": {
+      "name": "Expand",
+      "description": "A block that hides the details",
+      "summary": "Title"
+    },
+    "emoji": {
+      "name": "Emoji",
+      "description": "Pick a symbol from the palette"
+    },
+    "divider": {
+      "name": "Divider",
+      "description": "A horizontal rule between blocks"
+    },
+    "pagetree": {
+      "name": "Page tree",
+      "description": "Child pages of this page as a list"
+    }
+  },
+  "pagetree": {
+    "placeholder": "Page tree (depth {{depth}})",
+    "badge": "TREE",
+    "editHint": "Page tree — edit it in the source"
+  }
+}

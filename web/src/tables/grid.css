@@ -1,0 +1,106 @@
+/*
+ * Round 26 (DATA TABLES) — react-datasheet-grid themed as part of Folio.
+ *
+ * Spec §12a, constraint 6: the library ships its own CSS driven by
+ * `--dsg-*` custom properties, and needs mapping onto Folio's light/dark
+ * themes "as it is done for the editor". This file is that mapping and
+ * nothing else — no layout overrides, so a library upgrade can't silently
+ * break the grid's internals.
+ *
+ * Imported from TableGrid.tsx (the lazy chunk) rather than from the zone's
+ * entry point, so the CSS ships in the same lazily-loaded chunk as the
+ * library itself and never costs a page that has no table on it.
+ *
+ * Dark mode keys off `.dark` on an ancestor, matching the `dark:` variant
+ * Tailwind uses everywhere else in this app (class strategy, not
+ * prefers-color-scheme) — so the grid follows the app's own theme switch.
+ */
+
+.folio-table-grid {
+  --dsg-border-color: var(--color-neutral-200, #e5e5e5);
+  --dsg-cell-background-color: #ffffff;
+  --dsg-cell-disabled-background-color: var(--color-neutral-50, #fafafa);
+  --dsg-header-text-color: var(--color-neutral-500, #737373);
+  --dsg-header-active-text-color: var(--color-neutral-900, #171717);
+  --dsg-selection-border-color: #2563eb;
+  --dsg-selection-background-color: rgb(37 99 235 / 0.08);
+  --dsg-selection-disabled-border-color: var(--color-neutral-400, #a3a3a3);
+  --dsg-selection-disabled-background-color: rgb(163 163 163 / 0.08);
+  --dsg-scroll-shadow-color: rgb(0 0 0 / 0.12);
+  --dsg-selection-border-radius: 3px;
+  --dsg-selection-border-width: 2px;
+}
+
+.dark .folio-table-grid {
+  --dsg-border-color: var(--color-neutral-700, #404040);
+  --dsg-cell-background-color: var(--color-neutral-900, #171717);
+  --dsg-cell-disabled-background-color: var(--color-neutral-800, #262626);
+  --dsg-header-text-color: var(--color-neutral-400, #a3a3a3);
+  --dsg-header-active-text-color: var(--color-neutral-50, #fafafa);
+  --dsg-selection-border-color: #60a5fa;
+  --dsg-selection-background-color: rgb(96 165 250 / 0.14);
+  --dsg-selection-disabled-border-color: var(--color-neutral-500, #737373);
+  --dsg-selection-disabled-background-color: rgb(115 115 115 / 0.14);
+  --dsg-scroll-shadow-color: rgb(0 0 0 / 0.5);
+}
+
+/* Header cells carry our own component; strip the library's own padding so
+   ColumnHeader controls its whole box (it needs the full width for the
+   name + ⓘ + «…» row). */
+.folio-table-grid .dsg-cell-header-container {
+  padding: 0;
+}
+
+/* The row-hover affordances (longtext expand button) use group-hover, which
+   needs the row itself to be the group. The library gives each row
+   `.dsg-row`, so this is where that hook is attached. */
+.folio-table-grid .dsg-row:hover .folio-row-expand {
+  opacity: 1;
+}
+
+/*
+ * Spec §12a, constraint 1: the library has no left-column freeze (only a
+ * gutter and `stickyRightColumn`). Because the grid is real DOM rather than
+ * canvas, `position: sticky` on the first data cell works — the horizontal
+ * scroller is the grid container, and sticky resolves against it. The
+ * virtualiser only windows ROWS (columns are all rendered), so this does not
+ * fight it. Applied through a class the factory sets, so a view with
+ * `frozen: 0` opts out cleanly.
+ */
+.folio-table-grid .dsg-cell.folio-frozen-col {
+  position: sticky;
+  left: var(--dsg-corner-indicator-width, 0px);
+  z-index: 2;
+  background-color: var(--dsg-cell-background-color);
+}
+
+.folio-table-grid .dsg-cell.folio-frozen-col::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  right: -1px;
+  width: 1px;
+  background: var(--dsg-border-color);
+}
+
+/*
+ * The trailing add-column slot (see gridColumns.tsx's addColumnSlot). It is
+ * `disabled` so the grid never tries to edit it, but the library paints every
+ * disabled cell with its own tint — which would draw a grey strip down the
+ * whole table after the last column. Undo just the tint: the slot should read
+ * as empty space carrying a «+», not as a broken column.
+ */
+.folio-table-grid .dsg-cell.folio-add-col {
+  background-color: var(--dsg-cell-background-color);
+}
+
+/* Global-search highlight has to survive inside a cell that sets its own
+   colours. */
+.folio-table-grid mark {
+  background-color: rgb(253 224 71 / 0.55);
+  color: inherit;
+}
+
+.dark .folio-table-grid mark {
+  background-color: rgb(234 179 8 / 0.35);
+}

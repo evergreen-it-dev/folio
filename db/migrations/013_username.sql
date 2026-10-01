@@ -1,0 +1,16 @@
+-- Round 15: @mentions. Handle used in plain-text `@username` mentions inside
+-- markdown bodies (shared/contracts.ts: usernameSchema owns the
+-- lower-case/charset/length shape; nothing here duplicates that as a CHECK --
+-- see DEV-PLAN round 15: "a CHECK by a pattern is not mandatory — zod
+-- validates"). NULL = no handle chosen yet, and every existing row stays NULL (no
+-- zod"). NULL = no handle chosen yet, and every existing row stays NULL (no
+-- backfill).
+--
+-- Plain `text`, not `citext`: the app always normalizes to lower-case before
+-- writing (server/auth/store.ts's updateUsername), so a case-sensitive
+-- UNIQUE constraint over already-lower-case values behaves like a
+-- case-insensitive one in practice, without citext's separate collation
+-- semantics for a column with exactly one writer that already guarantees the
+-- invariant. Postgres UNIQUE treats multiple NULLs as non-conflicting, so
+-- any number of users can leave the handle unset.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username text UNIQUE;

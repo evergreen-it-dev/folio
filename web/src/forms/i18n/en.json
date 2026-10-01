@@ -1,0 +1,14 @@
+{
+  "submit": "Submit",
+  "submitting": "Submitting…",
+  "required": "Required field",
+  "successTitle": "Thanks! Your response was submitted.",
+  "submitAnother": "Submit another response",
+  "genericError": "Could not submit the form",
+  "fieldRequiredError": "This field is required",
+  "fieldInvalidError": "Invalid value",
+  "loading": "Loading form…",
+  "notFound": "Form not found",
+  "viewTable": "View table",
+  "checkboxYes": "Yes"
+}

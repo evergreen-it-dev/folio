@@ -1,0 +1,53 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove passwords, tokens and private content before posting.
+        Vulnerabilities are reported privately — see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Folio version or commit
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How Folio is installed
+      options:
+        - Docker Compose on my computer
+        - Docker Compose on a server
+        - A container platform
+        - From source
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and operating system
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The relevant part of `docker compose logs app`.
+      render: text

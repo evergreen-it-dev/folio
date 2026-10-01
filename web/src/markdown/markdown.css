@@ -1,0 +1,794 @@
+/* Reading-view typography for <Markdown>. Scoped under .folio-markdown so it
+   never leaks into the rest of the shell.
+   Theme: light tokens live on plain .folio-markdown; the prefers-color-scheme
+   block applies dark tokens for 'system' users on a dark OS UNLESS an
+   explicit data-theme="light" override is set on <html> (SettingsProvider,
+   web/src/app/settings.tsx); a separate html[data-theme="dark"] block
+   applies the same dark tokens regardless of OS, for an explicit "dark"
+   choice. Every dark block below is duplicated this way on purpose — see
+   that file's docblock for the full reasoning and its known gap (editor.css
+   and diagrams/colorScheme.ts don't read this attribute).
+   Width: max-width is the 'narrow' (~72ch) default; html[data-width="wide"]
+   overrides it. Doesn't reach the editor's own CodeMirror surface — same
+   settings.tsx docblock. */
+
+.folio-markdown {
+  --md-fg: #1c1917;
+  --md-fg-muted: #6b6560;
+  --md-bg-subtle: #f5f5f4;
+  --md-border: #e7e5e4;
+  --md-link: #2563eb;
+
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 6rem;
+  color: var(--md-fg);
+  font-size: 1rem;
+  line-height: 1.7;
+  word-wrap: break-word;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-markdown {
+    --md-fg: #e7e5e4;
+    --md-fg-muted: #a39e99;
+    --md-bg-subtle: #211d1b;
+    --md-border: #34302d;
+    --md-link: #7fadfb;
+  }
+}
+html[data-theme='dark'] .folio-markdown {
+  --md-fg: #e7e5e4;
+  --md-fg-muted: #a39e99;
+  --md-bg-subtle: #211d1b;
+  --md-border: #34302d;
+  --md-link: #7fadfb;
+}
+
+html[data-width='wide'] .folio-markdown {
+  max-width: calc(100% - 4rem);
+}
+
+.folio-markdown > *:first-child,
+.folio-markdown > .folio-md-segment:first-child > *:first-child {
+  margin-top: 0;
+}
+
+/* Headings ---------------------------------------------------------- */
+
+.folio-markdown h1,
+.folio-markdown h2,
+.folio-markdown h3,
+.folio-markdown h4,
+.folio-markdown h5,
+.folio-markdown h6 {
+  font-weight: 650;
+  line-height: 1.3;
+  scroll-margin-top: 1rem;
+}
+.folio-markdown h1 { font-size: 1.9rem; margin: 0 0 1em; letter-spacing: -0.01em; }
+.folio-markdown h2 { font-size: 1.45rem; margin: 2em 0 0.7em; letter-spacing: -0.01em; }
+.folio-markdown h3 { font-size: 1.2rem; margin: 1.75em 0 0.6em; }
+.folio-markdown h4 { font-size: 1.05rem; margin: 1.5em 0 0.5em; }
+.folio-markdown h5,
+.folio-markdown h6 {
+  font-size: 0.85rem;
+  margin: 1.4em 0 0.5em;
+  color: var(--md-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Text blocks --------------------------------------------------------- */
+
+.folio-markdown p { margin: 0 0 1em; }
+.folio-markdown strong { font-weight: 650; }
+.folio-markdown hr { border: none; border-top: 1px solid var(--md-border); margin: 2.5em 0; }
+
+.folio-markdown a {
+  color: var(--md-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.folio-markdown a:hover { opacity: 0.8; }
+
+/* Lists & task lists ---------------------------------------------------- */
+
+/* Round 34: a list nested 2-3 levels deep used to be nearly unreadable — every
+   level used the SAME disc marker at almost the SAME indentation (padding-left
+   was 1.4em on every <ul>/<ol> alike, nested or not, and browsers draw an
+   outside marker just outside that padding box, so three levels of "outside
+   marker + 1.4em" barely separated visually and the deepest marker sat close
+   enough to its own text to read as a stray dash/strikethrough). Fixed with
+   two independent things:
+   1. list-style-position: inside — the marker becomes part of the li's own
+      content box instead of hanging in the parent's padding gutter, so it can
+      never collide with a NESTED list's own padding/marker below it;
+   2. per-depth marker + indentation, keyed off actual nesting (`ul ul`, not a
+      class) so it's correct regardless of how many levels the author wrote,
+      same 3-deep cycle GFM/most renderers use (disc/circle/square for `ul`,
+      decimal/lower-alpha/lower-roman for `ol`) and the SAME cycle Live edit
+      already draws for a table cell's own list (editor.css's
+      ul.cm-md-cell-list rules) — the two surfaces now agree on more than just
+      color. Indentation compounds naturally: each level's own padding-left
+      adds to its ancestors' (nested <ul>s are still full <ul> elements, each
+      carrying the base padding), so three levels don't need hand-tuned
+      per-depth widths. */
+.folio-markdown ul,
+.folio-markdown ol {
+  margin: 0 0 1em;
+  padding-left: 1.3em;
+  list-style-position: inside;
+}
+/* Tailwind preflight strips list markers globally; restore them for content */
+.folio-markdown ul { list-style-type: disc; }
+.folio-markdown ol { list-style-type: decimal; }
+.folio-markdown ul ul { list-style-type: circle; }
+.folio-markdown ul ul ul { list-style-type: square; }
+.folio-markdown ol ol { list-style-type: lower-alpha; }
+.folio-markdown ol ol ol { list-style-type: lower-roman; }
+.folio-markdown li { margin: 0.3em 0; }
+/* list-style-position: inside pulls a nested list's own left edge back to
+   flush with its parent item's text — without this, the visible indent step
+   collapses to almost nothing (the opposite of the bug, same style of fix). */
+.folio-markdown li > ul,
+.folio-markdown li > ol { margin: 0.3em 0 0.3em 1.3em; }
+
+.folio-markdown ul.contains-task-list { list-style: none; padding-left: 0.2em; }
+.folio-markdown li.task-list-item { list-style: none; }
+.folio-markdown li.task-list-item input[type='checkbox'] {
+  margin: 0 0.6em 0 -1.4em;
+  vertical-align: middle;
+  accent-color: var(--md-link);
+}
+
+/* Blockquotes & GFM alerts ----------------------------------------------- */
+
+.folio-markdown blockquote:not(.md-alert) {
+  margin: 1em 0;
+  padding: 0.05em 1em;
+  border-left: 3px solid var(--md-border);
+  color: var(--md-fg-muted);
+}
+.folio-markdown blockquote > *:first-child { margin-top: 0; }
+.folio-markdown blockquote > *:last-child { margin-bottom: 0; }
+
+.folio-markdown .md-alert {
+  margin: 1.25em 0;
+  padding: 0.8em 1em 0.9em;
+  border-left: 4px solid var(--alert-accent);
+  background: var(--alert-bg);
+  border-radius: 0 8px 8px 0;
+  color: var(--md-fg);
+}
+/* Round 22 (SHELL-5): the label text itself is resolved in alerts.ts via
+   i18next and handed over as DATA (data-alert-label) — never a CSS
+   lang-selector here. text-transform is deliberately absent: the label is
+   already correctly cased per language (e.g. a capitalized "Note" in English). */
+.folio-markdown .md-alert::before {
+  content: attr(data-alert-label);
+  display: block;
+  margin-bottom: 0.4em;
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--alert-accent);
+}
+
+.folio-markdown .md-alert-note { --alert-accent: #0969da; --alert-bg: rgba(9, 105, 218, 0.08); }
+.folio-markdown .md-alert-tip { --alert-accent: #1a7f37; --alert-bg: rgba(26, 127, 55, 0.08); }
+.folio-markdown .md-alert-important { --alert-accent: #8250df; --alert-bg: rgba(130, 80, 223, 0.08); }
+.folio-markdown .md-alert-warning { --alert-accent: #9a6700; --alert-bg: rgba(154, 103, 0, 0.1); }
+.folio-markdown .md-alert-caution { --alert-accent: #cf222e; --alert-bg: rgba(207, 34, 46, 0.08); }
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-markdown .md-alert-note { --alert-accent: #6cb6ff; --alert-bg: rgba(88, 166, 255, 0.12); }
+  html:not([data-theme='light']) .folio-markdown .md-alert-tip { --alert-accent: #4bd166; --alert-bg: rgba(63, 185, 80, 0.12); }
+  html:not([data-theme='light']) .folio-markdown .md-alert-important { --alert-accent: #b083ff; --alert-bg: rgba(163, 113, 247, 0.14); }
+  html:not([data-theme='light']) .folio-markdown .md-alert-warning { --alert-accent: #e3b341; --alert-bg: rgba(210, 153, 34, 0.14); }
+  html:not([data-theme='light']) .folio-markdown .md-alert-caution { --alert-accent: #ff7b72; --alert-bg: rgba(248, 81, 73, 0.12); }
+}
+html[data-theme='dark'] .folio-markdown .md-alert-note { --alert-accent: #6cb6ff; --alert-bg: rgba(88, 166, 255, 0.12); }
+html[data-theme='dark'] .folio-markdown .md-alert-tip { --alert-accent: #4bd166; --alert-bg: rgba(63, 185, 80, 0.12); }
+html[data-theme='dark'] .folio-markdown .md-alert-important { --alert-accent: #b083ff; --alert-bg: rgba(163, 113, 247, 0.14); }
+html[data-theme='dark'] .folio-markdown .md-alert-warning { --alert-accent: #e3b341; --alert-bg: rgba(210, 153, 34, 0.14); }
+html[data-theme='dark'] .folio-markdown .md-alert-caution { --alert-accent: #ff7b72; --alert-bg: rgba(248, 81, 73, 0.12); }
+
+/* Stray pipe "table" (round 34, strayTable.ts) -----------------------------
+   A pipe table with no blank line before it, sitting right after a callout's
+   own text (or any paragraph/list item), is lazy-continuation text of that
+   paragraph per GFM/CommonMark — NOT a table, verified against remark-gfm's
+   actual output in pipeline.test.ts. Left as plain prose it would collapse
+   (soft line breaks -> a single space) into an unreadable run-on line; this
+   sets the swallowed pipe lines apart as raw/preformatted instead, so the
+   author can see AT A GLANCE that something is off, without Reading pretending
+   it's a table it isn't. */
+.folio-markdown .folio-stray-table {
+  display: block;
+  margin-top: 0.5em;
+  padding: 0.6em 0.75em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.5;
+  color: var(--md-fg-muted);
+  background: var(--md-bg-subtle);
+  border: 1px dashed var(--md-border);
+  border-radius: 6px;
+}
+
+/* Collapsible sections (round 5) ----------------------------------------- */
+
+.folio-markdown .folio-collapse-toggle {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  margin-right: 0.3em;
+  vertical-align: middle;
+  border-radius: 4px;
+  color: var(--md-fg-muted);
+  opacity: 0;
+}
+.folio-markdown h2:hover .folio-collapse-toggle,
+.folio-markdown h3:hover .folio-collapse-toggle,
+.folio-markdown .folio-collapse-toggle:focus-visible {
+  opacity: 1;
+}
+.folio-markdown .folio-collapse-toggle::before {
+  content: '▾';
+  display: inline-block;
+  font-size: 0.7em;
+  transition: transform 0.12s ease;
+}
+.folio-markdown .folio-collapsible--collapsed .folio-collapse-toggle {
+  opacity: 1; /* stays visible once collapsed, so there's an obvious way back */
+}
+.folio-markdown .folio-collapsible--collapsed .folio-collapse-toggle::before {
+  transform: rotate(-90deg);
+}
+
+.folio-markdown .folio-collapsible-stub {
+  display: none;
+  padding: 0.3em 0 0.3em 1.4em;
+  font-size: 0.85em;
+  font-style: italic;
+  color: var(--md-fg-muted);
+}
+.folio-markdown .folio-collapsible--collapsed .folio-collapsible-body { display: none; }
+.folio-markdown .folio-collapsible--collapsed .folio-collapsible-stub { display: block; }
+
+/* Code ------------------------------------------------------------------ */
+
+.folio-markdown code {
+  background: var(--md-bg-subtle);
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-size: 0.875em;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.folio-markdown pre {
+  background: var(--md-bg-subtle);
+  border: 1px solid var(--md-border);
+  border-radius: 8px;
+  padding: 1em 1.1em;
+  margin: 1.25em 0;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+.folio-markdown pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.85em;
+}
+
+.folio-markdown kbd {
+  border: 1px solid var(--md-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.1em 0.45em;
+  font-size: 0.85em;
+  font-family: ui-monospace, monospace;
+  background: var(--md-bg-subtle);
+}
+
+/* Tables ------------------------------------------------------------------ */
+
+/* Round 16: a Confluence import's "complex" table (colspan/rowspan, nested
+   lists — see server/confluenceImport.ts's isSimpleTable) lands here as a
+   plain HTML <table>, not GFM pipe syntax — but rehypeWrapTables (tables.ts)
+   wraps every <table> element regardless of where it came from, and every
+   rule below targets bare table/th/td, so parity with a pipe-table (borders,
+   header background, the scrollable wrap) is automatic, not a separate case
+   to maintain. */
+.folio-markdown .folio-table-wrap {
+  overflow-x: auto;
+  margin: 1.25em 0;
+}
+.folio-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.925em;
+}
+.folio-markdown th,
+.folio-markdown td {
+  border: 1px solid var(--md-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+  vertical-align: top;
+}
+.folio-markdown th { background: var(--md-bg-subtle); font-weight: 650; }
+
+/* `/2 columns` … `/5 columns`: still a valid GFM table in the file, but a
+   borderless layout in Folio. The empty table header is storage scaffolding. */
+.folio-markdown table.folio-layout-columns {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 1rem 0;
+}
+.folio-markdown table.folio-layout-columns thead { display: none; }
+.folio-markdown table.folio-layout-columns td {
+  min-width: 0;
+  padding: 0 0.5rem;
+  border: 0;
+  background: transparent;
+  overflow-wrap: anywhere;
+}
+.folio-markdown .folio-table-wrap:has(> table.folio-layout-columns) {
+  overflow-x: visible;
+}
+.folio-markdown .folio-table-wrap:has(> table.folio-layout-columns) .folio-table-toggle { display: none; }
+
+@media (max-width: 720px) {
+  .folio-markdown table.folio-layout-columns,
+  .folio-markdown table.folio-layout-columns tbody,
+  .folio-markdown table.folio-layout-columns tr,
+  .folio-markdown table.folio-layout-columns td { display: block; width: 100%; }
+  .folio-markdown table.folio-layout-columns td + td { margin-top: 1rem; }
+}
+
+/* Round 17: a table that declares column widths gets a <colgroup> and a fixed
+   layout — without `table-layout: fixed` the browser is free to ignore those
+   widths as soon as the content disagrees, which is exactly the case they
+   exist for (five columns of long text). Widths that don't add up to 100% are
+   fine: the browser distributes the remainder, and the scrolling wrap above
+   handles the overflow if they add up to more. */
+.folio-markdown table.folio-table-sized { table-layout: fixed; }
+.folio-markdown table.folio-table-sized th,
+.folio-markdown table.folio-table-sized td { overflow-wrap: anywhere; }
+
+/* Fit/scroll toggle: a wide table (no explicit `w=` widths above — those
+   already get table-layout: fixed unconditionally) defaults to fitting the
+   container once index.tsx's measurement effect confirms it would actually
+   overflow in its natural layout (`--wide`) — table-layout: fixed plus
+   overflow-wrap so long words don't blow a cell out, same recipe as
+   .folio-table-sized above. The button (tables.ts) switches that ONE table
+   back to natural column widths with horizontal scroll — today's original
+   behaviour — for when squeezing makes it unreadable. A table that isn't
+   wide never shows the button at all: display stays none, there's nothing
+   to switch. */
+.folio-markdown .folio-table-wrap { position: relative; }
+.folio-markdown .folio-table-wrap--fit > table { table-layout: fixed; }
+.folio-markdown .folio-table-wrap--fit > table th,
+.folio-markdown .folio-table-wrap--fit > table td { overflow-wrap: anywhere; }
+
+.folio-markdown .folio-table-toggle {
+  all: unset;
+  box-sizing: border-box;
+  display: none;
+  position: absolute;
+  top: 0.4em;
+  right: 0.4em;
+  align-items: center;
+  justify-content: center;
+  width: 1.7em;
+  height: 1.7em;
+  cursor: pointer;
+  border: 1px solid var(--md-border);
+  border-radius: 4px;
+  background: var(--md-bg-subtle);
+  color: var(--md-fg-muted);
+  font-size: 0.8em;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.folio-markdown .folio-table-wrap--wide .folio-table-toggle { display: inline-flex; }
+.folio-markdown .folio-table-wrap--wide:hover .folio-table-toggle,
+.folio-markdown .folio-table-toggle:focus-visible {
+  opacity: 1;
+}
+.folio-markdown .folio-table-toggle:focus-visible {
+  outline: 2px solid var(--md-link);
+  outline-offset: 1px;
+}
+.folio-markdown .folio-table-wrap--wide:not(.folio-table-wrap--fit) .folio-table-toggle {
+  opacity: 1; /* stays visible once switched to scroll, so there's an obvious way back — mirrors .folio-collapse-toggle's own collapsed-state rule above */
+}
+.folio-markdown .folio-table-toggle::before {
+  content: '\21d4'; /* ⇔ fit (default): invites "see the natural column widths" */
+  display: inline-block;
+}
+.folio-markdown .folio-table-wrap--wide:not(.folio-table-wrap--fit) .folio-table-toggle::before {
+  content: '\21f2'; /* ⇲ scroll (reader's override): invites "fit to the container" */
+}
+
+/* Round 17: cell backgrounds. A fixed palette of tokens rendered as classes
+   (`folio-bg-<token>`), never inline styles — the sanitizer does not pass
+   `style`, and it is right not to. The same classes arrive from two places:
+   the metadata line of a pipe table (tableExtensions.ts) and the round-16b
+   Confluence importer, which stamps them straight onto the <td>s of a complex
+   HTML table. THIS FILE IS THE SINGLE SOURCE OF TRUTH for what each token
+   looks like — nothing else may define these colours.
+
+   Light values are Confluence-grade pastels, legible under black text. The
+   dark ones are NOT those pastels dimmed — a pastel fill on a dark page
+   glares — but separate desaturated tones that sit quietly behind light
+   text. */
+.folio-markdown .folio-bg-yellow { background-color: #fff3bf; }
+.folio-markdown .folio-bg-green { background-color: #d3f9d8; }
+.folio-markdown .folio-bg-teal { background-color: #c5f6fa; }
+.folio-markdown .folio-bg-blue { background-color: #d0ebff; }
+.folio-markdown .folio-bg-purple { background-color: #e5dbff; }
+.folio-markdown .folio-bg-red { background-color: #ffdeeb; }
+.folio-markdown .folio-bg-orange { background-color: #ffe8cc; }
+.folio-markdown .folio-bg-gray { background-color: #e9ecef; }
+/* A painted header cell drops the subtle grey it would otherwise inherit. */
+.folio-markdown th[class*='folio-bg-'] { color: #1c1917; }
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-markdown .folio-bg-yellow { background-color: #4a3f1a; }
+  html:not([data-theme='light']) .folio-markdown .folio-bg-green { background-color: #1e3d24; }
+  html:not([data-theme='light']) .folio-markdown .folio-bg-teal { background-color: #10373d; }
+  html:not([data-theme='light']) .folio-markdown .folio-bg-blue { background-color: #16324f; }
+  html:not([data-theme='light']) .folio-markdown .folio-bg-purple { background-color: #2e2551; }
+  html:not([data-theme='light']) .folio-markdown .folio-bg-red { background-color: #4a2131; }
+  html:not([data-theme='light']) .folio-markdown .folio-bg-orange { background-color: #4a3320; }
+  html:not([data-theme='light']) .folio-markdown .folio-bg-gray { background-color: #2c2a28; }
+  html:not([data-theme='light']) .folio-markdown th[class*='folio-bg-'] { color: var(--md-fg); }
+}
+html[data-theme='dark'] .folio-markdown .folio-bg-yellow { background-color: #4a3f1a; }
+html[data-theme='dark'] .folio-markdown .folio-bg-green { background-color: #1e3d24; }
+html[data-theme='dark'] .folio-markdown .folio-bg-teal { background-color: #10373d; }
+html[data-theme='dark'] .folio-markdown .folio-bg-blue { background-color: #16324f; }
+html[data-theme='dark'] .folio-markdown .folio-bg-purple { background-color: #2e2551; }
+html[data-theme='dark'] .folio-markdown .folio-bg-red { background-color: #4a2131; }
+html[data-theme='dark'] .folio-markdown .folio-bg-orange { background-color: #4a3320; }
+html[data-theme='dark'] .folio-markdown .folio-bg-gray { background-color: #2c2a28; }
+html[data-theme='dark'] .folio-markdown th[class*='folio-bg-'] { color: var(--md-fg); }
+
+/* Round (highlight-as-markdown): inline `==text==`/`==text=={.token}` ->
+   `<mark class="folio-hl folio-hl-<token>">`, plus the legacy
+   `<mark>text</mark>` it replaces (round-21's format toolbar, and any
+   imported page, still write the bare tag with no class — see
+   sanitizeSchema.ts's own note on why `mark` is allowed at all). Both get
+   the SAME yellow by default: the bare-`mark` rule below is what makes a
+   legacy page look exactly like a fresh `==text==` one, without touching a
+   single byte of its stored HTML. Values reuse the exact `folio-bg-<token>`
+   colours above — a highlight and a table cell of the same token name are
+   meant to read as the same colour — via `color: inherit` + `0 0.15em`
+   padding instead of the wider table-cell treatment. */
+.folio-markdown mark {
+  background-color: #fff3bf;
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 2px;
+}
+.folio-markdown mark.folio-hl-yellow { background-color: #fff3bf; }
+.folio-markdown mark.folio-hl-green { background-color: #d3f9d8; }
+.folio-markdown mark.folio-hl-teal { background-color: #c5f6fa; }
+.folio-markdown mark.folio-hl-blue { background-color: #d0ebff; }
+.folio-markdown mark.folio-hl-purple { background-color: #e5dbff; }
+.folio-markdown mark.folio-hl-red { background-color: #ffdeeb; }
+.folio-markdown mark.folio-hl-orange { background-color: #ffe8cc; }
+.folio-markdown mark.folio-hl-gray { background-color: #e9ecef; }
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-markdown mark { background-color: #4a3f1a; }
+  html:not([data-theme='light']) .folio-markdown mark.folio-hl-yellow { background-color: #4a3f1a; }
+  html:not([data-theme='light']) .folio-markdown mark.folio-hl-green { background-color: #1e3d24; }
+  html:not([data-theme='light']) .folio-markdown mark.folio-hl-teal { background-color: #10373d; }
+  html:not([data-theme='light']) .folio-markdown mark.folio-hl-blue { background-color: #16324f; }
+  html:not([data-theme='light']) .folio-markdown mark.folio-hl-purple { background-color: #2e2551; }
+  html:not([data-theme='light']) .folio-markdown mark.folio-hl-red { background-color: #4a2131; }
+  html:not([data-theme='light']) .folio-markdown mark.folio-hl-orange { background-color: #4a3320; }
+  html:not([data-theme='light']) .folio-markdown mark.folio-hl-gray { background-color: #2c2a28; }
+}
+html[data-theme='dark'] .folio-markdown mark { background-color: #4a3f1a; }
+html[data-theme='dark'] .folio-markdown mark.folio-hl-yellow { background-color: #4a3f1a; }
+html[data-theme='dark'] .folio-markdown mark.folio-hl-green { background-color: #1e3d24; }
+html[data-theme='dark'] .folio-markdown mark.folio-hl-teal { background-color: #10373d; }
+html[data-theme='dark'] .folio-markdown mark.folio-hl-blue { background-color: #16324f; }
+html[data-theme='dark'] .folio-markdown mark.folio-hl-purple { background-color: #2e2551; }
+html[data-theme='dark'] .folio-markdown mark.folio-hl-red { background-color: #4a2131; }
+html[data-theme='dark'] .folio-markdown mark.folio-hl-orange { background-color: #4a3320; }
+html[data-theme='dark'] .folio-markdown mark.folio-hl-gray { background-color: #2c2a28; }
+
+/* Round 17: a cell's own list. The `• …` / `[ ] …` lines the table editor
+   writes — and the <ul>s a Confluence import brings — are real lists here,
+   nesting and all. A card-style cell is mostly list, so the page-level list
+   spacing has to tighten or every row grows enormous. */
+.folio-markdown td ul,
+.folio-markdown td ol,
+.folio-markdown th ul,
+.folio-markdown th ol {
+  margin: 0.15em 0;
+  padding-left: 1.1em;
+}
+.folio-markdown td li,
+.folio-markdown th li { margin: 0.15em 0; }
+.folio-markdown td li > ul,
+.folio-markdown td li > ol { margin: 0.1em 0 0.15em; }
+.folio-markdown td li > input[type='checkbox'] {
+  margin: 0 0.5em 0 -1.1em;
+  vertical-align: middle;
+  accent-color: var(--md-link);
+}
+.folio-markdown td li:has(> input[type='checkbox']) { list-style: none; }
+
+/* Media & disclosure ------------------------------------------------------- */
+
+.folio-markdown img { max-width: 100%; border-radius: 6px; display: block; }
+.folio-markdown .folio-md-segment img { cursor: zoom-in; }
+
+.folio-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 16px;
+  background: rgb(0 0 0 / 88%);
+  color: #fff;
+}
+
+.folio-lightbox__toolbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+
+.folio-lightbox__toolbar button {
+  min-width: 38px;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 8px;
+  background: rgb(30 30 30 / 88%);
+  color: #fff;
+  font: 600 16px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.folio-lightbox__toolbar button:hover { background: rgb(65 65 65 / 92%); }
+.folio-lightbox__zoom { min-width: 72px !important; font-size: 13px !important; }
+.folio-lightbox__close { position: absolute; right: 0; font-size: 24px !important; }
+
+.folio-lightbox__viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  place-items: start center;
+}
+
+.folio-markdown .folio-lightbox__viewport img {
+  max-width: none;
+  height: auto;
+  border-radius: 0;
+  cursor: grab;
+  user-select: none;
+}
+
+/* details/summary (round 16: the /expand slash command and Confluence's own
+   expand macro both land here) — bordered block in the same spirit as a GFM
+   alert callout, but neutral (no alert "kind" to color it by). The chevron
+   glyph/rotation matches .folio-collapse-toggle above exactly (same '▾',
+   same -90deg "not expanded" angle) so both collapse mechanisms on a page
+   read as one visual language. */
+.folio-markdown details {
+  border: 1px solid var(--md-border);
+  border-radius: 8px;
+  padding: 0.6em 1em;
+  margin: 1.25em 0;
+}
+.folio-markdown summary {
+  cursor: pointer;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  list-style: none; /* the ::before glyph below replaces the native triangle, so every browser matches */
+}
+.folio-markdown summary::-webkit-details-marker { display: none; }
+.folio-markdown summary::before {
+  content: '▾';
+  flex: none;
+  display: inline-block;
+  font-size: 0.7em;
+  color: var(--md-fg-muted);
+  transform: rotate(-90deg);
+  transition: transform 0.12s ease;
+}
+.folio-markdown details[open] > summary::before { transform: rotate(0deg); }
+.folio-markdown details[open] summary { margin-bottom: 0.5em; }
+/* Nested content (paragraphs, lists, a plain html table) sits in the same
+   padded box as the summary line — only the bottom margin needs trimming so
+   the block's own padding is the last thing before the border. */
+.folio-markdown details > :last-child { margin-bottom: 0; }
+
+/* @mentions (round 15) ------------------------------------------------------
+   Plain `@handle` text is the only thing ever stored (see mentions.ts); this
+   pill is a reading-view detail, drawn only for handles this space knows.
+   Hovering shows the full name via the native `title` attribute — that IS
+   this surface's hover-preview, no separate tooltip needed. Scoped under
+   .folio-markdown so it can never collide with EDITOR's identically-named,
+   independently-styled rule (.folio-editor .cm-content .folio-mention in
+   editor/editor.css) — same visual language by convention, not by sharing
+   a selector. Reuses --md-link as the accent, same reasoning as editor's own
+   pill reusing ITS accent var: a mention is an interactive-ish inline detail,
+   same visual family as a link. */
+.folio-markdown .folio-mention {
+  border-radius: 999px;
+  padding: 0.05em 0.5em;
+  background: color-mix(in srgb, var(--md-link) 14%, transparent);
+  color: var(--md-link);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Glossary terms (round 31) --------------------------------------------------
+   `*[Term]: Description` declarations (see glossaryTerms.ts) turn every later
+   occurrence of the term into a real `<abbr title="...">`; the description
+   itself is shown by the browser's native tooltip, nothing drawn here. The
+   owner explicitly asked for this to be quiet, not loud: a thin dotted
+   underline in the muted foreground colour, no background, no bold — reuses
+   --md-fg-muted so it stays correctly muted in both themes without a
+   separate dark block, the same way most border/foreground rules in this
+   file already do. `cursor: help` is the only other signal that the term is
+   interactive. */
+.folio-markdown abbr.folio-glossary-term {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--md-fg-muted);
+  text-underline-offset: 0.15em;
+  cursor: help;
+}
+
+/* The card with the description of a term (markdown/glossaryTooltip.ts). It
+   lives in <body> as position: fixed — the container of the page clips
+   absolute descendants, we got burned by that twice already (ui/Menu.tsx,
+   header/PagePresence.tsx). The colors are the same tokens as the rest of the
+   card, so the dark theme is covered without a separate branch. */
+.folio-glossary-tip {
+  position: fixed;
+  z-index: 80;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 0.35rem 0.55rem;
+  /* Colors of its own, not --md-*: the card lives in <body>, and those
+     variables are declared on .folio-markdown and do not reach here — the
+     result was a transparent background with light text (caught on the
+     stand). Three theme branches — as everywhere in this file. */
+  border: 1px solid #e7e5e4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1c1917;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  font-size: 0.85em;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-glossary-tip {
+    border-color: #34302d;
+    background: #211d1b;
+    color: #e7e5e4;
+  }
+}
+html[data-theme='dark'] .folio-glossary-tip {
+  border-color: #34302d;
+  background: #211d1b;
+  color: #e7e5e4;
+}
+
+/* Mermaid island spacing (the block itself is styled by <MermaidBlock>) ---- */
+
+.folio-markdown .folio-mermaid-segment { margin: 1.25em 0; }
+
+/* Backlinks ------------------------------------------------------------------ */
+
+.folio-markdown .folio-backlinks {
+  margin-top: 3em;
+  padding-top: 1.5em;
+  border-top: 1px solid var(--md-border);
+}
+.folio-markdown .folio-backlinks-title {
+  margin: 0 0 0.75em;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--md-fg-muted);
+}
+.folio-markdown .folio-backlinks ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+.folio-markdown .folio-backlinks button {
+  all: unset;
+  cursor: pointer;
+  color: var(--md-link);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.folio-markdown .folio-backlinks button:hover { opacity: 0.8; }
+
+/* Inline "page not found" hint shown when a relative link fails to resolve -- */
+
+.folio-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 2rem;
+  transform: translateX(-50%);
+  background: #1c1917;
+  color: #f5f5f4;
+  padding: 0.55em 1em;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  z-index: 60;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-hint { background: #e7e5e4; color: #1c1917; }
+}
+html[data-theme='dark'] .folio-hint { background: #e7e5e4; color: #1c1917; }
+
+/* Unknown directives ----------------------------------------------------- */
+
+/* `::name` / `:name[…]` with no fallback of its own: the whole node is
+   already replaced by its literal name (directiveFallback.ts), this just
+   keeps it from reading as body prose. */
+.folio-markdown .folio-directive-fallback {
+  color: var(--md-fg-muted);
+  font-size: 0.9em;
+}
+
+/* `:::name … :::` — the BODY IS KEPT (losing it is content loss: see
+   directiveFallback.ts). The block degrades to a neutral bordered container
+   named after the directive, so an imported `:::info` / `:::warning` still
+   reads as "a box the author meant to be a box" instead of vanishing. The
+   name comes from data-directive-label, resolved at render time in
+   directiveFallback.ts — never a locale-specific CSS selector, same rule as
+   the alert labels above. */
+.folio-markdown .folio-directive-fallback-block {
+  margin: 1.25em 0;
+  padding: 0.8em 1em 0.9em;
+  border: 1px dashed var(--md-border);
+  border-radius: 8px;
+  background: var(--md-bg-subtle);
+}
+.folio-markdown .folio-directive-fallback-block::before {
+  content: attr(data-directive-label);
+  display: block;
+  margin-bottom: 0.4em;
+  color: var(--md-fg-muted);
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.folio-markdown .folio-directive-fallback-block > *:first-of-type { margin-top: 0; }
+.folio-markdown .folio-directive-fallback-block > *:last-child { margin-bottom: 0; }

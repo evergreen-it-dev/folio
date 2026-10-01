@@ -1,0 +1,2845 @@
+/*
+ * Editor chrome. Rules are scoped to the editor's own class names — the editor
+ * never styles anything outside its subtree. The three roots below are separate
+ * because the completion popup and the mermaid modal render into <body>, so the
+ * palette has to be defined on them too.
+ */
+
+.folio-editor,
+.cm-folio-completions,
+.cm-folio-paste-chooser,
+.cm-folio-preview,
+.cm-folio-format,
+.folio-emoji-pop,
+.folio-emoji-picker,
+.folio-tablemenu,
+.folio-modal {
+  --folio-ed-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --folio-ed-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --folio-ed-measure: 72ch;
+  /* Widest a floating surface may get: the viewport minus an 8px gutter on each
+     side. Palettes, hover cards and emoji popovers are fixed-positioned in
+     <body>, so they measure against the viewport and not against any container
+     — CodeMirror clamps a tooltip's *position* to the viewport but never its
+     width, and an unclamped desktop-sized palette hangs off a phone screen. */
+  --folio-ed-popmax: calc(100vw - 16px);
+
+  --folio-ed-bg: #fafaf9;
+  --folio-ed-fg: #1c1917;
+  --folio-ed-muted: #78716c;
+  --folio-ed-faint: #a8a29e;
+  --folio-ed-marker: #c4bfba;
+  --folio-ed-border: #e7e5e4;
+  --folio-ed-panel: #ffffff;
+  --folio-ed-surface: #f0efed;
+  --folio-ed-accent: #1d6fa5;
+  --folio-ed-accent-fg: #ffffff;
+  --folio-ed-code: #9a3412;
+  --folio-ed-danger: #b91c1c;
+  --folio-ed-caret: #1c1917;
+  --folio-ed-selection: #cfe3f2;
+  --folio-ed-selection-match: #e6e3df;
+  --folio-ed-ok: #2f9e44;
+  --folio-ed-warn: #d9800f;
+  --folio-ed-shadow: 0 12px 32px rgb(28 25 23 / 14%), 0 2px 6px rgb(28 25 23 / 8%);
+
+  --folio-ed-syn-keyword: #7048e8;
+  --folio-ed-syn-string: #2f7a4d;
+  --folio-ed-syn-number: #b45309;
+  --folio-ed-syn-comment: #8d8681;
+  --folio-ed-syn-func: #1d6fa5;
+  --folio-ed-syn-type: #0c8599;
+  --folio-ed-syn-prop: #a1451e;
+  /* Round 17 — the fixed cell-background palette. Same tokens and same class
+     names as reading mode (markdown.css owns the canonical values; these
+     match it deliberately, because a cell must not change colour when the
+     author switches from editing to reading). */
+  --folio-bg-yellow: #fff3bf;
+  --folio-bg-green: #d3f9d8;
+  --folio-bg-teal: #c5f6fa;
+  --folio-bg-blue: #d0ebff;
+  --folio-bg-purple: #e5dbff;
+  --folio-bg-red: #ffdeeb;
+  --folio-bg-orange: #ffe8cc;
+  --folio-bg-gray: #e9ecef;
+}
+
+/* The width switch from the user menu (app/settings.tsx sets html[data-width]).
+   Reading mode respects it in markdown.css; here is the same width for the
+   CodeMirror surface (Source / Live edit). */
+html[data-width='wide'] .folio-editor {
+  --folio-ed-measure: calc(100% - 4rem);
+}
+
+
+/*
+ * Dark palette. The app exposes an explicit light/dark/system switch as
+ * `data-theme` on the root, so the OS preference only wins when the user has
+ * not overridden it — otherwise a dark app would keep a light editor.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light'])
+    :is(
+      .folio-editor,
+      .cm-folio-completions,
+      .cm-folio-paste-chooser,
+      .cm-folio-preview,
+      .cm-folio-format,
+      .folio-emoji-pop,
+      .folio-emoji-picker,
+      .folio-tablemenu,
+      .folio-modal
+    ) {
+    --folio-ed-bg: #0c0a09;
+    --folio-ed-fg: #e7e5e4;
+    --folio-ed-muted: #a8a29e;
+    --folio-ed-faint: #78716c;
+    --folio-ed-marker: #57534e;
+    --folio-ed-border: #292524;
+    --folio-ed-panel: #16130f;
+    --folio-ed-surface: #1c1917;
+    --folio-ed-accent: #74b9e7;
+    --folio-ed-accent-fg: #0c0a09;
+    --folio-ed-code: #f0a58a;
+    --folio-ed-danger: #f87171;
+    --folio-ed-caret: #e7e5e4;
+    --folio-ed-selection: #23445c;
+    --folio-ed-selection-match: #33302c;
+    --folio-ed-ok: #69db7c;
+    --folio-ed-warn: #f0a333;
+    --folio-ed-shadow: 0 12px 32px rgb(0 0 0 / 55%), 0 2px 6px rgb(0 0 0 / 40%);
+
+    --folio-ed-syn-keyword: #b197fc;
+    --folio-ed-syn-string: #8ce99a;
+    --folio-ed-syn-number: #ffc078;
+    --folio-ed-syn-comment: #8d8681;
+    --folio-ed-syn-func: #74c0fc;
+    --folio-ed-syn-type: #66d9e8;
+    --folio-ed-syn-prop: #ffa8a8;
+    /* Round 17 — muted counterparts; a pastel fill glares on a dark page. */
+    --folio-bg-yellow: #4a3f1a;
+    --folio-bg-green: #1e3d24;
+    --folio-bg-teal: #10373d;
+    --folio-bg-blue: #16324f;
+    --folio-bg-purple: #2e2551;
+    --folio-bg-red: #4a2131;
+    --folio-bg-orange: #4a3320;
+    --folio-bg-gray: #2c2a28;
+  }
+}
+
+:root[data-theme='dark']
+  :is(
+    .folio-editor,
+    .cm-folio-completions,
+    .cm-folio-paste-chooser,
+    .cm-folio-preview,
+    .cm-folio-format,
+    .folio-emoji-pop,
+    .folio-emoji-picker,
+    .folio-tablemenu,
+    .folio-modal
+  ) {
+    --folio-ed-bg: #0c0a09;
+    --folio-ed-fg: #e7e5e4;
+    --folio-ed-muted: #a8a29e;
+    --folio-ed-faint: #78716c;
+    --folio-ed-marker: #57534e;
+    --folio-ed-border: #292524;
+    --folio-ed-panel: #16130f;
+    --folio-ed-surface: #1c1917;
+    --folio-ed-accent: #74b9e7;
+    --folio-ed-accent-fg: #0c0a09;
+    --folio-ed-code: #f0a58a;
+    --folio-ed-danger: #f87171;
+    --folio-ed-caret: #e7e5e4;
+    --folio-ed-selection: #23445c;
+    --folio-ed-selection-match: #33302c;
+    --folio-ed-ok: #69db7c;
+    --folio-ed-warn: #f0a333;
+    --folio-ed-shadow: 0 12px 32px rgb(0 0 0 / 55%), 0 2px 6px rgb(0 0 0 / 40%);
+
+    --folio-ed-syn-keyword: #b197fc;
+    --folio-ed-syn-string: #8ce99a;
+    --folio-ed-syn-number: #ffc078;
+    --folio-ed-syn-comment: #8d8681;
+    --folio-ed-syn-func: #74c0fc;
+    --folio-ed-syn-type: #66d9e8;
+    --folio-ed-syn-prop: #ffa8a8;
+    /* Round 17 — muted counterparts; a pastel fill glares on a dark page. */
+    --folio-bg-yellow: #4a3f1a;
+    --folio-bg-green: #1e3d24;
+    --folio-bg-teal: #10373d;
+    --folio-bg-blue: #16324f;
+    --folio-bg-purple: #2e2551;
+    --folio-bg-red: #4a2131;
+    --folio-bg-orange: #4a3320;
+    --folio-bg-gray: #2c2a28;
+}
+
+.folio-editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  color: var(--folio-ed-fg);
+}
+
+/* ---------------------------------------------------------------- chrome -- */
+
+/*
+ * In normal flow rather than absolutely positioned: the search panel also docks
+ * to the top of the editor, and an overlay would cover its close button.
+ */
+.folio-editor__chrome {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0;
+  font-family: var(--folio-ed-sans);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* Page meta (icon / add-cover) hosted in the chrome row on cover-less pages
+   (PageEditor's chromeStart slot): pushes badge+toggle right; it may shrink,
+   they may not. */
+.folio-editor__chrome-start {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  margin-right: auto;
+  /* The slot is the only shrinkable thing in the row, so it is where a narrow
+     window takes the hit: clip the overflow instead of letting the "Add a
+     cover" button wrap and double the chrome's height. Safe for the emoji
+     picker — Menu portals its panel to <body> as position:fixed. */
+  overflow: hidden;
+}
+
+/* The label rides in a flex button next to its icon, where it would otherwise
+   break between words at the first pixel of pressure. */
+.folio-editor__chrome-start :is(button, a, span) {
+  white-space: nowrap;
+}
+
+/* Round 25: PageChrome renders nothing at all for a viewer on a page with
+   neither icon nor cover, and an element that renders null is still a non-null
+   ReactNode — so the slot can legitimately end up empty. Give it no box then,
+   rather than a flex child reserving a gap in the chrome row. */
+.folio-editor__chrome-start:empty {
+  display: none;
+}
+
+/* Round 27: the badge is the dot and nothing else — the wording is the `title`
+   tooltip and the accessible name (index.tsx's ConnectionBadge). Keeps its pill
+   padding so there is still something comfortable to point at, and `flex: none`
+   so it never shrinks: it is 16px wide, and the chrome-start slot is the row's
+   designated shrinker. */
+.folio-editor__status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0.3rem;
+  border-radius: 999px;
+  color: var(--folio-ed-faint);
+}
+
+/* An SVG now, not a coloured square: the three states differ in *shape* (filled
+   disc / open ring / struck ring) so they survive being read without colour.
+   `currentColor` is why the state colours below sit on the wrapper. */
+.folio-editor__dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+
+.folio-editor__status[data-status='connected'] {
+  color: var(--folio-ed-ok);
+}
+.folio-editor__status[data-status='connecting'] {
+  color: var(--folio-ed-warn);
+}
+.folio-editor__status[data-status='connecting'] .folio-editor__dot {
+  animation: folio-editor-pulse 1.2s ease-in-out infinite;
+}
+.folio-editor__status[data-status='offline'] {
+  color: var(--folio-ed-danger);
+}
+
+@keyframes folio-editor-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folio-editor__status[data-status='connecting'] .folio-editor__dot {
+    animation: none;
+  }
+}
+
+/* Round 27: the command panel's show/hide button, between the badge and the
+   mode switch. Borrows the mode buttons' vocabulary — same pill, same pressed
+   fill — so the two read as one group rather than as a stray icon; `flex: none`
+   for the same reason the badge has it. */
+.folio-editor__panel-toggle {
+  display: inline-flex;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  appearance: none;
+  /* Transparent rather than absent, so the pressed state's border does not
+     change the button's size and nudge the mode switch sideways. */
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--folio-ed-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.folio-editor__panel-toggle svg {
+  width: 15px;
+  height: 15px;
+}
+
+.folio-editor__panel-toggle:hover {
+  color: var(--folio-ed-fg);
+}
+
+/* Shown: the button is filled in, the same way the current mode is. */
+.folio-editor__panel-toggle[aria-pressed='true'] {
+  border-color: var(--folio-ed-border);
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-fg);
+}
+
+.folio-editor__panel-toggle:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+.folio-editor__modes {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 999px;
+}
+
+.folio-editor__mode {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--folio-ed-muted);
+  font: inherit;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.folio-editor__mode:hover {
+  color: var(--folio-ed-fg);
+}
+
+.folio-editor__mode[aria-pressed='true'] {
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-fg);
+}
+
+.folio-editor__mode:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+/* The phone form of the mode switch (index.tsx's ModeMenu): one button naming
+   the current mode. Same pill as the segmented control it replaces, so the row
+   keeps its look; only desktop renders the three-way version. */
+.folio-editor__mode-menu {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: 11rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.6rem;
+  appearance: none;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--folio-ed-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.folio-editor__mode-menu:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+/* "Live edit" is the long one; it may ellipsize rather than wrap the
+   chrome row onto a second line. */
+.folio-editor__mode-current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folio-editor__mode-caret {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--folio-ed-muted);
+}
+
+.folio-editor__readonly {
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--folio-ed-border);
+  color: var(--folio-ed-muted);
+}
+
+.folio-editor__hint {
+  margin: 0;
+  padding: 2.5rem 1.5rem;
+  color: var(--folio-ed-faint);
+  font-family: var(--folio-ed-sans);
+  font-size: 13px;
+}
+
+.folio-editor__toast {
+  position: absolute;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: min(30rem, 90%);
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--folio-ed-border);
+  background: var(--folio-ed-panel);
+  box-shadow: var(--folio-ed-shadow);
+  color: var(--folio-ed-fg);
+  font-family: var(--folio-ed-sans);
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------------- surface -- */
+
+.folio-editor__surface {
+  flex: 1;
+  min-height: 0;
+}
+
+.folio-editor__surface .cm-editor {
+  height: 100%;
+}
+
+.folio-editor__reading {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.5rem 1.5rem 40vh;
+}
+
+.folio-editor__prose {
+  max-width: var(--folio-ed-measure);
+  margin-inline: auto;
+}
+
+/* ---------------------------------------------------- markdown structure -- */
+
+.folio-editor .cm-md-h1 {
+  padding-top: 1.5rem;
+}
+.folio-editor .cm-md-h2 {
+  padding-top: 1.35rem;
+}
+.folio-editor .cm-md-h3,
+.folio-editor .cm-md-h4,
+.folio-editor .cm-md-h5,
+.folio-editor .cm-md-h6 {
+  padding-top: 1rem;
+}
+
+/*
+ * Round 25 bug: an empty band above the page title in live mode.
+ *
+ * A page body starts with its `# Title` (frontmatter never reaches the CRDT —
+ * see server/storage.ts), and that first line was being pushed down twice:
+ * `.cm-content`'s own 1.5rem of top padding, plus the 1.5rem the heading rule
+ * above adds to every h1. Three rem of nothing, right where reading mode shows
+ * the title flush against the top (`.folio-markdown > *:first-child` zeroes its
+ * margin there). Headings elsewhere in the document still need their air; only
+ * the one that opens the document does not.
+ *
+ * `:first-child` and not a decoration class: CodeMirror renders a `.cm-gap`
+ * spacer ahead of the lines whenever the first line is scrolled out of the
+ * viewport, so this matches exactly when the document really does start here.
+ */
+.folio-editor .cm-content .cm-line:first-child {
+  padding-top: 0;
+}
+
+.folio-editor .cm-md-marker {
+  color: var(--folio-ed-marker);
+}
+
+.folio-editor .cm-md-link {
+  color: var(--folio-ed-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--folio-ed-accent) 40%, transparent);
+  text-underline-offset: 2px;
+}
+
+/* Round 21: the two formats markdown has no syntax for, written as the inline
+   HTML GitHub renders (`<ins>`, `<mark>` — see format.ts). Live mode folds the
+   tags away and styles what is between them; source mode just dims the tags. */
+.folio-editor .cm-md-ins {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* `==text==` (and legacy `<mark>`): the cell-background palette, yellow by
+   default — the same tokens `==text=={.green}` picks by name. */
+.folio-editor .cm-md-mark {
+  border-radius: 2px;
+  padding: 0 0.15em;
+  background: var(--folio-bg-yellow);
+}
+.folio-editor .cm-md-mark--yellow { background: var(--folio-bg-yellow); }
+.folio-editor .cm-md-mark--green { background: var(--folio-bg-green); }
+.folio-editor .cm-md-mark--teal { background: var(--folio-bg-teal); }
+.folio-editor .cm-md-mark--blue { background: var(--folio-bg-blue); }
+.folio-editor .cm-md-mark--purple { background: var(--folio-bg-purple); }
+.folio-editor .cm-md-mark--red { background: var(--folio-bg-red); }
+.folio-editor .cm-md-mark--orange { background: var(--folio-bg-orange); }
+.folio-editor .cm-md-mark--gray { background: var(--folio-bg-gray); }
+
+/*
+ * A mention is stored as plain `@handle` text — the pill is a view detail, and
+ * it is drawn only for handles this space knows (mentions.ts). Padding stays
+ * horizontal on purpose: a taller inline box would push CodeMirror's line
+ * metrics around. Colours come from the editor palette, so dark mode follows.
+ */
+.folio-editor .cm-content .folio-mention {
+  border-radius: 999px;
+  padding: 0 0.3em;
+  background: color-mix(in srgb, var(--folio-ed-accent) 14%, transparent);
+  color: var(--folio-ed-accent);
+  font-weight: 550;
+}
+
+.folio-editor .cm-md-quote {
+  border-left: 3px solid var(--folio-ed-border);
+  padding-left: calc(1.5rem - 3px);
+  color: var(--folio-ed-muted);
+}
+
+.folio-editor .cm-md-quote-mark {
+  color: var(--folio-ed-marker);
+}
+
+.folio-editor .cm-md-list-mark {
+  color: var(--folio-ed-accent);
+}
+
+.folio-editor .cm-md-hr {
+  color: var(--folio-ed-marker);
+}
+
+.folio-editor .cm-md-code-line {
+  font-family: var(--folio-ed-mono);
+  background: var(--folio-ed-surface);
+}
+
+.folio-editor .cm-md-table-line {
+  font-family: var(--folio-ed-mono);
+  font-size: 0.9em;
+}
+
+/* --------------------------------------------------------------- callouts -- */
+
+/*
+ * `> [!NOTE]` and friends. Same visual language as the reading view's .md-alert
+ * (markdown.css) — accent stripe, tinted ground, the alert's name on top — but
+ * drawn per line, because a CodeMirror block is a run of .cm-line elements and
+ * there is no element around them to put one border on. Consecutive lines share
+ * the ground and the stripe; only the first and the last round their corners.
+ */
+.folio-editor .cm-md-callout {
+  --folio-ed-callout: var(--folio-ed-muted);
+  --folio-ed-callout-bg: var(--folio-ed-surface);
+  /* Read by the `t.quote` highlight rule (markdown-setup.ts), which would
+     otherwise mute callout body text the way it mutes a plain quote. */
+  --folio-ed-quote-fg: var(--folio-ed-fg);
+  border-left: 4px solid var(--folio-ed-callout);
+  padding-left: calc(1.5rem - 4px);
+  background: var(--folio-ed-callout-bg);
+}
+
+.folio-editor .cm-md-callout-first {
+  padding-top: 0.35rem;
+  border-top-right-radius: 8px;
+}
+
+.folio-editor .cm-md-callout-last {
+  padding-bottom: 0.45rem;
+  border-bottom-right-radius: 8px;
+}
+
+/* The label that stands in for the literal `[!NOTE]`; capitalised rather than
+   translated, exactly like reading mode's `content: attr(data-alert)`. */
+.folio-editor .cm-md-callout__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  color: var(--folio-ed-callout);
+  font-family: var(--folio-ed-sans);
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.folio-editor .cm-md-callout__label svg {
+  width: 1.15em;
+  height: 1.15em;
+}
+
+.folio-editor .cm-md-callout-note {
+  --folio-ed-callout: #0969da;
+  --folio-ed-callout-bg: rgb(9 105 218 / 8%);
+}
+.folio-editor .cm-md-callout-tip {
+  --folio-ed-callout: #1a7f37;
+  --folio-ed-callout-bg: rgb(26 127 55 / 8%);
+}
+.folio-editor .cm-md-callout-important {
+  --folio-ed-callout: #8250df;
+  --folio-ed-callout-bg: rgb(130 80 223 / 8%);
+}
+.folio-editor .cm-md-callout-warning {
+  --folio-ed-callout: #9a6700;
+  --folio-ed-callout-bg: rgb(154 103 0 / 10%);
+}
+.folio-editor .cm-md-callout-caution {
+  --folio-ed-callout: #cf222e;
+  --folio-ed-callout-bg: rgb(207 34 46 / 8%);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-editor .cm-md-callout-note {
+    --folio-ed-callout: #6cb6ff;
+    --folio-ed-callout-bg: rgb(88 166 255 / 12%);
+  }
+  html:not([data-theme='light']) .folio-editor .cm-md-callout-tip {
+    --folio-ed-callout: #4bd166;
+    --folio-ed-callout-bg: rgb(63 185 80 / 12%);
+  }
+  html:not([data-theme='light']) .folio-editor .cm-md-callout-important {
+    --folio-ed-callout: #b083ff;
+    --folio-ed-callout-bg: rgb(163 113 247 / 14%);
+  }
+  html:not([data-theme='light']) .folio-editor .cm-md-callout-warning {
+    --folio-ed-callout: #e3b341;
+    --folio-ed-callout-bg: rgb(210 153 34 / 14%);
+  }
+  html:not([data-theme='light']) .folio-editor .cm-md-callout-caution {
+    --folio-ed-callout: #ff7b72;
+    --folio-ed-callout-bg: rgb(248 81 73 / 12%);
+  }
+}
+
+html[data-theme='dark'] .folio-editor .cm-md-callout-note {
+  --folio-ed-callout: #6cb6ff;
+  --folio-ed-callout-bg: rgb(88 166 255 / 12%);
+}
+html[data-theme='dark'] .folio-editor .cm-md-callout-tip {
+  --folio-ed-callout: #4bd166;
+  --folio-ed-callout-bg: rgb(63 185 80 / 12%);
+}
+html[data-theme='dark'] .folio-editor .cm-md-callout-important {
+  --folio-ed-callout: #b083ff;
+  --folio-ed-callout-bg: rgb(163 113 247 / 14%);
+}
+html[data-theme='dark'] .folio-editor .cm-md-callout-warning {
+  --folio-ed-callout: #e3b341;
+  --folio-ed-callout-bg: rgb(210 153 34 / 14%);
+}
+html[data-theme='dark'] .folio-editor .cm-md-callout-caution {
+  --folio-ed-callout: #ff7b72;
+  --folio-ed-callout-bg: rgb(248 81 73 / 12%);
+}
+
+/* ----------------------------------------------------------- live widgets -- */
+
+.folio-editor .cm-md-task {
+  appearance: none;
+  width: 0.95em;
+  height: 0.95em;
+  margin: 0 0.35em 0 0;
+  vertical-align: -0.1em;
+  border: 1.5px solid var(--folio-ed-faint);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.folio-editor .cm-md-task:checked {
+  border-color: var(--folio-ed-accent);
+  background: var(--folio-ed-accent);
+  /* Inline SVG keeps the checkmark self-contained — no external asset. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 100%;
+}
+
+.folio-editor .cm-md-block {
+  position: relative;
+  margin: 0.6rem 1.5rem;
+  padding: 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--folio-ed-surface);
+}
+
+.folio-editor .cm-md-block:hover {
+  border-color: var(--folio-ed-border);
+}
+
+/* The window inside which the diagram can be dragged and zoomed
+   (mermaid-widgets.tsx). overflow: hidden, not auto: the transform itself
+   moves it now, and the window's own scroll would only argue with it. */
+.folio-editor .cm-md-mermaid__host {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.folio-editor .cm-md-mermaid__host[data-panning='yes'] {
+  cursor: grabbing;
+}
+
+.folio-editor .cm-md-mermaid__stage {
+  width: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* Mermaid writes an intrinsic pixel width into the SVG. In Reading the
+   document renderer gets the full content column, while the same intrinsic
+   width inside CodeMirror made a complex diagram look like a thumbnail.
+   Let the live widget use its content column as well; viewBox keeps the
+   proportions and overflow remains available for unusually wide diagrams. */
+.folio-editor .cm-md-mermaid__stage > div,
+.folio-editor .cm-md-mermaid__stage > div > div,
+.folio-editor .cm-md-mermaid__host svg {
+  width: 100%;
+}
+
+.folio-editor .cm-md-mermaid__host svg {
+  height: auto;
+}
+
+.folio-editor .cm-md-image {
+  background: transparent;
+  text-align: center;
+  cursor: pointer;
+}
+
+.folio-editor .cm-md-image img {
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+  border-radius: 6px;
+}
+
+.folio-editor .cm-md-image__caption {
+  margin-top: 0.4rem;
+  color: var(--folio-ed-muted);
+  font-family: var(--folio-ed-sans);
+  font-size: 12px;
+}
+
+.folio-editor .cm-md-image__missing {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--folio-ed-border);
+  border-radius: 6px;
+  color: var(--folio-ed-muted);
+  font-family: var(--folio-ed-mono);
+  font-size: 12px;
+}
+
+.folio-image-editor {
+  position: fixed;
+  z-index: 1000;
+  width: min(360px, calc(100vw - 24px));
+  padding: 14px;
+  border: 1px solid var(--folio-ed-border, #d4d4d4);
+  border-radius: 10px;
+  background: var(--folio-ed-surface, #fff);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 18%);
+  color: var(--folio-ed-fg, #171717);
+  font: 13px var(--folio-ed-sans, system-ui, sans-serif);
+}
+
+.folio-image-editor label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.folio-image-editor input,
+.folio-image-editor select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--folio-ed-border, #d4d4d4);
+  border-radius: 6px;
+  background: var(--folio-ed-surface, #fff);
+  color: inherit;
+  line-height: 1.2;
+}
+
+.folio-image-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.folio-image-editor button {
+  padding: 6px 11px;
+  border: 1px solid var(--folio-ed-border, #d4d4d4);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+
+.folio-image-editor__save {
+  border-color: #2563eb !important;
+  background: #2563eb !important;
+  color: #fff !important;
+}
+
+/* ------------------------------------------------------------ html block -- */
+
+.folio-editor .cm-md-htmlblock {
+  position: relative;
+  background: transparent;
+  border-color: var(--folio-ed-border);
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.folio-editor .cm-md-htmlblock__host {
+  overflow-x: auto;
+  /* Read-only preview: clicks reveal the source instead of hitting the markup. */
+  pointer-events: none;
+}
+
+.folio-editor .cm-md-htmlblock__badge {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-faint);
+  font-family: var(--folio-ed-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+/* ------------------------------------------------- multi-block <details> -- */
+
+/*
+ * The `/expand` block: an HTML fragment, a markdown body and a closing fragment
+ * replaced by one disclosure. Only the chevron is interactive — everything else
+ * drops into the markdown source, so the body host takes no pointer events at
+ * all (same arrangement as the HTML preview above).
+ */
+.folio-editor .cm-md-details {
+  background: transparent;
+  border-color: var(--folio-ed-border);
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+}
+
+.folio-editor .cm-md-details__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--folio-ed-sans);
+  font-weight: 600;
+}
+
+.folio-editor .cm-md-details__chevron {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+  border-radius: 4px;
+  color: var(--folio-ed-muted);
+  cursor: pointer;
+}
+
+/* Same glyph and rotation the reading view's section toggle uses. */
+.folio-editor .cm-md-details__chevron::before {
+  content: '▾';
+  display: inline-block;
+  font-size: 0.75em;
+  transform: rotate(-90deg);
+  transition: transform 0.12s ease;
+}
+
+.folio-editor .cm-md-details--open .cm-md-details__chevron::before {
+  transform: none;
+}
+
+.folio-editor .cm-md-details__chevron:hover {
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-fg);
+}
+
+.folio-editor .cm-md-details__chevron:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+.folio-editor .cm-md-details__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.folio-editor .cm-md-details__host {
+  display: none;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--folio-ed-border);
+  overflow-x: auto;
+  /* Read-only preview: clicks reveal the source instead of hitting the markup. */
+  pointer-events: none;
+  /* This host holds RENDERED markdown, not editor text, so it must not inherit
+     CodeMirror's `white-space: break-spaces` (set on .cm-content). rehype-raw
+     emits a run of literal newlines before a rendered <table>; under
+     break-spaces they are painted rather than collapsed, and a table inside an
+     expand was pushed ~575px down a column of blank space. Measured, not
+     guessed — and it predates the import round that made such tables common. */
+  white-space: normal;
+}
+
+.folio-editor .cm-md-details--open .cm-md-details__host {
+  display: block;
+}
+
+.folio-editor .cm-md-details__empty {
+  margin: 0;
+  color: var(--folio-ed-faint);
+  font-family: var(--folio-ed-sans);
+  font-size: 12px;
+  font-style: italic;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folio-editor .cm-md-details__chevron::before {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------ page tree -- */
+
+.folio-editor .cm-md-pagetree {
+  position: relative;
+  background: transparent;
+  border-color: var(--folio-ed-border);
+  cursor: pointer;
+}
+
+.folio-editor .cm-md-pagetree__host {
+  /* Links inside the tree stay clickable; the surrounding block reveals source. */
+  font-size: 0.95em;
+}
+
+.folio-editor .cm-md-pagetree__badge {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-faint);
+  font-family: var(--folio-ed-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.folio-pagetree-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--folio-ed-muted);
+  font-family: var(--folio-ed-sans);
+  font-size: 13px;
+}
+
+.folio-pagetree-placeholder__icon {
+  color: var(--folio-ed-faint);
+}
+
+/* ------------------------------------------------------- widget controls -- */
+
+.folio-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 6px;
+  background: var(--folio-ed-panel);
+  color: var(--folio-ed-muted);
+  cursor: pointer;
+}
+
+.folio-iconbtn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.folio-iconbtn:hover {
+  color: var(--folio-ed-fg);
+  border-color: var(--folio-ed-faint);
+}
+
+.folio-iconbtn:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+.cm-md-blocktools {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.cm-md-block:hover .cm-md-blocktools,
+.cm-md-blocktools:focus-within {
+  opacity: 1;
+}
+
+/* ----------------------------------------------------------- table widget -- */
+
+/* No card around a table (round 21: the owner struck the frame out) — the
+   grid's own borders are what read as a table, and a second box around them
+   only made the page noisy. Other block widgets keep theirs. */
+.folio-editor .cm-md-table-widget,
+.folio-editor .cm-md-table-widget:hover {
+  /* The gutter the row handles live in. Pulled back out of the block's own
+     margin so the grid still lines up with the prose above it. */
+  --folio-tbl-gutter: 19px;
+  margin-inline: calc(1.5rem - var(--folio-tbl-gutter)) 1.5rem;
+  padding: 0.2rem 0 0.4rem;
+  border-color: transparent;
+  background: transparent;
+  font-family: var(--folio-ed-sans);
+  font-size: 0.92em;
+}
+
+/* A wide table scrolls inside the widget instead of widening the page.
+   `overscroll-behavior-x` keeps that swipe out of the browser's back gesture. */
+.cm-md-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* Room above the header for the column handles and left of the first column for
+   the row handles: both live in the overlay, positioned against this box. */
+.cm-md-table-frame {
+  position: relative;
+  padding: 18px 2px 2px var(--folio-tbl-gutter);
+}
+
+.cm-md-table-overlay {
+  position: absolute;
+  inset: 0;
+  /* The hover bands are aiming aids, not click targets — only the buttons
+     inside them take pointer events, so text next to a cell edge is still
+     text. */
+  pointer-events: none;
+}
+
+.cm-md-grid {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.cm-md-grid th,
+.cm-md-grid td {
+  position: relative;
+  border: 1px solid var(--folio-ed-border);
+  padding: 0.35rem 0.55rem;
+  vertical-align: top;
+  text-align: left;
+  cursor: text;
+  min-width: 4rem;
+}
+
+.cm-md-grid th {
+  background: var(--folio-ed-surface);
+  font-weight: 650;
+}
+
+.cm-md-grid--columns {
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 8px 0;
+}
+
+.cm-md-grid--columns thead { display: none; }
+.cm-md-grid--columns td {
+  min-width: 0;
+  border-style: dashed;
+  overflow-wrap: anywhere;
+}
+
+/* Round 17 excludes painted cells: the hover tint would wash their colour out
+   (and it is specific enough to beat the palette rules further down). */
+.cm-md-grid tbody tr:hover td:not([class*='folio-bg-']) {
+  background: color-mix(in srgb, var(--folio-ed-surface) 45%, transparent);
+}
+
+.cm-md-grid code {
+  font-family: var(--folio-ed-mono);
+  font-size: 0.9em;
+  color: var(--folio-ed-code);
+}
+
+.cm-md-cell-placeholder {
+  color: var(--folio-ed-faint);
+  font-weight: 400;
+}
+
+/* One rendered line of a cell. A cell is one markdown line in the file (the
+   break is `<br>`), but several lines on screen — and a run of lines that open
+   with a bullet, a checkbox or a number is drawn as a real list (round 28), so
+   the glyphs, the numbering and the nesting are the browser's job. */
+.cm-md-cell-line {
+  display: list-item;
+}
+
+.cm-md-cell-line[data-kind='text'] {
+  display: block;
+}
+
+.cm-md-cell-line[data-kind^='heading'] {
+  display: block;
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.cm-md-cell-line[data-kind='heading1'] { font-size: 1.45em; }
+.cm-md-cell-line[data-kind='heading2'] { font-size: 1.25em; }
+.cm-md-cell-line[data-kind='heading3'] { font-size: 1.1em; }
+
+/* Tailwind's preflight strips markers and padding from every list on the page;
+   the grid puts them back for its own, exactly as markdown.css does for the
+   reading view — one list should not look like two different things. */
+.cm-md-cell-list {
+  margin: 0;
+  padding-left: 1.15em;
+}
+
+/* Per level, and only down a chain of the same kind: the `>` keeps every rule
+   about the list that owns the item, so a numbered list nested in a bulleted
+   one still numbers. */
+ul.cm-md-cell-list > .cm-md-cell-line { list-style: disc; }
+ul.cm-md-cell-list ul.cm-md-cell-list > .cm-md-cell-line { list-style: circle; }
+ul.cm-md-cell-list ul.cm-md-cell-list ul.cm-md-cell-list > .cm-md-cell-line { list-style: square; }
+ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
+.cm-md-cell-line::marker {
+  color: var(--folio-ed-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A checklist item has its box where the marker would be — GFM's own shape, and
+   the one markdown.css already draws in the reading view. It stays a list item
+   rather than becoming a flex row: a flex container lays the list nested INSIDE
+   the item out as a second column, beside the text instead of under it. */
+.cm-md-cell-list > .cm-md-cell-line[data-kind='task'] {
+  list-style: none;
+}
+
+.cm-md-cell-check {
+  width: 0.85em;
+  height: 0.85em;
+  margin: 0 0.4em 0 -1.15em;
+  vertical-align: middle;
+  accent-color: var(--folio-ed-accent);
+  cursor: pointer;
+}
+
+.cm-md-cell-text {
+  min-width: 0;
+}
+
+/* A semantic contenteditable surface with the same value/selection contract
+   the former textarea exposed to the table commands. Markdown stays the file
+   format, but bold, links, highlight and lists do not collapse to raw markers
+   merely because the author clicked into the cell. */
+.cm-md-cellinput {
+  display: block;
+  box-sizing: content-box;
+  width: 100%;
+  min-width: 3rem;
+  margin: -0.35rem -0.55rem;
+  padding: 0.35rem 0.55rem;
+  border: 0;
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: -2px;
+  border-radius: 2px;
+  background: var(--folio-ed-panel);
+  color: var(--folio-ed-fg);
+  font: inherit;
+  line-height: inherit;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.cm-md-cellinput .cm-md-cell-line[data-kind='text'] {
+  min-height: 1.7em;
+}
+
+/* ------------------------------------------------- table handles / edges -- */
+
+/* The `…` handles: one above every column, one left of every row. They fade in
+   with the table so a page of tables isn't covered in chrome. */
+.cm-md-handle {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.cm-md-handle--col {
+  height: 15px;
+}
+
+.cm-md-handle--row {
+  width: 15px;
+}
+
+.cm-md-table-widget:hover .cm-md-handle,
+.cm-md-handle:focus-within {
+  opacity: 1;
+}
+
+.cm-md-handle__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  padding: 0;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 4px;
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-muted);
+  cursor: grab;
+}
+
+.cm-md-handle--col .cm-md-handle__btn {
+  width: min(100%, 2.2rem);
+  height: 11px;
+}
+
+.cm-md-handle--row .cm-md-handle__btn {
+  width: 11px;
+  height: min(100%, 2.2rem);
+}
+
+.cm-md-handle__btn:hover {
+  color: var(--folio-ed-fg);
+  border-color: var(--folio-ed-faint);
+}
+
+.cm-md-handle__btn:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+.cm-md-handle--row .cm-md-handle__btn svg {
+  transform: rotate(90deg);
+}
+
+.cm-md-handle__btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+/*
+ * The insert affordance on a border. The band is deliberately wide — round 20's
+ * pixel-thin targets were the owner's loudest complaint — but it never takes
+ * pointer events itself; the widget lights the nearest one up from a single
+ * mousemove, and only the `+` is clickable.
+ */
+.cm-md-edge {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.cm-md-edge[data-active='true'] {
+  opacity: 1;
+}
+
+.cm-md-edge__line {
+  position: absolute;
+  background: var(--folio-ed-accent);
+  border-radius: 1px;
+}
+
+.cm-md-edge--col .cm-md-edge__line {
+  top: 15px;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-1px);
+}
+
+.cm-md-edge--row .cm-md-edge__line {
+  left: 15px;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-1px);
+}
+
+.cm-md-edge__btn {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  appearance: none;
+  border: 1px solid var(--folio-ed-accent);
+  border-radius: 50%;
+  background: var(--folio-ed-panel);
+  color: var(--folio-ed-accent);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.cm-md-edge--col .cm-md-edge__btn {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.cm-md-edge--row .cm-md-edge__btn {
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cm-md-edge__btn svg {
+  width: 10px;
+  height: 10px;
+}
+
+.cm-md-edge__btn:hover {
+  background: var(--folio-ed-accent);
+  color: var(--folio-ed-accent-fg);
+}
+
+/* Where a dragged column would land. */
+.cm-md-dropline {
+  position: absolute;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--folio-ed-accent);
+  opacity: 0;
+}
+
+.cm-md-dropline[data-active='true'] {
+  opacity: 1;
+}
+
+.cm-md-table-frame[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.cm-md-grid th[data-dragging='true'],
+.cm-md-grid td[data-dragging='true'] {
+  background: var(--folio-ed-selection);
+}
+
+.cm-md-table-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+  /* Always in flow and always present, so nothing shifts and nothing overlaps
+     the grid: only the contrast changes on hover. */
+  opacity: 0.4;
+  transition: opacity 120ms ease;
+}
+
+.cm-md-table-widget:hover .cm-md-table-bar,
+.cm-md-table-bar:focus-within {
+  opacity: 1;
+}
+
+.cm-md-table-bar__spacer {
+  flex: 1;
+}
+
+.cm-md-table-barbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  appearance: none;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--folio-ed-muted);
+  font-family: var(--folio-ed-sans);
+  font-size: 11px;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+
+.cm-md-table-barbtn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.cm-md-table-barbtn:hover {
+  color: var(--folio-ed-fg);
+  border-color: var(--folio-ed-faint);
+}
+
+.cm-md-table-barbtn:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+.cm-md-table-fallback {
+  margin: 0;
+  font-family: var(--folio-ed-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------- round 17: extended tables -- */
+
+/* Cell backgrounds. The class vocabulary is shared with reading mode and with
+   the Confluence importer; markdown.css holds the canonical values and the
+   variables above match them on purpose — a cell must not change colour when
+   the author switches from editing to reading. */
+.folio-editor .folio-bg-yellow { background-color: var(--folio-bg-yellow); }
+.folio-editor .folio-bg-green { background-color: var(--folio-bg-green); }
+.folio-editor .folio-bg-teal { background-color: var(--folio-bg-teal); }
+.folio-editor .folio-bg-blue { background-color: var(--folio-bg-blue); }
+.folio-editor .folio-bg-purple { background-color: var(--folio-bg-purple); }
+.folio-editor .folio-bg-red { background-color: var(--folio-bg-red); }
+.folio-editor .folio-bg-orange { background-color: var(--folio-bg-orange); }
+.folio-editor .folio-bg-gray { background-color: var(--folio-bg-gray); }
+
+/* A table that declares widths lays out fixed, or the browser is free to
+   ignore them the moment a cell disagrees — which is the whole point of
+   setting them. */
+.cm-md-grid[data-sized='true'] { table-layout: fixed; }
+.cm-md-grid[data-sized='true'] th,
+.cm-md-grid[data-sized='true'] td { overflow-wrap: anywhere; min-width: 0; }
+
+/* The selected range: an inset ring rather than a fill, so a cell's own
+   background stays readable underneath it. Same accent the column drag uses —
+   both mean "these cells are what the next action is about". */
+.cm-md-grid th[data-selected='true'],
+.cm-md-grid td[data-selected='true'] {
+  box-shadow: inset 0 0 0 2px var(--folio-ed-accent);
+}
+
+/* Nesting inside a cell used to be padding per level, capped at the two levels
+   this stylesheet spelled out. Round 28 draws the real `<ul>`/`<ol>` tree
+   instead (see .cm-md-cell-list above), which indents itself, to any depth. */
+
+/* Column resize: the border's own line becomes the grab target. It is widened
+   to 8px of *transparent* hit area with the visible 2px rule drawn inside, so
+   the affordance looks exactly as it did before round 17 and merely became
+   draggable. The `+` keeps its own hit box on top. */
+.cm-md-edge--col .cm-md-edge__line[data-resize='true'] {
+  width: 8px;
+  transform: translateX(-4px);
+  background: transparent;
+  cursor: col-resize;
+  pointer-events: auto;
+}
+.cm-md-edge--col .cm-md-edge__line[data-resize='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 1px;
+  background: var(--folio-ed-accent);
+}
+.cm-md-table-frame[data-resizing='true'] { cursor: col-resize; }
+.cm-md-table-frame[data-resizing='true'] .cm-md-edge { opacity: 1; }
+
+/* ------------------------------------------------------------ popup menu -- */
+
+/*
+ * The dropdown behind the table handles and the cell mini-slash. It renders
+ * into <body> (the grid sits in an `overflow-x: auto` scroller, which would
+ * clip anything positioned past its edge), so it measures against the viewport
+ * and needs the same clamp every other floating surface here uses.
+ */
+.folio-tablemenu {
+  min-width: min(13rem, var(--folio-ed-popmax));
+  max-width: var(--folio-ed-popmax);
+  padding: 4px;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 10px;
+  background: var(--folio-ed-panel);
+  box-shadow: var(--folio-ed-shadow);
+  font-family: var(--folio-ed-sans);
+  font-size: 13px;
+  color: var(--folio-ed-fg);
+}
+
+.folio-tablemenu__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.32rem 0.5rem;
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.folio-tablemenu__item svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--folio-ed-muted);
+}
+
+.folio-tablemenu__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.folio-tablemenu__item:hover,
+.folio-tablemenu__item[data-active='true'] {
+  background: var(--folio-ed-surface);
+  outline: none;
+}
+
+.folio-tablemenu__item[data-danger='true'],
+.folio-tablemenu__item[data-danger='true'] svg {
+  color: var(--folio-ed-danger);
+}
+
+/* The alignment currently in force, marked without an extra icon column. */
+.folio-tablemenu__item[data-selected='true'] .folio-tablemenu__label::after {
+  content: '✓';
+  float: right;
+  color: var(--folio-ed-accent);
+}
+
+.folio-tablemenu__sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--folio-ed-border);
+}
+
+/* Round 17 — the cell background palette, as one row of swatches inside the
+   menu instead of eight more menu items (or a submenu, which would have been a
+   new kind of thing to build). */
+.folio-tablemenu__swatches {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 6px;
+}
+
+.folio-tablemenu__caption {
+  flex: none;
+  color: var(--folio-ed-muted);
+  font-size: 12px;
+}
+
+.folio-tablemenu__strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.folio-tablemenu__swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  appearance: none;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.folio-tablemenu__swatch:hover,
+.folio-tablemenu__swatch[data-active='true'] {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+.folio-tablemenu__swatch[data-selected='true'] {
+  border-color: var(--folio-ed-accent);
+  box-shadow: inset 0 0 0 2px var(--folio-ed-panel);
+}
+
+/* "No background" reads as an empty swatch: a diagonal rule over the panel. */
+.folio-tablemenu .cm-md-swatch--none {
+  background:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 1px),
+      var(--folio-ed-danger) calc(50% - 1px),
+      var(--folio-ed-danger) calc(50% + 1px),
+      transparent calc(50% + 1px)
+    ),
+    var(--folio-ed-panel);
+}
+
+.folio-tablemenu .folio-bg-yellow { background-color: var(--folio-bg-yellow); }
+.folio-tablemenu .folio-bg-green { background-color: var(--folio-bg-green); }
+.folio-tablemenu .folio-bg-teal { background-color: var(--folio-bg-teal); }
+.folio-tablemenu .folio-bg-blue { background-color: var(--folio-bg-blue); }
+.folio-tablemenu .folio-bg-purple { background-color: var(--folio-bg-purple); }
+.folio-tablemenu .folio-bg-red { background-color: var(--folio-bg-red); }
+.folio-tablemenu .folio-bg-orange { background-color: var(--folio-bg-orange); }
+.folio-tablemenu .folio-bg-gray { background-color: var(--folio-bg-gray); }
+
+/* ------------------------------------------------- formatting toolbar -- */
+
+/*
+ * Small, and right at the selection: over the document it rides a CodeMirror
+ * tooltip, over a table cell it is placed by hand — same DOM either way, and
+ * both render into <body>, hence the popmax clamp.
+ */
+.cm-folio-format {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  max-width: var(--folio-ed-popmax);
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--folio-ed-panel);
+  color: var(--folio-ed-fg);
+  font-family: var(--folio-ed-sans);
+}
+
+/* As a CodeMirror tooltip the frame and shadow come from `.cm-tooltip`; free
+   standing next to a cell it has to draw its own. */
+.cm-folio-format--field {
+  border: 1px solid var(--folio-ed-border);
+  box-shadow: var(--folio-ed-shadow);
+}
+
+.cm-folio-format__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--folio-ed-muted);
+  cursor: pointer;
+}
+
+/* The colour chevron hangs off the highlight button: narrow, no gap. */
+.cm-folio-format__btn--color {
+  width: 14px;
+  margin-left: -4px;
+}
+.cm-folio-format__btn--color svg {
+  width: 11px;
+  height: 11px;
+}
+
+.cm-folio-format__btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cm-folio-format__btn:hover {
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-fg);
+}
+
+.cm-folio-format__btn[aria-pressed='true'] {
+  background: var(--folio-ed-selection);
+  color: var(--folio-ed-fg);
+}
+
+.cm-folio-format__btn:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: -2px;
+}
+
+.cm-folio-format__sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--folio-ed-border);
+}
+
+/* ------------------------------------------------------- remote presence -- */
+
+.folio-editor .cm-ySelectionCaret {
+  position: relative;
+}
+
+.folio-editor .cm-ySelectionInfo {
+  font-family: var(--folio-ed-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 4px;
+  border-radius: 3px 3px 3px 0;
+}
+
+/* Remote cursors are presence, not permanent document markup. A remote
+   selection becomes visible whenever that peer moves it, then fades after a
+   short idle window. The local owner's `.cm-selectionBackground` is a
+   different class and therefore remains for as long as they keep it. */
+.folio-editor .cm-ySelection,
+.folio-editor .cm-yLineSelection,
+.folio-editor .cm-ySelectionCaret {
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.folio-editor .cm-editor[data-remote-presence='active'] .cm-ySelection,
+.folio-editor .cm-editor[data-remote-presence='active'] .cm-yLineSelection,
+.folio-editor .cm-editor[data-remote-presence='active'] .cm-ySelectionCaret {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------- completion menu -- */
+
+.cm-tooltip.cm-folio-completions {
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 10px;
+  background: var(--folio-ed-panel);
+  box-shadow: var(--folio-ed-shadow);
+  overflow: hidden;
+  font-family: var(--folio-ed-sans);
+  max-width: var(--folio-ed-popmax);
+}
+
+/* Both bounds are clamped: an unclamped `min-width` pushes the list past the
+   screen edge just as surely as an unclamped `max-width`. */
+.cm-tooltip.cm-tooltip-autocomplete.cm-folio-completions > ul {
+  max-height: min(22rem, 50vh);
+  min-width: min(20rem, var(--folio-ed-popmax));
+  max-width: min(26rem, var(--folio-ed-popmax));
+  padding: 0.3rem;
+  font-family: var(--folio-ed-sans);
+  font-size: 13px;
+}
+
+.cm-tooltip.cm-folio-completions > ul > li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'icon label hint'
+    'icon desc hint';
+  align-items: center;
+  column-gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 7px;
+  line-height: 1.35;
+}
+
+.cm-tooltip.cm-folio-completions > ul > li[aria-selected] {
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-fg);
+}
+
+.cm-tooltip.cm-folio-completions .cm-completionLabel {
+  grid-area: label;
+  font-weight: 600;
+  color: var(--folio-ed-fg);
+}
+
+.cm-tooltip.cm-folio-completions .cm-folio-icon {
+  grid-area: icon;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 7px;
+  color: var(--folio-ed-muted);
+}
+
+.cm-tooltip.cm-folio-completions > ul > li[aria-selected] .cm-folio-icon {
+  color: var(--folio-ed-accent);
+  border-color: color-mix(in srgb, var(--folio-ed-accent) 40%, transparent);
+}
+
+.cm-tooltip.cm-folio-completions .cm-folio-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cm-tooltip.cm-folio-completions .cm-folio-desc {
+  grid-area: desc;
+  color: var(--folio-ed-muted);
+  font-size: 11.5px;
+}
+
+.cm-tooltip.cm-folio-completions .cm-folio-hint {
+  grid-area: hint;
+  color: var(--folio-ed-faint);
+  font-family: var(--folio-ed-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* The page picker reads as a small search palette rather than a bare strip. */
+.cm-tooltip.cm-tooltip-autocomplete.cm-folio-pages > ul {
+  min-width: min(380px, var(--folio-ed-popmax));
+  max-width: min(460px, var(--folio-ed-popmax));
+}
+
+.cm-tooltip.cm-folio-pages::before {
+  content: var(--folio-pages-hint, '');
+  display: block;
+  padding: 0.45rem 0.65rem 0.3rem;
+  border-bottom: 1px solid var(--folio-ed-border);
+  color: var(--folio-ed-faint);
+  font-family: var(--folio-ed-sans);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.cm-tooltip.cm-tooltip-autocomplete.cm-folio-emoji > ul {
+  min-width: min(15rem, var(--folio-ed-popmax));
+  max-width: min(20rem, var(--folio-ed-popmax));
+}
+
+/* The `@` palette: names and handles, so narrower than the page picker. */
+.cm-tooltip.cm-tooltip-autocomplete.cm-folio-mentions > ul {
+  min-width: min(17rem, var(--folio-ed-popmax));
+  max-width: min(22rem, var(--folio-ed-popmax));
+}
+
+.cm-tooltip.cm-folio-completions .cm-folio-icon--emoji {
+  font-size: 16px;
+  line-height: 1;
+  border-color: transparent;
+}
+
+/* Rows without a description (fence languages) collapse to a single line. */
+.cm-tooltip.cm-folio-completions > ul > li:not(:has(.cm-folio-desc)) {
+  grid-template-areas: 'icon label hint';
+}
+
+/* ------------------------------------------------------- hover preview -- */
+
+/* The card carries the whole visual; CodeMirror's tooltip chrome steps aside. */
+.cm-tooltip:has(> .cm-folio-preview) {
+  background: transparent;
+  border: 0;
+}
+
+.cm-folio-preview {
+  position: relative;
+  box-sizing: border-box;
+  max-width: min(360px, var(--folio-ed-popmax));
+  max-height: min(280px, 60vh);
+  overflow: hidden;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 10px;
+  background: var(--folio-ed-panel);
+  box-shadow: var(--folio-ed-shadow);
+  color: var(--folio-ed-fg);
+  font-family: var(--folio-ed-sans);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cm-folio-preview--loading,
+.cm-folio-preview--missing {
+  color: var(--folio-ed-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cm-folio-preview__title {
+  margin-bottom: 0.35rem;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--folio-ed-fg);
+}
+
+.cm-folio-preview__body {
+  max-height: 210px;
+  overflow: hidden;
+  color: var(--folio-ed-muted);
+  /* Fades the clipped bottom edge instead of cutting a line in half. */
+  mask-image: linear-gradient(to bottom, #000 78%, transparent 100%);
+}
+
+.cm-folio-preview__body :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 12.5px;
+  margin: 0.4rem 0 0.2rem;
+}
+
+.cm-folio-preview__body :is(p, ul, ol, pre, blockquote, table) {
+  margin: 0.25rem 0;
+}
+
+.cm-folio-preview__body :is(img, svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+.cm-folio-preview__body a {
+  color: var(--folio-ed-accent);
+  pointer-events: none;
+}
+
+/* -------------------------------------------------------- pinned toolbar -- */
+
+/*
+ * Round 25: the command strip docked above the document (pin-toolbar.ts). It
+ * is a CodeMirror top panel, so `.cm-panels-top` already gives it the bottom
+ * rule and the panel background; everything here is the row itself.
+ */
+
+/*
+ * ...and that is exactly why the panel has a z-index of its own. The base
+ * CodeMirror theme gives `.cm-panels { position: sticky; z-index: 300 }` —
+ * meant for an editor that lives by itself. In Folio it lives inside an
+ * application whose layers are counted in tens (dialogs z-50, the Folio AI
+ * panel z-[70]), so 300 painted over both the outline drawer and the search
+ * window (the owner's report, 11.09: "the panel clearly covers everything,
+ * even search"). 20 leaves the strip above the text of the document, but
+ * under everything the application deliberately puts on top.
+ */
+.folio-editor .cm-panels {
+  z-index: 20;
+}
+.cm-folio-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--folio-ed-sans);
+  /* One horizontal scroller for the whole row rather than a wrapped second
+     line: a toolbar that changes height as the window narrows pushes the text
+     column down on every page. */
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.cm-folio-toolbar__group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 1px;
+}
+
+/* The floating selection bar is reused verbatim inside the strip; here it is
+   part of a row, not a card, so it gives up its own panel ground. */
+.cm-folio-toolbar .cm-folio-format {
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Separates the format group from the block group without a real element. */
+.cm-folio-toolbar__group--blocks {
+  position: relative;
+  padding-left: 0.45rem;
+  margin-left: 0.1rem;
+  border-left: 1px solid var(--folio-ed-border);
+}
+
+.cm-folio-toolbar__btn,
+.cm-folio-toolbar__unpin {
+  display: flex;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--folio-ed-muted);
+  cursor: pointer;
+}
+
+.cm-folio-toolbar__btn svg,
+.cm-folio-toolbar__unpin svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cm-folio-toolbar__btn:hover,
+.cm-folio-toolbar__unpin:hover {
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-fg);
+}
+
+.cm-folio-toolbar__btn:focus-visible,
+.cm-folio-toolbar__unpin:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+/* Indent/dedent off a list line: visible (the owner needs to see the action
+   exists) but inert — no hover highlight, no click. */
+.cm-folio-toolbar__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.cm-folio-toolbar__btn:disabled:hover {
+  background: transparent;
+  color: var(--folio-ed-muted);
+}
+
+/* Pinned to the right edge, and the last thing to be scrolled past. */
+.cm-folio-toolbar__tail {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 0.35rem;
+}
+
+/* Round 27 removed the reveal tab that used to stand here — a full-width
+   hairline strip with a chevron, holding the editor's top edge just to offer
+   one control. The way back is now a button in the chrome row above the editor
+   (`.folio-editor__panel-toggle`), so hidden means the panel is simply gone. */
+
+/* ----------------------------------------------------------- empty hint -- */
+
+.cm-md-emptyhint {
+  margin: 0.75rem 1.5rem 0;
+  /* Decoration, not content: never clickable, never selectable. */
+  pointer-events: none;
+  user-select: none;
+  color: var(--folio-ed-faint);
+  font-family: var(--folio-ed-sans);
+  font-size: 12.5px;
+  line-height: 1.9;
+}
+
+.cm-md-emptyhint__key {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-right: 0.15em;
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 4px;
+  color: var(--folio-ed-muted);
+  font-family: var(--folio-ed-mono);
+  font-size: 0.92em;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------ emoji UI -- */
+
+.folio-emoji-pop {
+  min-width: min(12rem, var(--folio-ed-popmax));
+  max-width: var(--folio-ed-popmax);
+  max-height: min(15rem, 50vh);
+  overflow-y: auto;
+  padding: 0.25rem;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 8px;
+  background: var(--folio-ed-panel);
+  box-shadow: var(--folio-ed-shadow);
+  font-family: var(--folio-ed-sans);
+  font-size: 13px;
+}
+
+.folio-emoji-pop__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--folio-ed-fg);
+  font: inherit;
+  text-align: left;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+}
+
+.folio-emoji-pop__row[data-active='true'] {
+  background: var(--folio-ed-surface);
+}
+
+.folio-emoji-pop__glyph {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.folio-emoji-pop__name {
+  color: var(--folio-ed-muted);
+}
+
+.folio-emoji-picker {
+  width: min(19rem, var(--folio-ed-popmax));
+  padding: 0.5rem;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 10px;
+  background: var(--folio-ed-panel);
+  box-shadow: var(--folio-ed-shadow);
+  font-family: var(--folio-ed-sans);
+}
+
+.folio-emoji-picker__search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 6px;
+  background: var(--folio-ed-bg);
+  color: var(--folio-ed-fg);
+  font: inherit;
+  font-size: 13px;
+}
+
+.folio-emoji-picker__search:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: -1px;
+}
+
+.folio-emoji-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: min(13rem, 40vh);
+  overflow-y: auto;
+}
+
+.folio-emoji-picker__cell {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0.25rem 0;
+  cursor: pointer;
+}
+
+.folio-emoji-picker__cell:hover,
+.folio-emoji-picker__cell:focus-visible {
+  background: var(--folio-ed-surface);
+  outline: none;
+}
+
+/* --------------------------------------------------------- mermaid modal -- */
+
+.folio-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--folio-ed-sans);
+  color: var(--folio-ed-fg);
+}
+
+.folio-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(12 10 9 / 45%);
+}
+
+.folio-modal__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 92vw);
+  height: min(700px, 85vh);
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 14px;
+  background: var(--folio-ed-panel);
+  box-shadow: var(--folio-ed-shadow);
+  overflow: hidden;
+}
+
+.folio-modal__panel--fullscreen {
+  width: calc(100vw - 1rem);
+  height: calc(100vh - 1rem);
+  border-radius: 10px;
+}
+
+.folio-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--folio-ed-border);
+}
+
+.folio-modal__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.folio-modal__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.folio-modal__close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--folio-ed-muted);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 0.3rem;
+  cursor: pointer;
+}
+
+.folio-modal__close:hover {
+  color: var(--folio-ed-fg);
+}
+
+.folio-modal__templates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--folio-ed-border);
+}
+
+.folio-modal__templates-label {
+  margin-right: 0.25rem;
+  color: var(--folio-ed-faint);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.folio-modal__chip {
+  appearance: none;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--folio-ed-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 0.25rem 0.65rem;
+  cursor: pointer;
+}
+
+.folio-modal__chip:hover {
+  color: var(--folio-ed-fg);
+  border-color: var(--folio-ed-faint);
+}
+
+/* A chip that is a mode rather than an action (the canvas's connect tool). */
+.folio-modal__chip[aria-pressed='true'] {
+  border-color: var(--folio-ed-accent);
+  background: var(--folio-ed-accent);
+  color: var(--folio-ed-accent-fg);
+}
+
+/*
+ * Two panes by default, but no longer half and half: round 20 made the visual
+ * canvas the main surface and the mermaid source a reference column beside it.
+ * `--single` is the one-pane form used by the table dialog, which needs no
+ * source pane — the grid widget in the document is that.
+ */
+.folio-modal__body {
+  display: grid;
+  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.folio-modal__body--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.folio-modal__pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.folio-modal__pane--code {
+  border-right: 1px solid var(--folio-ed-border);
+  background: var(--folio-ed-bg);
+}
+
+/* ------------------------------------------------- mermaid visual canvas -- */
+
+.folio-modal__pane--visual {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--folio-ed-surface);
+}
+
+.folio-modal__canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+/* visimer draws its selection/hover chrome from this one variable. */
+.folio-modal__pane--visual .mw-canvas {
+  --mw-accent: var(--folio-ed-accent);
+
+  height: 100%;
+}
+
+/*
+ * Round 21: the answer to "how do I add a node?" — a strip above the canvas
+ * with the always-available action, and the hover affordance explained next to
+ * it. Only rendered for the diagram kinds that can take one (mermaid-visual).
+ */
+.folio-modal__canvasbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--folio-ed-border);
+}
+
+.folio-modal__canvashint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--folio-ed-faint);
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The pair that follows the pointer from node to node (mermaid-plus.ts): (+)
+ * grows a connected node, the link handle drags an edge out of this one. On an
+ * edge only the (+) shows, at the arrow's midpoint, where it drops a node into
+ * the connection.
+ *
+ * The group is appended to visimer's own container, which is
+ * `position: relative`, and the coordinates written on it are
+ * container-relative — so it translates itself onto the anchor point rather
+ * than sitting at the top-left of it.
+ */
+.folio-modal .folio-mermaid-affordance {
+  position: absolute;
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform: translate(-50%, -50%);
+}
+
+/* `display: flex` above would otherwise beat the UA's own [hidden] rule. */
+.folio-modal .folio-mermaid-affordance[hidden] {
+  display: none;
+}
+
+/* While a link is being dragged the group must stop hit-testing, so
+   `elementFromPoint` sees the node under the pointer and not this. */
+.folio-modal .folio-mermaid-affordance--dragging {
+  pointer-events: none;
+}
+
+.folio-modal .folio-mermaid-plus,
+.folio-modal .folio-mermaid-link {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--folio-ed-panel);
+  border-radius: 999px;
+  background: var(--folio-ed-accent);
+  color: var(--folio-ed-accent-fg);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 35%);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+/* The second handle is the quieter of the two: (+) is what most authors reach
+   for, and pulling a link is the deliberate gesture. */
+.folio-modal .folio-mermaid-link {
+  border-color: var(--folio-ed-accent);
+  background: var(--folio-ed-panel);
+  color: var(--folio-ed-accent);
+  cursor: crosshair;
+}
+
+.folio-modal .folio-mermaid-plus[hidden],
+.folio-modal .folio-mermaid-link[hidden] {
+  display: none;
+}
+
+.folio-modal .folio-mermaid-plus:hover,
+.folio-modal .folio-mermaid-plus:focus-visible,
+.folio-modal .folio-mermaid-link:hover,
+.folio-modal .folio-mermaid-link:focus-visible {
+  transform: scale(1.15);
+}
+
+.folio-modal .folio-mermaid-plus svg,
+.folio-modal .folio-mermaid-link svg {
+  width: 12px;
+  height: 12px;
+}
+
+/*
+ * The ghost edge drawn while a link is being dragged. Covers the container and
+ * never takes a pointer event — the drop target has to stay hit-testable.
+ */
+.folio-modal .folio-mermaid-ghost {
+  position: absolute;
+  z-index: 15;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.folio-modal .folio-mermaid-ghost line {
+  stroke: var(--folio-ed-accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
+}
+
+/* Mid-drag the whole canvas reads as "pick an endpoint", and the element under
+   the pointer reads as the one that would be picked. */
+.folio-modal .folio-mermaid--linking,
+.folio-modal .folio-mermaid--linking [data-mw-entity] {
+  cursor: crosshair;
+}
+
+.folio-modal [data-folio-link-target] {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 2px;
+}
+
+/* Loading lines, and the "the visual editor gave up" notice. */
+.folio-modal__notice {
+  margin: 0;
+  padding: 0.6rem 1rem;
+  color: var(--folio-ed-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/*
+ * The fallback pair: when visimer cannot handle a diagram this pane goes back
+ * to being a plain preview, and the source pane beside it keeps every edit —
+ * nothing the author typed is lost when the canvas bails out.
+ */
+.folio-modal__fallback {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.folio-modal__fallback .folio-modal__notice {
+  border-bottom: 1px solid var(--folio-ed-border);
+  color: var(--folio-ed-warn);
+}
+
+.folio-modal__fallback-preview {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.folio-modal__fallback-preview > * {
+  max-width: 100%;
+}
+
+.folio-modal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--folio-ed-border);
+}
+
+.folio-modal__hint {
+  margin-right: auto;
+  color: var(--folio-ed-faint);
+  font-size: 11px;
+}
+
+.folio-modal__button {
+  appearance: none;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--folio-ed-fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+
+.folio-modal__button:hover {
+  border-color: var(--folio-ed-faint);
+}
+
+.folio-modal__button--primary {
+  border-color: var(--folio-ed-accent);
+  background: var(--folio-ed-accent);
+  color: var(--folio-ed-accent-fg);
+}
+
+.folio-modal__button:focus-visible,
+.folio-modal__chip:focus-visible,
+.folio-modal__close:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------- paste chooser -- */
+
+/*
+ * paste-chooser.ts: a bottom CodeMirror panel offered when a markdown-shaped
+ * *document* lands in the clipboard, letting the author choose body vs. a new
+ * child page. `.cm-panels-bottom` already gives it the top rule and panel
+ * background; this is just the row's own layout.
+ */
+/* A CodeMirror tooltip: CodeMirror's own theme styles `.cm-tooltip` (border,
+   background) with a scoped selector, so the card needs the same weight to win. */
+.cm-tooltip.cm-folio-paste-chooser {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.6rem;
+  max-width: min(440px, var(--folio-ed-popmax));
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--folio-ed-accent);
+  border-radius: 12px;
+  background: var(--folio-ed-bg);
+  color: var(--folio-ed-fg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  font-family: var(--folio-ed-sans);
+  font-size: 13px;
+  z-index: 60;
+}
+
+.cm-folio-paste-chooser__text {
+  color: var(--folio-ed-fg, inherit);
+  font-weight: 600;
+}
+
+.cm-folio-paste-chooser__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cm-folio-paste-chooser__btn {
+  appearance: none;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 8px;
+  background: var(--folio-ed-bg);
+  color: var(--folio-ed-fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+
+.cm-folio-paste-chooser__btn:hover {
+  border-color: var(--folio-ed-faint);
+}
+
+.cm-folio-paste-chooser__btn--primary {
+  border-color: var(--folio-ed-accent);
+  background: var(--folio-ed-accent);
+  color: var(--folio-ed-accent-fg);
+}
+
+.cm-folio-paste-chooser__btn--ghost {
+  border-color: transparent;
+  color: var(--folio-ed-muted);
+}
+
+.cm-folio-paste-chooser__btn:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------ search panel -- */
+
+/*
+ * CodeMirror's own search panel (search({ top: true })). It is laid out in the
+ * editor's width, so only its text fields need telling not to outgrow it — the
+ * close button sits absolutely at the top right and the rest wraps by itself.
+ */
+.folio-editor .cm-panel.cm-search {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.folio-editor .cm-panel.cm-search input[type='text'] {
+  box-sizing: border-box;
+  max-width: calc(100% - 1rem);
+}
+
+/* -------------------------------------------------------------- adaptive -- */
+
+/*
+ * Phone layout — below tailwind's `md` (768px). Nothing here changes behaviour:
+ * the chrome fits 375px on one line, the text column gives its wide side
+ * margins back, and the mermaid dialog takes the whole screen instead of
+ * floating in it. The bound is 767.98px rather than 767px so a fractional
+ * viewport width always lands in one branch or the other.
+ */
+@media (max-width: 767.98px) {
+  .folio-editor__chrome {
+    gap: 0.35rem;
+    padding: 0.4rem 0.5rem 0;
+  }
+
+  /* Round 27: the badge is a 10px glyph now, so there is nothing left in it to
+     clip — it just tucks in against the panel button. What used to be here
+     (min-width/overflow to let the "connected" text be cut, and hiding the peer
+     count outright) is what removing the words made unnecessary; both readings
+     moved into the tooltip. */
+  .folio-editor__status {
+    padding: 0.3rem 0.2rem;
+  }
+
+  .folio-editor__panel-toggle {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* Below this width index.tsx renders ModeMenu instead, so these two are a
+     fallback for a browser with no `matchMedia` to tell it which one to build.
+     Left in place rather than deleted: it costs nothing and the row still has
+     to survive if the JS breakpoint ever fails to fire. */
+  .folio-editor__modes {
+    flex: none;
+  }
+
+  .folio-editor__mode {
+    padding: 0.25rem 0.45rem;
+  }
+
+  /* Round 26: the one-button switch. Its label may take what the row has left
+     after the badge and stop there — at 375px "Live edit" would
+     otherwise be wide enough on its own to wrap the line. */
+  .folio-editor__mode-menu {
+    max-width: 9.5rem;
+    padding: 0.3rem 0.3rem 0.3rem 0.5rem;
+  }
+
+  .folio-editor__readonly {
+    padding: 0.3rem 0.45rem;
+  }
+
+  /* 1.5rem a side costs 48px of a 375px screen. Every edge of the text column
+     moves together — lines, block widgets, the quote rule, reading mode — so
+     nothing ends up inset against anything else.
+     `padding-inline` rather than the `padding` shorthand: headings are line
+     decorations on this same element and must keep their own padding-top. */
+  .folio-editor .cm-content .cm-line {
+    padding-inline: 1rem;
+  }
+
+  /* Same specificity as the rule above and later in the file, so the quote
+     rule's border still adds up to the shared 1rem edge. */
+  .folio-editor .cm-content .cm-md-quote {
+    padding-left: calc(1rem - 3px);
+  }
+
+  .folio-editor .cm-md-block {
+    margin-inline: 1rem;
+  }
+
+  /* Same trick as on desktop: the handle gutter comes out of the margin, so
+     the grid keeps lining up with the text. Clamped at zero — the phone margin
+     is narrower than the gutter, and an overhang would give the whole page a
+     horizontal scrollbar. */
+  .folio-editor .cm-md-table-widget,
+  .folio-editor .cm-md-table-widget:hover {
+    margin-inline: max(0px, calc(1rem - var(--folio-tbl-gutter))) 1rem;
+  }
+
+  .cm-md-emptyhint {
+    margin-inline: 1rem;
+  }
+
+  /* The command strip already scrolls horizontally; on a phone it also gives
+     back its padding and shrinks its targets a little, so the format group and
+     the first block buttons are visible without scrolling at 375px. */
+  .cm-folio-toolbar {
+    gap: 0.2rem;
+    padding: 0.2rem 0.35rem;
+  }
+
+  .cm-folio-toolbar__btn,
+  .cm-folio-toolbar__unpin,
+  .cm-folio-toolbar .cm-folio-format__btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .cm-folio-toolbar__group--blocks {
+    padding-left: 0.3rem;
+    margin-left: 0;
+  }
+
+  /* The unpin button rides along at the end of the scroller instead of being
+     pinned: `margin-left: auto` in an overflowing row would park it off-screen
+     with no way to reach it. */
+  .cm-folio-toolbar__tail {
+    margin-left: 0;
+  }
+
+  .folio-editor__reading {
+    padding: 1rem 1rem 40vh;
+  }
+
+  .folio-editor__hint {
+    padding: 1.5rem 1rem;
+  }
+
+  .folio-modal__panel {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .folio-modal__head,
+  .folio-modal__foot {
+    padding: 0.6rem 0.75rem;
+  }
+
+  /* Nine template chips would take four wrapped rows off a phone screen; one
+     scrolling row leaves the code and preview panes their height. */
+  .folio-modal__templates {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .folio-modal__templates-label,
+  .folio-modal__chip {
+    flex: none;
+  }
+
+  /* Keyboard shortcuts on a device without a keyboard — the buttons get the row. */
+  .folio-modal__hint {
+    display: none;
+  }
+
+  /* Stacked, with the visual surface getting the larger share: on a phone the
+     source column is there to be glanced at, not lived in. */
+  .folio-modal__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 12rem) minmax(0, 1fr);
+  }
+
+  .folio-modal__body--single {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .folio-modal__pane--code {
+    border-right: 0;
+    border-bottom: 1px solid var(--folio-ed-border);
+  }
+}
+
+/*
+ * Touch input: `:hover` never fires, so a control that only appears on hover is
+ * simply unreachable. The widget toolbars stay visible instead. The link hover
+ * card is suppressed in JS rather than here (link-preview.tsx) — a tap
+ * synthesises hover, so the card would open over the text just tapped.
+ */
+@media (hover: none) {
+  .cm-md-blocktools,
+  .cm-md-table-bar,
+  .cm-md-handle {
+    opacity: 1;
+  }
+
+  /* The panel button is the only way back to the command strip and a finger
+     has no hover to discover it with, so on a touch screen it stops being a
+     faint icon and states itself at full contrast. */
+  .folio-editor__panel-toggle {
+    color: var(--folio-ed-fg);
+  }
+}

@@ -1,0 +1,10 @@
+node_modules
+web/dist
+data
+.env
+.env.*
+*.log
+.git
+.qa
+docs
+.claude

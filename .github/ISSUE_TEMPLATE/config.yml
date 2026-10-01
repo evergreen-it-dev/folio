@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/evergreen-it-dev/folio/security/advisories/new
+    about: Please report security problems privately.
+  - name: Installation and troubleshooting
+    url: https://github.com/evergreen-it-dev/folio/blob/main/docs/INSTALL.md
+    about: Installing, updating, backups, and what to check when something goes wrong.

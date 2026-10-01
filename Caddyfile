@@ -1,0 +1,7 @@
+# Used by `docker compose --profile https up -d`.
+# Caddy obtains and renews the certificate for FOLIO_DOMAIN by itself and
+# passes WebSocket connections (real-time editing) through unchanged.
+{$FOLIO_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:4870
+}

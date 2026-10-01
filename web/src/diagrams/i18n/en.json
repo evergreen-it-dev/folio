@@ -1,0 +1,61 @@
+{
+  "mermaid": {
+    "rendering": "Rendering diagram…",
+    "errorTitle": "Diagram failed to render",
+    "staleVersion": "A new version of Folio is available — please reload the page (⌘R)",
+    "copySource": "Copy diagram source",
+    "copied": "Copied"
+  },
+  "board": {
+    "loading": "Loading board…",
+    "loadingEditor": "Loading board editor…",
+    "unavailableOffline": "This board is not available offline: it has not been opened on this device yet. It will load by itself as soon as the connection is back.",
+    "editorUnavailableOffline": "The board editor has not been downloaded to this device yet, and there is no connection to fetch it over. The board itself is saved here and will open as soon as the connection is back.",
+    "editorFailed": "The board editor could not be loaded.",
+    "retry": "Try again",
+    "mode": {
+      "view": "View",
+      "edit": "Edit",
+      "aria": "Board mode"
+    },
+    "menu": {
+      "aria": "Board menu"
+    },
+    "newBoardHint": "New board — start drawing",
+    "fitToScreen": "Fit to screen",
+    "stickyNotes": {
+      "aria": "Sticky notes",
+      "colors": {
+        "yellow": "Yellow sticky note",
+        "pink": "Pink sticky note",
+        "blue": "Blue sticky note",
+        "green": "Green sticky note",
+        "violet": "Violet sticky note",
+        "orange": "Orange sticky note"
+      }
+    },
+    "reload": "Retry",
+    "loadFailed": "Couldn't load the board — saving is disabled",
+    "sessionExpired": "Session expired — please log in again",
+    "invalidLink": "This link is no longer valid",
+    "save": {
+      "saving": "Saving…",
+      "saved": "Saved",
+      "savedAt": "Saved {{time}}",
+      "failed": "Save failed",
+      "retry": "Retry",
+      "connecting": "Connecting…",
+      "connected": "Live",
+      "offline": "No connection"
+    },
+    "export": {
+      "button": "Export",
+      "aria": "Export menu",
+      "png": "PNG",
+      "svg": "SVG",
+      "copyToClipboard": "Copy to clipboard",
+      "copied": "Copied",
+      "failed": "Export failed"
+    }
+  }
+}

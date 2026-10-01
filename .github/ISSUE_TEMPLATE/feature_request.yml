@@ -1,0 +1,20 @@
+name: Feature request
+description: An idea or something that is missing
+labels: [enhancement]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: The scenario
+      description: What are you trying to do, and who is doing it?
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How you do it today
+      description: A workaround, another tool, or not at all.
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help

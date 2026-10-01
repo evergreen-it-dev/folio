@@ -1,0 +1,44 @@
+{
+  "pagetree": {
+    "loading": "Завантаження дерева сторінок…",
+    "empty": "Немає дочірніх сторінок",
+    "fallback": "дерево сторінок"
+  },
+  "form": {
+    "loading": "Завантаження форми…",
+    "notFound": "Форму не знайдено",
+    "fallback": "форма"
+  },
+  "alerts": {
+    "note": "Нотатка",
+    "tip": "Порада",
+    "important": "Важливо",
+    "warning": "Попередження",
+    "caution": "Обережно"
+  },
+  "table": {
+    "switchToScroll": "Показати вихідну ширину стовпців (прокрутка)",
+    "switchToFit": "Умістити таблицю за шириною контейнера"
+  },
+  "backlinks": {
+    "title": "Посилаються сюди"
+  },
+  "collapsible": {
+    "toggleLabel": "Згорнути розділ",
+    "hiddenBlocks_one": "{{count}} прихований блок",
+    "hiddenBlocks_few": "{{count}} приховані блоки",
+    "hiddenBlocks_many": "{{count}} прихованих блоків",
+    "hiddenBlocks_other": "{{count}} прихованих блоків"
+  },
+  "link": {
+    "shareUnavailable": "Сторінка недоступна за цим посиланням",
+    "notFound": "Сторінку не знайдено: {{path}}"
+  },
+  "image": {
+    "viewer": "Перегляд зображення",
+    "zoomOut": "Зменшити",
+    "zoomIn": "Збільшити",
+    "resetZoom": "Масштаб 100%",
+    "close": "Закрити"
+  }
+}
