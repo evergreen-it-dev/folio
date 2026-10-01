@@ -11,6 +11,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query, queryOne } from './db/pool.js';
+import { classifyForServing, type ServePolicy } from './safeServe.js';
 
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LOCAL_ASSETS_DIR = path.join(APP_ROOT, 'data', 'assets');
@@ -66,10 +67,20 @@ function s3Bucket(): string {
   if (!bucket) throw new Error('S3_BUCKET is not set (required when ASSET_BACKEND=s3)');
   return bucket;
 }
-async function s3Put(sha256: string, data: Buffer, mime: string): Promise<void> {
+async function s3Put(sha256: string, data: Buffer, policy: ServePolicy): Promise<void> {
   const { PutObjectCommand } = await import('@aws-sdk/client-s3');
   const client = await getS3Client();
-  await client.send(new PutObjectCommand({ Bucket: s3Bucket(), Key: sha256, Body: data, ContentType: mime }));
+  await client.send(
+    new PutObjectCommand({
+      Bucket: s3Bucket(),
+      Key: sha256,
+      Body: data,
+      ContentType: policy.contentType,
+      // Folio always proxies the bytes (s3Read below) and sets the sandbox CSP itself. A bucket someone makes
+      // public by mistake cannot add that header, so anything needing it is stored as a download instead.
+      ...(policy.sandbox ? { ContentDisposition: 'attachment' } : {}),
+    }),
+  );
 }
 async function s3Read(sha256: string): Promise<Buffer | null> {
   try {
@@ -97,20 +108,28 @@ function sanitizeUrlFilename(name: string): string {
   return encodeURIComponent(base || 'asset');
 }
 
+/**
+ * `meta.mime` is what the uploader CLAIMED (the multipart part's Content-Type).
+ * It is accepted for the caller's convenience and ignored: the type stored
+ * and served is derived from the bytes and the file name (safeServe.ts), so a
+ * label like `image/png` on SVG or HTML bytes cannot decide how they are shown.
+ */
 export async function putAsset(data: Buffer, meta: { mime: string; filename: string }, createdBy: string | null): Promise<StoredAsset> {
   const sha256 = createHash('sha256').update(data).digest('hex');
-  if (backendName() === 's3') await s3Put(sha256, data, meta.mime);
+  const policy = classifyForServing(meta.filename, data);
+  if (backendName() === 's3') await s3Put(sha256, data, policy);
   else await localPut(sha256, data);
 
   await query(
     `INSERT INTO assets (sha256, mime, size, filename, created_by) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (sha256) DO NOTHING`,
-    [sha256, meta.mime, data.length, meta.filename, createdBy],
+    [sha256, policy.contentType, data.length, meta.filename, createdBy],
   );
   return { sha256, size: data.length, url: `/a/${sha256}/${sanitizeUrlFilename(meta.filename)}` };
 }
 
 export interface LoadedAsset {
   data: Buffer;
+  /** As stored. Rows written before F-04 hold the uploader's claim — never serve with it; use safeServe.ts. */
   mime: string;
   filename: string;
 }

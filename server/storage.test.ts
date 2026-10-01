@@ -582,6 +582,34 @@ describe('storage integration (real fs under a throwaway data/spaces/<temp> dir,
     await deleteTestSpace(space.slug);
   });
 
+  it('a rewrite keeps only Folio\'s own front matter keys (id, order, status, icon, cover) — a documented limitation', async () => {
+    const space = await storage.createSpace(`Vitest Extra Keys ${Date.now()}`, null);
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const file = path.join(storage.REPOS_DIR, space.slug, 'hand-written.md');
+
+    // No id yet: the scan that assigns one already rewrites the block.
+    await fs.writeFile(file, '---\ntitle: Hand written\ntags:\n  - alpha\nstatus: draft\n---\n# Hand Written\n', 'utf8');
+    await storage.scanSpace(space.slug);
+    const entry = (await storage.listEntries(space.slug)).find((e) => e.relPath === 'hand-written.md');
+    expect(entry).toBeDefined();
+    let raw = await fs.readFile(file, 'utf8');
+    expect(raw).toContain(`id: ${entry!.id}`);
+    expect(raw).toContain('status: draft');
+    expect(raw).not.toContain('title: Hand written');
+    expect(raw).not.toContain('tags:');
+
+    // With an id: an ordinary body write does the same.
+    await fs.writeFile(file, `---\nid: ${entry!.id}\nauthor: Jane\n---\n# Hand Written\n`, 'utf8');
+    await storage.scanSpace(space.slug);
+    await storage.writeDocBody(entry!.id, '# Hand Written\n\nEdited.\n');
+    raw = await fs.readFile(file, 'utf8');
+    expect(raw).toContain('Edited.');
+    expect(raw).not.toContain('author: Jane');
+
+    await deleteTestSpace(space.slug);
+  });
+
   it('a board with no explicit order serializes order:0 in PageMeta, not the internal MAX_SAFE_INTEGER sentinel', async () => {
     const space = await storage.createSpace(`Vitest Order ${Date.now()}`, null);
     spaceSlug = space.slug;

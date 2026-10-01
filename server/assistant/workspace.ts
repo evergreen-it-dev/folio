@@ -18,6 +18,7 @@ import { REPOS_DIR, requireEntry, toPageMeta, resolve } from '../storage.js';
 import { effectivePageRole, roleAtLeast } from '../auth/session.js';
 import { publicUrlOrOrigin } from '../publicUrl.js';
 import { buildAgentContext } from './agentContext.js';
+import { authorizeAssistantNavigation } from './access.js';
 
 const DATA_DIR = path.dirname(REPOS_DIR);
 const PROMPTS_DIR = path.join(process.cwd(), 'server', 'assistant', 'prompts');
@@ -97,9 +98,9 @@ export interface PreparedAssistantWorkspace {
   /** The content of `.folio/runtime/current-context.md` — inlined the same way. */
   runtimeContext: string;
   /**
-   * `.agent/**` rules pages for `context.space`, already assembled/capped
-   * (server/assistant/agentContext.ts) — '' when the space has none, or
-   * `context.space` itself is null. Present for BOTH Ask and Agent runs:
+   * `.agent/**` rules pages for `context.space` that `context.user` may have
+   * injected, already assembled/capped (server/assistant/agentContext.ts) —
+   * '' when there are none, or `context.space` itself is null. Present for BOTH Ask and Agent runs:
    * this function doesn't branch on runMode at all, so a run started in
    * either mode always gets the same admin-authored rules (owner spec,
    * 21.09.2026).
@@ -192,16 +193,18 @@ function assistantBaseUrl(): string {
 }
 
 /**
- * `.agent/**` rules for `space`, capped and ready to inline — '' when there
- * is no space (a conversation not opened from inside one) or the space has
- * no `.agent` folder at all. Failure here must never break a run over an
- * admin's rules page (e.g. mid-scan): falls back to '' with a warning,
- * same defensiveness as loadFolioContext's own try/catch above.
+ * `.agent/**` rules for `space` that `user` may have injected (agentContext.ts
+ * says which pages), capped and ready to inline — '' when there is no space (a
+ * conversation not opened from inside one) or nothing to inject. Failure here
+ * must never break a run over an admin's rules page (e.g. mid-scan): falls
+ * back to '' with a warning, same defensiveness as loadFolioContext's own
+ * try/catch above. That includes a refusal of access: buildAgentContext
+ * re-checks the user itself, and "no rules" is the safe answer to a denial.
  */
-async function agentRulesMarkdown(space: string | null): Promise<string> {
+async function agentRulesMarkdown(user: User, space: string | null): Promise<string> {
   if (!space) return '';
   try {
-    const built = await buildAgentContext(space, assistantBaseUrl());
+    const built = await buildAgentContext(user, space, assistantBaseUrl());
     return built.blob;
   } catch (err) {
     console.warn(`assistant workspace: failed to assemble .agent context for space "${space}":`, err instanceof Error ? err.message : err);
@@ -213,8 +216,17 @@ async function agentRulesMarkdown(space: string | null): Promise<string> {
  * Creates a minimal per-conversation workspace directory. No API key, cookie
  * or other secret is ever written here — those reach the Cursor SDK in
  * memory only (see cursorRuntime.ts).
+ *
+ * The workspace is keyed by (user, conversation) only — a conversation is not
+ * bound to a space, the panel carries it across spaces as the user navigates —
+ * so the `space`/`pageId` of THIS request are authorized here, before any
+ * directory exists, whatever the caller already checked (security review
+ * F-05). Every file below that depends on the space (agent-rules.md,
+ * current-context.md) is rewritten on every call, so nothing from a space the
+ * user used to read survives into a run that no longer may.
  */
-export async function prepareAssistantWorkspace(context: AssistantWorkspaceContext): Promise<PreparedAssistantWorkspace> {
+export async function prepareAssistantWorkspace(requested: AssistantWorkspaceContext): Promise<PreparedAssistantWorkspace> {
+  const context = { ...requested, ...(await authorizeAssistantNavigation(requested.user, requested)) };
   const root = resolveConversationWorkspace(context.user.id, context.conversationId);
   const contextDir = path.join(root, '.folio', 'context');
   const runtimeDir = path.join(root, '.folio', 'runtime');
@@ -228,7 +240,7 @@ export async function prepareAssistantWorkspace(context: AssistantWorkspaceConte
     loadAssistantSystemPrompt(),
     loadFolioContext(),
     runtimeContextMarkdown(context),
-    agentRulesMarkdown(context.space),
+    agentRulesMarkdown(context.user, context.space),
   ]);
   await syncAssistantSkills(root);
 

@@ -21,7 +21,7 @@ closed rather than merged, with a link to the commit that carries the change.
 
 ## Development setup
 
-You need Node.js 20.19 or newer (22.13 or newer for the AI assistant), Docker
+You need Node.js 22 or newer (22.13 or newer for the AI assistant), Docker
 and Git.
 
 ```bash

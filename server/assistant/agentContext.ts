@@ -20,15 +20,20 @@
  *    blob itself (never silent — same convention export/limits.ts's own
  *    byte cap uses). This is what agentContext.test.ts exercises directly,
  *    with no database involved.
- *  - buildAgentContext: DB-backed — finds every `.agent/**` page for a
- *    space (storage.listEntries is unfiltered; access control for WHO may
- *    ask for this lives in auth/session.ts and is irrelevant here — a run's
- *    own context assembly always sees the space's full `.agent` folder) and
- *    renders each one before handing the list to capAgentContext.
+ *  - buildAgentContext: DB-backed — finds the `.agent/**` pages of a space
+ *    that THE GIVEN USER may have injected and renders each one before
+ *    handing the list to capAgentContext. It takes the user and checks, on
+ *    its own, that they can read the space (security review F-05: it used to
+ *    take a bare space slug from the client, so anyone who knew a private
+ *    space's slug got its rules). Which pages count is spelled out on the
+ *    function itself.
  */
 import * as storage from '../storage.js';
 import { isAgentPath } from '../agentPath.js';
 import { pageSourceMarkdown } from '../export/markdown.js';
+import * as pageAccess from '../pageAccess.js';
+import type { User } from '../../shared/contracts.js';
+import { requireAssistantSpaceAccess } from './access.js';
 
 /** ~60 000 characters — owner spec's cap on the injected blob. */
 export const AGENT_CONTEXT_MAX_CHARS = 60_000;
@@ -83,13 +88,30 @@ export function capAgentContext(pages: readonly AgentContextPage[], maxChars: nu
 }
 
 /**
- * DB-backed: every `.agent/**` page in `space`, path-sorted, rendered via
- * pageSourceMarkdown and capped. `blob: ''` (pagesUsed 0) when the space has
- * no `.agent` folder at all — the common case, and the signal callers use to
- * skip the section entirely.
+ * DB-backed: the `.agent/**` pages of `space` that `user` may have injected,
+ * path-sorted, rendered via pageSourceMarkdown and capped. `blob: ''`
+ * (pagesUsed 0) when there are none — the common case, and the signal callers
+ * use to skip the section entirely.
+ *
+ * Throws 404 `space not found` (before reading a single page) when `user`
+ * cannot read `space` — an explicit membership, or the implicit viewer of an
+ * instance-visible space; see ./access.ts.
+ *
+ * Which pages: the rules are meant for every member of the space, not only for
+ * the admins who can open the `.agent` folder (docs/FEATURES.md: they are
+ * mixed into every run of the space; the assistant is the one place a plain
+ * member meets that text). So the folder's admin-only gate
+ * (session.effectivePageRole) is deliberately NOT applied — `includeAgent:
+ * true` below. What IS applied is page-level access: an `.agent` page
+ * restricted to named people is skipped for everyone else, exactly as a
+ * restricted ordinary page is hidden from them.
  */
-export async function buildAgentContext(space: string, baseUrl: string): Promise<CappedAgentContext & { totalPages: number }> {
-  const entries = (await storage.listEntries(space)).filter((e) => isAgentPath(e.relPath)).sort((a, b) => a.relPath.localeCompare(b.relPath));
+export async function buildAgentContext(user: User, space: string, baseUrl: string): Promise<CappedAgentContext & { totalPages: number }> {
+  await requireAssistantSpaceAccess(user, space);
+  const readable = await pageAccess.readablePageIds(user.id, space, true);
+  const entries = (await storage.listEntries(space))
+    .filter((e) => isAgentPath(e.relPath) && readable.has(e.id))
+    .sort((a, b) => a.relPath.localeCompare(b.relPath));
   if (entries.length === 0) return { blob: '', pagesUsed: 0, truncated: false, totalPages: 0 };
 
   const pages: AgentContextPage[] = [];

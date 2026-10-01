@@ -455,6 +455,23 @@ export async function commitConflictState(dir: string): Promise<void> {
   await execGit(dir, ['-c', `user.name=${FOLIO_COMMITTER.name}`, '-c', `user.email=${FOLIO_COMMITTER.email}`, 'commit', '-m', 'merge with conflicts']);
 }
 
+/** `git rev-parse HEAD`. */
+export async function headSha(dir: string): Promise<string> {
+  const { stdout } = await execGit(dir, ['rev-parse', 'HEAD']);
+  return stdout.trim();
+}
+
+/**
+ * Repo-root-relative paths that differ between two commits — what a merge
+ * from `from` to `to` changed in the working tree. `--no-renames`: a rename
+ * lists both of its paths (and needs no blobs in a partial clone). `-z`: a
+ * non-ASCII file name comes back as-is, not C-quoted.
+ */
+export async function filesChangedBetween(dir: string, from: string, to: string, askpassScript?: string, spaceSlug?: string): Promise<string[]> {
+  const { stdout } = await execGit(dir, ['diff', '--name-only', '--no-renames', '-z', from, to], remoteAuthEnv(askpassScript, spaceSlug));
+  return stdout.split('\0').filter(Boolean);
+}
+
 export async function hasRemote(dir: string): Promise<boolean> {
   const { stdout } = await execGit(dir, ['remote']);
   return stdout.split('\n').some((l) => l.trim() === 'origin');

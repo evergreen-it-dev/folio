@@ -46,6 +46,7 @@ import * as assistantStore from './store.js';
 import type { AssistantConversationRow } from './store.js';
 import { AssistantRunCancelledError, runCursorAssistant } from './cursorRuntime.js';
 import { createDeltaBatcher, type DeltaBatcher } from './deltaBatcher.js';
+import { authorizeAssistantNavigation } from './access.js';
 
 /** After a distributive Omit — plain `Omit<Union, K>` collapses a discriminated union to its common-key intersection, silently dropping the per-variant fields (`message`, `text`, `code`, …). This distributes over each member first. */
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
@@ -244,8 +245,17 @@ export interface StartRunInput {
   apiKey: string;
 }
 
-/** One run per conversation at a time — a second start while one is `running` is a 409, same as the pre-runs.ts `activeConversations` guard. */
+/**
+ * One run per conversation at a time — a second start while one is `running` is a 409, same as the pre-runs.ts `activeConversations` guard.
+ *
+ * The `space`/`pageId` come from the client, so they are authorized here
+ * first (security review F-05): a run for a space the user cannot read is
+ * refused before it leaves a message, a run row or a workspace behind. The
+ * routes already did this before touching the conversation; this keeps the
+ * guarantee for any other caller of the RunManager.
+ */
 export async function startRun(input: StartRunInput): Promise<{ runId: string; conversationId: string }> {
+  await authorizeAssistantNavigation(input.user, input);
   const conversationId = input.conversation.id;
   if (activeByConversation.has(conversationId)) throw conflict('This assistant conversation is already processing a message');
 

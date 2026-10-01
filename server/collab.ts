@@ -146,25 +146,43 @@ interface DebouncedWriter {
   flush(): Promise<void>;
   /** Cancels any pending timer WITHOUT running `fn` — unlike flush(), the scheduled write never happens. Used by reconcileLiveRoomsAfterReset below: a reset-to-remote just rewrote the file, and flushing a stale in-memory write over it would silently reintroduce whatever the reset just threw away. */
   cancel(): void;
+  /** Runs a scheduled write now, or waits for one already running, until neither is left — and unlike flush(), never writes when nothing is pending. Used by settleRoomsForSync below. */
+  settle(): Promise<void>;
 }
 
 /** Debounces `fn`; `flush()` cancels any pending timer and runs `fn` immediately; `cancel()` cancels it and does NOT run `fn`. Exported for tests. */
 export function createDebouncedWriter(fn: () => void | Promise<void>, ms: number): DebouncedWriter {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight: Promise<void> | undefined;
+  const run = (): Promise<void> => {
+    const p = Promise.resolve(fn()).finally(() => {
+      if (inFlight === p) inFlight = undefined;
+    });
+    inFlight = p;
+    return p;
+  };
+  const flush = async (): Promise<void> => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    await run();
+  };
   return {
     schedule() {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = undefined;
-        void fn();
+        void run();
       }, ms);
     },
-    async flush() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = undefined;
+    flush,
+    async settle() {
+      // Bounded: someone typing during the write re-arms the timer each time.
+      for (let i = 0; i < 5 && (timer || inFlight); i++) {
+        if (timer) await flush();
+        else await inFlight;
       }
-      await fn();
     },
     cancel() {
       if (timer) {
@@ -1212,9 +1230,23 @@ function tableWriteRefusal(docName: string, ydoc: Y.Doc, doc: TableDoc | undefin
   return undefined;
 }
 
+/**
+ * A sync merge left git conflict markers in the file (same test as
+ * git.listConflictedFiles). A doc room carries them as ordinary text, but a
+ * table or board room cannot hold them at all: writing the room out would
+ * silently resolve the conflict in the room's favour and drop the remote side.
+ * Such a file waits for "Take the version from Git" (or a fix in git) instead.
+ */
+const GIT_CONFLICT_MARKER_RE = /^(<<<<<<<|>>>>>>>) /m;
+
 /** Table-kind branch of persistDoc: structured Y.Doc -> TableDoc -> storage.writeTableDoc. */
 async function persistTableDoc(docName: string, ydoc: Y.Doc, entry: TableEntry): Promise<void> {
   const { raw, doc: file } = await readTableFileState(entry);
+  if (raw !== undefined && GIT_CONFLICT_MARKER_RE.test(raw)) {
+    // eslint-disable-next-line no-console
+    console.error(`[collab] refusing to persist table ${docName}: its file has unresolved git conflict markers.`);
+    return;
+  }
 
   let doc: TableDoc | undefined;
   let materializeError: unknown;
@@ -1695,6 +1727,15 @@ function reconcileBoardYDoc(roots: BoardRoots, file: ExcalidrawScene): void {
   }
 }
 
+/** An element without the counters Excalidraw bumps on every change (and the timestamp that goes with them): what is left is what the element IS. */
+function elementContent(el: ExcalidrawElement): Record<string, unknown> {
+  const content: Record<string, unknown> = { ...el };
+  delete content.version;
+  delete content.versionNonce;
+  delete content.updated;
+  return content;
+}
+
 /** Monotonic, in-process tombstone versionNonce — see applyAgentBoardScene. Doesn't need to be globally unique, only to differ from whatever the element already held. */
 let boardTombstoneNonce = 1;
 
@@ -1725,6 +1766,54 @@ function applyAgentBoardScene(roots: BoardRoots, scene: ExcalidrawScene): void {
   }
   for (const [fid, f] of Object.entries(scene.files ?? {})) {
     if (!deepEquals(roots.files.get(fid), f)) roots.files.set(fid, f);
+  }
+}
+
+/**
+ * Makes the room hold exactly the board `file` says — the opposite of
+ * reconcileBoardYDoc, which lets the room win wherever its element version is
+ * higher. "Take the version from Git" (reconcileLiveRoomsAfterReset) cannot use
+ * that gate: the user's edits since the last sync have pushed the room's
+ * versions above the ones in the file Git holds, and a client that holds those
+ * higher versions drops the lower ones it is sent (excalidraw's reconcileElements
+ * keeps a local element whose version is higher). So an element is written
+ * with a version ABOVE both sides — the one thing every client adopts — and
+ * only when its content differs from the room's; a room element the file
+ * does not have becomes a tombstone, like in applyAgentBoardScene. Board-level
+ * fields follow the file, embedded images are added (they are immutable).
+ *
+ * The file is not touched: persistBoardDoc keeps it as it is for as long as
+ * the room's scene is the file's scene, so these version counters reach Git
+ * only together with the next real edit.
+ */
+function resetBoardYDoc(roots: BoardRoots, file: ExcalidrawScene): void {
+  const inFile = new Set<string>();
+  for (const el of file.elements) {
+    inFile.add(el.id);
+    const cur = roots.elements.get(el.id);
+    if (!cur) {
+      roots.elements.set(el.id, el);
+      continue;
+    }
+    if (deepEquals(elementContent(cur), elementContent(el))) continue;
+    roots.elements.set(el.id, { ...el, version: Math.max(cur.version ?? 0, el.version ?? 0) + 1, versionNonce: boardTombstoneNonce++ });
+  }
+  for (const [key, cur] of [...roots.elements.entries()]) {
+    if (inFile.has(key) || cur.isDeleted) continue;
+    roots.elements.set(key, { ...cur, isDeleted: true, version: (cur.version ?? 0) + 1, versionNonce: boardTombstoneNonce++, updated: Date.now() });
+  }
+  const fileFields = new Map(boardAppStateEntries(file.appState));
+  for (const [k, v] of fileFields) {
+    if (!deepEquals(roots.board.get(k), v)) roots.board.set(k, v);
+  }
+  for (const k of [...roots.board.keys()]) {
+    if (fileFields.has(k)) continue;
+    // A file without a background colour means white (boardSceneFromYDoc's default).
+    if (k === 'viewBackgroundColor') roots.board.set(k, '#ffffff');
+    else roots.board.delete(k);
+  }
+  for (const [fid, f] of Object.entries(file.files ?? {})) {
+    if (!roots.files.has(fid)) roots.files.set(fid, f);
   }
 }
 
@@ -1807,6 +1896,30 @@ async function boardLiveElementCountOnDisk(docName: string): Promise<number | nu
 }
 
 /**
+ * True when the board file `svg` already holds what `scene` (the room) holds:
+ * the same live elements, in the same order, with the same content, and the
+ * same scene-level fields. What it deliberately ignores: the change counters and
+ * timestamps of an element (version, versionNonce, updated), tombstones, and
+ * embedded images — a room that only differs in those has nothing the file
+ * lacks. False for a file it cannot read as a scene (a new board's bare
+ * skeleton included), and for one whose elements merely sit in another order:
+ * that is still rewritten, which puts them back in `index` order.
+ */
+function boardSceneHasFileContent(scene: ExcalidrawScene, svg: string): boolean {
+  let file: ExcalidrawScene;
+  try {
+    const payload = extractScenePayload(svg);
+    if (!payload) return false;
+    file = decodeScenePayload(payload);
+  } catch {
+    return false;
+  }
+  const live = (elements: ExcalidrawElement[]): Record<string, unknown>[] => elements.filter((e) => !e.isDeleted).map(elementContent);
+  if (!deepEquals(live(scene.elements), live(file.elements))) return false;
+  return deepEquals({ viewBackgroundColor: '#ffffff', ...Object.fromEntries(boardAppStateEntries(file.appState)) }, scene.appState);
+}
+
+/**
  * Board-kind branch of persistDoc: collect the scene from the room (including
  * tombstones, in `index` order) -> renderSceneSvg -> storage.writeBoardSvg
  * (its blank-overwrite guard stays fully active — never `force`) ->
@@ -1837,6 +1950,21 @@ async function persistBoardDoc(docName: string, ydoc: Y.Doc, entry: BoardEntry):
       );
       return;
     }
+  }
+  const onDisk = await storage.readBoardSvg(docName).catch(() => '');
+  if (GIT_CONFLICT_MARKER_RE.test(onDisk)) {
+    // eslint-disable-next-line no-console
+    console.error(`[collab] refusing to persist board ${docName}: its file has unresolved git conflict markers.`);
+    return;
+  }
+  if (boardSceneHasFileContent(scene, onDisk)) {
+    // Nothing to write: the file already says what the room says. This is what
+    // keeps the file byte-for-byte the one Git holds after "Take the version
+    // from Git" (resetBoardYDoc raised the room's version counters above the
+    // file's) until somebody really edits the board. The snapshot still follows
+    // the room, so a reopened room starts from the same versions.
+    await storeSnapshot(docName, ydoc);
+    return;
   }
   const svg = renderSceneSvg(scene);
   try {
@@ -2022,7 +2150,14 @@ export function initCollab(): void {
  * Deliberately NOT dropping ydoc_state or force-closing the room: a fresh seed
  * mints new CRDT identity, and a client reconnecting with its old doc would
  * merge both copies — THE DOUBLING (see bindState). Pages with no open room
- * need nothing here: their next bindState reconciles snapshot against file.
+ * need nothing here: their next bindState reconciles snapshot against file —
+ * except a board, whose reconcile is by element version and so would keep the
+ * discarded local scene (resetStoredBoardAfterReset).
+ *
+ * A board is not reconciled but RESET (resetBoardYDoc): by version the room
+ * would keep every element the user edited since the last sync, because those
+ * versions are higher than the ones in the file from Git, and an open canvas
+ * would keep them too. The file stays as the reset wrote it.
  *
  * A pending debounced write is cancelled first — it holds pre-reset text and
  * would put it straight back on disk. resetSpaceToRemote flushes every writer
@@ -2033,7 +2168,10 @@ export function initCollab(): void {
 export async function reconcileLiveRoomsAfterReset(pageIds: readonly string[]): Promise<void> {
   for (const id of pageIds) {
     const ydoc = docs.get(id);
-    if (!ydoc) continue;
+    if (!ydoc) {
+      await resetStoredBoardAfterReset(id);
+      continue;
+    }
     writers.get(id)?.cancel();
     try {
       const entry = await storage.getEntry(id);
@@ -2041,9 +2179,12 @@ export async function reconcileLiveRoomsAfterReset(pageIds: readonly string[]): 
         const { doc: parsed } = await readTableFileState(entry);
         if (parsed) ydoc.transact(() => reconcileTableYDoc(ydoc, parsed), TABLE_SEED_ORIGIN);
       } else if (isBoardEntry(entry)) {
-        const payload = extractScenePayload(await storage.readBoardSvg(id));
-        const scene = payload ? decodeScenePayload(payload) : undefined;
-        if (scene) ydoc.transact(() => reconcileBoardYDoc(boardRoots(ydoc), scene), BOARD_SEED_ORIGIN);
+        const scene = await readBoardFileScene(id);
+        if (scene) {
+          ydoc.transact(() => resetBoardYDoc(boardRoots(ydoc), scene), BOARD_SEED_ORIGIN);
+          // Not waiting for the debounce: the room's new state goes into the snapshot now, so a restart right after the reset cannot bring the discarded scene back.
+          await writers.get(id)?.flush();
+        }
       } else if (entry && entry.kind === 'doc') {
         const body = await storage.readFreshDocBody(id);
         const ytext = ydoc.getText('content');
@@ -2059,6 +2200,128 @@ export async function reconcileLiveRoomsAfterReset(pageIds: readonly string[]): 
       console.error(`[collab] failed to reconcile live room ${id} after reset-to-remote:`, err);
     }
   }
+}
+
+/** The scene embedded in board `id`'s file, or undefined when the file has none (a bare new board) or cannot be read. */
+async function readBoardFileScene(id: string): Promise<ExcalidrawScene | undefined> {
+  const payload = extractScenePayload(await storage.readBoardSvg(id));
+  return payload ? decodeScenePayload(payload) : undefined;
+}
+
+/**
+ * The reset's counterpart for a board nobody has open. Its stored room state is
+ * what the next open resumes from, and bindBoardState lets that state win over
+ * the file wherever its element versions are higher — exactly the discarded
+ * local edits. So the stored state gets the same resetBoardYDoc a live room
+ * would have got: loaded into a scratch doc (the CRDT history stays, nothing is
+ * re-seeded), brought to the file, stored again. A board without stored state
+ * needs nothing: it is seeded from the file when opened. A doc or table is not
+ * touched — their reconcile on open already follows the file.
+ */
+async function resetStoredBoardAfterReset(id: string): Promise<void> {
+  try {
+    if (!isBoardEntry(await storage.getEntry(id))) return;
+    const snapshot = await loadSnapshot(id);
+    if (!snapshot) return;
+    const scene = await readBoardFileScene(id);
+    if (!scene) return;
+    const scratch = new Y.Doc();
+    try {
+      yEngineFor(scratch).applyUpdate(scratch, snapshot);
+      scratch.transact(() => resetBoardYDoc(boardRoots(scratch), scene), BOARD_SEED_ORIGIN);
+      await storeSnapshot(id, scratch);
+    } finally {
+      scratch.destroy();
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[collab] failed to reset the stored state of board ${id} after reset-to-remote:`, err);
+  }
+}
+
+/**
+ * gitSync.performSync calls this BEFORE it commits: every open room of `space`
+ * gets its pending write onto disk (settle — nothing is written for a room with
+ * nothing pending), so the commit holds what was typed and git three-way-merges
+ * it with the remote, instead of the room writing it over the merge result
+ * afterwards. Returns each room's full state as of that write — the base
+ * reconcileLiveRoomAfterMerge applies the merge on top of.
+ */
+export async function settleRoomsForSync(space: string): Promise<Map<string, Uint8Array>> {
+  const bases = new Map<string, Uint8Array>();
+  for (const id of [...docs.keys()]) {
+    if ((await storage.getEntry(id))?.space !== space) continue;
+    await seedingPromises.get(id);
+    await writers.get(id)?.settle();
+    const ydoc = docs.get(id);
+    if (ydoc) bases.set(id, yEngineFor(ydoc).encodeStateAsUpdate(ydoc));
+  }
+  return bases;
+}
+
+/** Page ids with an open room right now. */
+export function liveRoomIds(): string[] {
+  return [...docs.keys()];
+}
+
+/**
+ * An ordinary sync merge (gitSync.performSync) just changed `entry`'s file, and
+ * its room is open: `raw` is the merged file. Without this the room keeps the
+ * pre-merge content, and its next write — or the flush when the last client
+ * leaves — puts that back over the merge (01.10.2026).
+ *
+ * The merge goes in as a REAL edit made on a fork of `base` (the room's state
+ * when its text was last written, settleRoomsForSync), never as a reseed — see
+ * reconcileLiveRoomsAfterReset for why. Forking matters for whatever reached the
+ * room while git was fetching and merging: those edits are not in `base`, so the
+ * fork's edit cannot undo them, and Yjs merges the two like any concurrent
+ * edits. A room opened during the sync has no base; its current state stands
+ * in for one.
+ *
+ * Doc: the body is rewritten touching only the span that differs (setYText) —
+ * conflict markers included, so the room shows the conflict instead of writing
+ * over it. Table/board: the same by-key/by-version reconcile bindState runs;
+ * a file with conflict markers is left alone (persistTableDoc/persistBoardDoc
+ * refuse to write over it). A board element the merge removed is tombstoned,
+ * which is safe only against a real base.
+ */
+export function reconcileLiveRoomAfterMerge(entry: storage.PageIndexEntry, raw: string, base: Uint8Array | undefined): void {
+  const ydoc = docs.get(entry.id);
+  if (!ydoc) return;
+  const E = yEngineFor(ydoc);
+  const fork = new E.Doc();
+  E.applyUpdate(fork, base ?? E.encodeStateAsUpdate(ydoc));
+  const forkedAt = E.encodeStateVector(fork);
+  if (isTableEntry(entry)) {
+    // An unseeded room is one bindTableState could not parse (raw-file mode); it reseeds on reopen.
+    if (GIT_CONFLICT_MARKER_RE.test(raw) || !isTableYDocSeeded(fork)) return;
+    const parsed = parseTableFile(raw);
+    if (isTableParseError(parsed)) return;
+    fork.transact(() => reconcileTableYDoc(fork, parsed));
+  } else if (isBoardEntry(entry)) {
+    if (GIT_CONFLICT_MARKER_RE.test(raw)) return;
+    const payload = extractScenePayload(raw);
+    if (!payload) return;
+    const scene = decodeScenePayload(payload);
+    const roots = boardRoots(fork);
+    fork.transact(() => {
+      reconcileBoardYDoc(roots, scene);
+      if (!base) return;
+      const kept = new Set(scene.elements.map((e) => e.id));
+      for (const [id, el] of [...roots.elements.entries()]) {
+        if (kept.has(id) || el.isDeleted) continue;
+        roots.elements.set(id, { ...el, isDeleted: true, version: (el.version ?? 0) + 1, versionNonce: boardTombstoneNonce++, updated: Date.now() });
+      }
+    });
+  } else if (entry.kind === 'doc') {
+    const body = storage.splitLeadingFrontmatter(raw).body;
+    const text = fork.getText('content');
+    if (body === storage.docFileBody(text.toString())) return;
+    fork.transact(() => setYText(text, body));
+  } else {
+    return;
+  }
+  E.applyUpdate(ydoc, E.encodeStateAsUpdate(fork, forkedAt));
 }
 
 export function isDocLive(id: string): boolean {

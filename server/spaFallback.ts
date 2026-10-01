@@ -7,6 +7,7 @@
  * unconditionally at module load, which is exactly right for an entrypoint
  * and exactly wrong for `import`ing it from a test).
  */
+import type { FastifyStaticOptions } from '@fastify/static';
 
 // Prefixes that must NEVER fall back to index.html even though nothing above
 // claimed the route. `/api|/files|/a|/collab` are existing server routes —
@@ -52,4 +53,28 @@ export function isContentHashedAsset(filePath: string): boolean {
 /** `Cache-Control` for a file of the built SPA. */
 export function spaCacheControl(filePath: string): string {
   return isContentHashedAsset(filePath) ? 'public, max-age=31536000, immutable' : 'no-cache';
+}
+
+/**
+ * How @fastify/static serves the built SPA (web/dist) at `/`. Lives here so a
+ * test can mount exactly what production mounts.
+ *
+ * `setHeaders` receives the Fastify reply since @fastify/static 10 (it used to
+ * be the raw Node response, with `setHeader`) and runs after the plugin set
+ * its own headers, so what it sets wins. `cacheControl: false` keeps the
+ * plugin from adding its own `Cache-Control` first.
+ */
+export function spaStaticOptions(root: string): FastifyStaticOptions {
+  return {
+    root,
+    prefix: '/',
+    decorateReply: false,
+    index: ['index.html'],
+    // Content-hashed chunks are immutable; index.html and the build
+    // manifest are revalidated every time — see spaCacheControl.
+    cacheControl: false,
+    setHeaders: (reply, filePath) => {
+      reply.header('Cache-Control', spaCacheControl(filePath));
+    },
+  };
 }

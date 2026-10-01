@@ -152,6 +152,53 @@ describe('R23 export — print document + PDF', () => {
       await storage.deletePage(meta.id);
     }, 120_000);
 
+    it('keeps the print document off the network by default; EXPORT_ALLOW_REMOTE_ASSETS lifts that for it alone (F-06)', async (ctx) => {
+      if (!chromium) return ctx.skip();
+      const http = await import('node:http');
+      const requests: string[] = [];
+      let connections = 0;
+      const server = http.createServer((req, res) => {
+        requests.push(req.url ?? '');
+        res.writeHead(200, { 'content-type': 'image/svg+xml' }).end('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>');
+      });
+      server.on('connection', () => {
+        connections += 1;
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const remote = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+
+      const meta = await storage.createPage({ space, parentPath: '', title: `Remote Refs ${Date.now()}`, kind: 'doc' });
+      try {
+        const entry = await storage.requireEntry(meta.id);
+        const markdown = [
+          '# Remote refs',
+          '',
+          `<img src="${remote}/pdf-img.png">`,
+          '',
+          `<link rel="prerender" href="${remote}/pdf-prerender.html">`,
+          `<link rel="preconnect" href="${remote}">`,
+          `<iframe src="${remote}/pdf-frame.html"></iframe>`,
+          '',
+        ].join('\n');
+
+        const locked = await renderPdf({ markdown, entry, baseUrl: BASE });
+        expect(locked.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        expect(requests).toEqual([]);
+        expect(connections).toBe(0);
+
+        // The operator's explicit opt-in is unchanged: the print document may then fetch what it links to.
+        process.env.EXPORT_ALLOW_REMOTE_ASSETS = '1';
+        await renderPdf({ markdown, entry, baseUrl: BASE });
+        expect(requests).toContain('/pdf-img.png');
+      } finally {
+        delete process.env.EXPORT_ALLOW_REMOTE_ASSETS;
+        server.closeAllConnections(); // the browser keeps sockets open after the opt-in render
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await storage.deletePage(meta.id);
+      }
+    }, 120_000);
+
     it('rasterizes a board SVG to PNG for the DOCX path', async (ctx) => {
       if (!chromium) return ctx.skip();
       const { rasterizeSvg } = await import('./pdf.js');

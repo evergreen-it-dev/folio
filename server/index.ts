@@ -33,14 +33,12 @@ import { importJsonIfNeeded } from './auth/importJson.js';
 import { ensurePgReachable, getPool, closePool } from './db/pool.js';
 import { runMigrations } from '../db/migrate.js';
 import { getRedis, closeRedis } from './db/redis.js';
-import * as assets from './assets.js';
-import * as shares from './shares.js';
-import { queryString } from './validate.js';
+import { registerAssetRoute } from './assetRoute.js';
+import { registerFileRoutes } from './fileAccess.js';
 import { ensureAskpassScript } from './gitCredentials.js';
 import { startPeriodicFetchForAllSpaces, stopAllPeriodicFetch, flushAllPendingSyncs } from './gitSync.js';
 import { stopGitTreeCache } from './gitTree.js';
-import { notFound } from './errors.js';
-import { shouldServeSpaFallback, spaCacheControl } from './spaFallback.js';
+import { shouldServeSpaFallback, spaStaticOptions } from './spaFallback.js';
 import { matchShareRoute, renderShareIndexHtml } from './shareMeta.js';
 import { publicUrlOrOrigin } from './publicUrl.js';
 import { runBootScan } from './bootScan.js';
@@ -170,22 +168,9 @@ async function main(): Promise<void> {
   // was already handed to the page's recipient by design; this only removes
   // the redundant SEPARATE credential check for fetching what the page
   // already links to.
-  app.get('/a/:sha/:filename', async (request, reply) => {
-    const { sha } = request.params as { sha: string; filename: string };
-    const asset = await assets.getAsset(sha);
-    if (!asset) throw notFound('asset');
-    const inline = /^image\//.test(asset.mime) || asset.mime === 'application/pdf';
-    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
-    reply.header('Content-Type', asset.mime);
-    // Non-ASCII names (Cyrillic and the like) crash Node on the header: ASCII fallback + RFC 5987.
-    const asciiName = asset.filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '') || 'file';
-    const encodedName = encodeURIComponent(asset.filename);
-    reply.header(
-      'Content-Disposition',
-      `${inline ? 'inline' : 'attachment'}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
-    );
-    return reply.send(asset.data);
-  });
+  // The response type/disposition/CSP come from the bytes (server/safeServe.ts),
+  // never from the MIME type the uploader claimed — see assetRoute.ts.
+  registerAssetRoute(app);
 
   // Round 8 follow-up: /files/<space>/<path> accepts a share token (?share=)
   // as an alternative to a session. Its own scope — deliberately NOT inside
@@ -194,53 +179,9 @@ async function main(): Promise<void> {
   // check the token; onRequest hooks apply by registration scope, not route
   // order, so the only way to let a guest in here is to never put this route
   // under that blanket hook in the first place.
-  await app.register(async (filesScope) => {
-    await filesScope.register(fastifyStatic, { root: storage.REPOS_DIR, serve: false });
-
-    filesScope.addHook('onRequest', async (request, reply) => {
-      const space = request.url.split('?')[0].split('/')[2] ?? '';
-
-      // Share-token path. A share names exactly ONE page, but that page's
-      // rendered markdown can reference OTHER files in the same space by
-      // relative path (inline images, attachments) — there's no per-file
-      // allowlist on a share link, so a valid token widens to "read anything
-      // in this page's space", not just the shared page's own file. Scope
-      // choice, deliberate: still far narrower than a session (which would
-      // grant every space that user belongs to), and no narrower scope is
-      // expressible without a much bigger change (per-share file allowlists).
-      // A guest holding this link was already handed the page's full
-      // rendered content (round 8's public GET /api/share/:token); this just
-      // lets their browser actually fetch what that content links to.
-      const shareToken = queryString(request.query, 'share');
-      if (shareToken) {
-        const share = await shares.resolveShareToken(shareToken); // undefined for unknown OR revoked
-        if (!share) {
-          reply.status(401).send({ error: 'invalid or revoked share token' });
-          return;
-        }
-        const entry = await storage.getEntry(share.pageId);
-        if (!entry || entry.space !== space) {
-          // A REAL, non-revoked token — just not one that covers this space.
-          // 403 (not 401): distinguishes "valid credential, wrong resource"
-          // from "no/bad credential at all" above.
-          reply.status(403).send({ error: 'share token does not grant access to this space' });
-          return;
-        }
-        return; // token checks out for this space -- allow, no session needed
-      }
-
-      // No share token offered: unchanged from before this round — a real
-      // session, then that user's own role in the space.
-      await session.requireSession(request, reply);
-      if (reply.sent) return;
-      await session.requireSpaceRole(request, space, 'viewer');
-    });
-
-    filesScope.get('/files/:space/*', async (request, reply) => {
-      const { space, '*': rest } = request.params as { space: string; '*': string };
-      return reply.sendFile(rest, storage.getSpaceDir(space));
-    });
-  });
+  // Who may read which file — page access for a session, the share's own
+  // page set for a guest, no dotfiles/.git ever — is server/fileAccess.ts.
+  await app.register(registerFileRoutes);
 
   // --- MCP (round 7): PAT Bearer ONLY, cookie sessions rejected ------------
   // Registered outside the protected scope below (which accepts cookie OR
@@ -335,18 +276,7 @@ async function main(): Promise<void> {
   // the fallback only runs from the not-found handler.
   if (process.env.NODE_ENV === 'production') {
     const distRoot = path.resolve(import.meta.dirname, '../web/dist');
-    await app.register(fastifyStatic, {
-      root: distRoot,
-      prefix: '/',
-      decorateReply: false,
-      index: ['index.html'],
-      // Content-hashed chunks are immutable; index.html and the build
-      // manifest are revalidated every time — see spaCacheControl.
-      cacheControl: false,
-      setHeaders: (res, filePath) => {
-        res.setHeader('Cache-Control', spaCacheControl(filePath));
-      },
-    });
+    await app.register(fastifyStatic, spaStaticOptions(distRoot));
     spaFallbackRoot = distRoot;
   }
 

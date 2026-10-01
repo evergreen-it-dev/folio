@@ -3,7 +3,7 @@ import type { PageIndexEntry } from './storage.js';
 import { query, queryOne, withTransaction } from './db/pool.js';
 import * as authStore from './auth/store.js';
 import { badRequest } from './errors.js';
-import { isAgentPath } from './agentPath.js';
+import { AGENT_FOLDER, isAgentPath } from './agentPath.js';
 
 interface AccessRow {
   owner_id: string;
@@ -43,6 +43,50 @@ export async function readablePageIds(userId: string, space: string, includeAgen
     [userId, space],
   );
   return new Set(rows.filter((row) => includeAgent || !isAgentPath(row.path)).map((row) => row.id));
+}
+
+/**
+ * The exact complement of `readablePageIds` within `space`: the pages page
+ * access hides from `userId` (a private page they neither own nor hold a
+ * grant on), plus `.agent/**` unless `includeAgent`. Only the restricted rows
+ * are scanned, so the common "nothing hidden" answer is one cheap query —
+ * the raw-file route (server/fileAccess.ts) asks this on every attachment.
+ */
+export async function hiddenPages(userId: string, space: string, includeAgent: boolean): Promise<Array<{ id: string; path: string; kind: PageIndexEntry['kind'] }>> {
+  const rows = await query<{ id: string; path: string; kind: PageIndexEntry['kind']; hidden_by_acl: boolean }>(
+    `SELECT p.id, p.path, p.kind,
+            (a.page_id IS NOT NULL AND a.owner_id <> $1 AND NOT EXISTS (
+              SELECT 1 FROM page_access_grants g WHERE g.page_id = p.id AND g.user_id = $1
+            )) AS hidden_by_acl
+       FROM pages_index p
+       LEFT JOIN page_access a ON a.page_id = p.id
+      WHERE p.space_slug = $2
+        AND (a.page_id IS NOT NULL OR p.path = $3 OR substr(p.path, 1, length($4)) = $4)`,
+    [userId, space, AGENT_FOLDER, `${AGENT_FOLDER}/`],
+  );
+  return rows
+    .filter((row) => row.hidden_by_acl || (!includeAgent && isAgentPath(row.path)))
+    .map(({ id, path, kind }) => ({ id, path, kind }));
+}
+
+/**
+ * IDs of the pages in `space` that are NOT open to everyone who can read the
+ * space: every page with a `page_access` row (private mode — "only me" or
+ * "specific people"), plus every `.agent/**` page (admin-only). User-
+ * independent on purpose: a subtree share link (export/shareScope.ts) cuts
+ * these pages, and everything below them, out of its set no matter who
+ * created the link or when the restriction was added.
+ */
+export async function restrictedPageIds(space: string): Promise<Set<string>> {
+  const rows = await query<{ id: string; path: string; restricted: boolean }>(
+    `SELECT p.id, p.path, (a.page_id IS NOT NULL) AS restricted
+       FROM pages_index p
+       LEFT JOIN page_access a ON a.page_id = p.id
+      WHERE p.space_slug = $1
+        AND (a.page_id IS NOT NULL OR p.path = $2 OR substr(p.path, 1, length($3)) = $3)`,
+    [space, AGENT_FOLDER, `${AGENT_FOLDER}/`],
+  );
+  return new Set(rows.filter((row) => row.restricted || isAgentPath(row.path)).map((row) => row.id));
 }
 
 async function candidateMembers(space: string): Promise<Array<{ userId: string; name: string; email: string; spaceRole: SpaceRole }>> {

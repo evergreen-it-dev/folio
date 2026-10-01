@@ -19,7 +19,8 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { setUpTestSchema, deleteTestSpace } from './db/testSchema.js';
 import * as storage from './storage.js';
 import * as authStore from './auth/store.js';
-import { buildFolioMcpServer, type McpActor } from './mcp.js';
+import { readFileSync } from 'node:fs';
+import { buildFolioMcpServer, FOLIO_SERVER_VERSION, type McpActor } from './mcp.js';
 import type { User } from '../shared/contracts.js';
 
 async function connectedClient(actor: McpActor): Promise<{ client: Client; close: () => Promise<void> }> {
@@ -42,6 +43,21 @@ function resultJson(result: Awaited<ReturnType<Client['callTool']>>): unknown {
 function resultText(result: Awaited<ReturnType<Client['callTool']>>): string {
   return (result.content as Array<{ type: string; text?: string }>)[0]?.text ?? '';
 }
+
+describe('server/mcp.ts — server identity', () => {
+  it('reports the product version from package.json on initialize, not a hard-coded one', async () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+    expect(FOLIO_SERVER_VERSION).toBe(pkg.version);
+
+    const actor: McpActor = { user: { id: 'nobody' } as User, scopes: ['read'], tokenId: 'test-identity-token' };
+    const { client, close } = await connectedClient(actor);
+    try {
+      expect(client.getServerVersion()).toMatchObject({ name: 'folio', version: pkg.version });
+    } finally {
+      await close();
+    }
+  });
+});
 
 describe('server/mcp.ts — folio_table_* tools (real fs + real PG, in-memory MCP transport)', () => {
   let teardownSchema: () => Promise<void>;
@@ -104,6 +120,25 @@ describe('server/mcp.ts — folio_table_* tools (real fs + real PG, in-memory MC
       });
       const meta = resultJson(result) as { kind: string };
       expect(meta.kind).toBe('table');
+    } finally {
+      await close();
+    }
+  });
+
+  it('create_page writes the optional markdown into a document and ignores it for a table', async () => {
+    const { client, close } = await connectedClient(editorActor());
+    try {
+      const doc = resultJson(
+        await client.callTool({ name: 'create_page', arguments: { space: spaceSlug, parentPath: '', title: 'Ready Text', markdown: '# Ready Text\n\nBody from create_page.\n' } }),
+      ) as { id: string; kind: string };
+      expect(doc.kind).toBe('doc');
+      expect(await storage.readFreshDocBody(doc.id)).toContain('Body from create_page.');
+
+      const table = resultJson(
+        await client.callTool({ name: 'create_page', arguments: { space: spaceSlug, parentPath: '', title: 'Table Ignores Text', kind: 'table', markdown: 'ignored text' } }),
+      ) as { id: string; kind: string };
+      expect(table.kind).toBe('table');
+      expect(JSON.stringify(await storage.readFreshTableDoc(table.id))).not.toContain('ignored text');
     } finally {
       await close();
     }

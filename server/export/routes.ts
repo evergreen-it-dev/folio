@@ -13,7 +13,7 @@ import * as gitSync from '../gitSync.js';
 import type { PageIndexEntry } from '../storage.js';
 import { officeFormat } from '../../shared/contracts.js';
 import { queryString } from '../validate.js';
-import { collectForExport } from './collect.js';
+import { collectForExport, singlePage } from './collect.js';
 import { inlineTemplateImages, readSpaceExportSettings, validateExportSettingsBody, writeSpaceExportSettings } from './spaceSettings.js';
 import type { ExportTruncation } from './limits.js';
 import { assembleMarkdown, type AssembledExport } from './markdown.js';
@@ -282,8 +282,10 @@ export function registerPublicExportRoutes(app: FastifyInstance): void {
 
     // Within the token's rights only: `?children=0` narrows a subtree token to
     // the single page; `?children=1` on a single-page token stays single-page.
+    // The subtree is the scope's own set (F-02: restricted pages already cut
+    // out) — never a second, unfiltered walk of the tree.
     const includeChildren = boolParam(request, 'children', true) && scope.share.includeChildren;
-    const collected = await collectForExport(scope.root, includeChildren);
+    const collected = includeChildren ? scope.collected : singlePage(scope.root);
     const assembled = await assembleMarkdown(collected, {
       baseUrl: requestBaseUrl(request),
       flatten: boolParam(request, 'flatten', true),

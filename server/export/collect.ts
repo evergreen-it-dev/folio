@@ -54,8 +54,20 @@ export function singlePage(entry: PageIndexEntry): CollectedSubtree {
  * walk stops and `truncation` reports how many pages were left out —
  * counting them requires finishing the traversal, so the walk keeps
  * *counting* after it stops *collecting*.
+ *
+ * Two different filters, on purpose. `allowedPageIds` (a reader's readable
+ * set) drops an unreadable page but keeps walking into its children — page
+ * access does not inherit, so the authenticated export shows what the
+ * sidebar shows. `prunedPageIds` cuts a page TOGETHER WITH everything below
+ * it — the share-link policy (shareScope.ts), where a restricted page fences
+ * off its whole subtree. The root itself is never filtered by either.
  */
-export async function collectSubtree(root: PageIndexEntry, maxPages: number = MAX_EXPORT_PAGES, allowedPageIds?: ReadonlySet<string>): Promise<CollectedSubtree> {
+export async function collectSubtree(
+  root: PageIndexEntry,
+  maxPages: number = MAX_EXPORT_PAGES,
+  allowedPageIds?: ReadonlySet<string>,
+  prunedPageIds?: ReadonlySet<string>,
+): Promise<CollectedSubtree> {
   const pages: ExportPage[] = [{ entry: root, depth: 0 }];
   const ids = new Set<string>([root.id]);
   let omitted = 0;
@@ -65,6 +77,7 @@ export async function collectSubtree(root: PageIndexEntry, maxPages: number = MA
   async function walk(nodes: storage.SubtreeNode[], depth: number): Promise<void> {
     for (const node of nodes) {
       if (ids.has(node.id)) continue; // defensive: a cycle is unreachable through getSubtree, but never loop on one
+      if (prunedPageIds?.has(node.id)) continue; // neither counted nor descended into: its whole subtree is out
       const entry = entriesById.get(node.id);
       if (!entry) continue; // indexed a moment ago, gone now — skip rather than fail the whole export
 
@@ -92,8 +105,14 @@ export async function collectSubtree(root: PageIndexEntry, maxPages: number = MA
  * decision point. `maxPages` exists so the cap itself is testable without
  * building a 201-page fixture; production always takes the default.
  */
-export async function collectForExport(root: PageIndexEntry, includeChildren: boolean, maxPages?: number, allowedPageIds?: ReadonlySet<string>): Promise<CollectedSubtree> {
-  return includeChildren ? collectSubtree(root, maxPages, allowedPageIds) : singlePage(root);
+export async function collectForExport(
+  root: PageIndexEntry,
+  includeChildren: boolean,
+  maxPages?: number,
+  allowedPageIds?: ReadonlySet<string>,
+  prunedPageIds?: ReadonlySet<string>,
+): Promise<CollectedSubtree> {
+  return includeChildren ? collectSubtree(root, maxPages, allowedPageIds, prunedPageIds) : singlePage(root);
 }
 
 /**

@@ -47,6 +47,36 @@ describe('createDebouncedWriter', () => {
     expect(calls).toBe(1);
   });
 
+  it('settle() runs a pending write now, waits for one already running, and writes nothing when idle', async () => {
+    let calls = 0;
+    let release: () => void = () => {};
+    const writer = createDebouncedWriter(async () => {
+      calls++;
+      await new Promise<void>((r) => (release = r));
+    }, 800);
+
+    await writer.settle();
+    expect(calls).toBe(0); // idle: unlike flush(), no write at all
+
+    writer.schedule();
+    const settled = writer.settle();
+    await Promise.resolve();
+    expect(calls).toBe(1); // the pending write ran without waiting out the debounce
+    release();
+    await settled;
+
+    writer.schedule();
+    await vi.advanceTimersByTimeAsync(800); // the timer fires; that write is now in flight
+    expect(calls).toBe(2);
+    let done = false;
+    const waiting = writer.settle().then(() => (done = true));
+    await Promise.resolve();
+    expect(done).toBe(false);
+    release();
+    await waiting;
+    expect(calls).toBe(2);
+  });
+
   it('awaits an async writer function', async () => {
     const order: string[] = [];
     const writer = createDebouncedWriter(async () => {

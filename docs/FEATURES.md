@@ -126,6 +126,15 @@ A link to a page for people without an account: view or edit, optionally
 "with child pages". There is also a `.md` form of the link that returns plain
 Markdown — convenient for external agents.
 
+"With child pages" never includes a page that has its own access
+restrictions, nor anything below it: such a page is shared only by a link
+made for that page itself. This is checked on every visit, so restricting a
+page later also removes it from links that already exist. Of the space's
+files, a guest gets only those of the pages the link covers and the images
+and attachments those pages embed or link to. A link is a credential, so
+links are listed, created and revoked only in the browser, never with an API
+token.
+
 Edits made by a guest through such a link reach Git with the matching
 authorship.
 

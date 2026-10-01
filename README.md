@@ -376,7 +376,8 @@ members, to you only, or to selected people with view or edit rights.
 **Sharing outside**
 
 - Share links for people without an account: view or edit, one page or a
-  whole subtree, revocable at any time.
+  whole subtree (pages with their own access restrictions are left out),
+  revocable at any time.
 - Forms that accept answers without an account.
 
 **For agents and scripts**
@@ -455,7 +456,7 @@ npm install
 npm run dev                                      # http://localhost:4871
 ```
 
-Node.js 20.19 or newer (22.13 or newer for the assistant). See
+Node.js 22 or newer (22.13 or newer for the assistant). See
 [CONTRIBUTING.md](CONTRIBUTING.md) — and [AGENTS.md](AGENTS.md) if your
 contributor is an agent.
 

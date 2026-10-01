@@ -12,7 +12,7 @@
  * around the same startRun()/subscribe() pair.
  */
 import { randomUUID } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type {
   ActiveAssistantRunResponse,
   AssistantConnectionCheck,
@@ -36,6 +36,7 @@ import { recordAudit } from '../audit.js';
 import * as assistantStore from './store.js';
 import type { AssistantConversationRow, AssistantMessageRow } from './store.js';
 import * as runs from './runs.js';
+import { authorizeAssistantNavigation } from './access.js';
 import { cursorRuntimeAvailable, listCursorModels, verifyCursorApiKey } from './cursorRuntime.js';
 
 const ndjsonHeaders = {
@@ -88,6 +89,39 @@ async function resolveConversationForMessage(userId: string, input: SendAssistan
     });
   }
   return conversation;
+}
+
+/**
+ * The ONE start-a-run path behind POST /runs and the compatibility POST
+ * /chat/stream (they used to repeat this block, which is how a check could
+ * land in one and not the other). The `space` and `pageId` in the body are
+ * client claims about where the user is, and the assistant loads data keyed by
+ * them (the space's `.agent` rules, the open page) — so they are authorized
+ * first, before any conversation is found or created and before the key is
+ * resolved: a space the caller cannot read is a 404 `space not found`, the same
+ * answer as for a slug that does not exist (security review F-05). A
+ * `conversationId` does not bypass it: the conversation is the caller's own
+ * but is not bound to a space, so every message is checked on its own.
+ */
+async function startRunForRequest(request: FastifyRequest): Promise<{ runId: string; conversationId: string }> {
+  const user = request.authUser!;
+  if (!cursorRuntimeAvailable()) throw new HttpError(503, 'Cursor SDK requires Node.js 22.13 or newer');
+  const input = parseBody(sendAssistantMessageBodySchema, request.body);
+  const navigation = await authorizeAssistantNavigation(user, input);
+  const conversation = await resolveConversationForMessage(user.id, input);
+  const apiKey = await resolveApiKey(user.id);
+  if (!apiKey) throw conflict('Connect a Cursor API key in account settings');
+
+  return runs.startRun({
+    user,
+    conversation,
+    message: input.message,
+    runMode: input.runMode,
+    currentPath: input.currentPath ?? null,
+    space: navigation.space,
+    pageId: navigation.pageId,
+    apiKey,
+  });
 }
 
 export function registerAssistantRoutes(app: FastifyInstance): void {
@@ -209,23 +243,7 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
 
   app.post('/api/assistant/runs', async (request, reply) => {
     session.requireCookieAuth(request);
-    const user = request.authUser!;
-    if (!cursorRuntimeAvailable()) throw new HttpError(503, 'Cursor SDK requires Node.js 22.13 or newer');
-    const input = parseBody(sendAssistantMessageBodySchema, request.body);
-    const conversation = await resolveConversationForMessage(user.id, input);
-    const apiKey = await resolveApiKey(user.id);
-    if (!apiKey) throw conflict('Connect a Cursor API key in account settings');
-
-    const { runId, conversationId } = await runs.startRun({
-      user,
-      conversation,
-      message: input.message,
-      runMode: input.runMode,
-      currentPath: input.currentPath ?? null,
-      space: input.space ?? null,
-      pageId: input.pageId ?? null,
-      apiKey,
-    });
+    const { runId, conversationId } = await startRunForRequest(request);
     reply.status(202);
     return { conversationId, runId } satisfies StartAssistantRunResponse;
   });
@@ -303,23 +321,10 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
 
   app.post('/api/assistant/chat/stream', async (request, reply) => {
     session.requireCookieAuth(request);
-    const user = request.authUser!;
-    if (!cursorRuntimeAvailable()) throw new HttpError(503, 'Cursor SDK requires Node.js 22.13 or newer');
-    const input = parseBody(sendAssistantMessageBodySchema, request.body);
-    const conversation = await resolveConversationForMessage(user.id, input);
-    const apiKey = await resolveApiKey(user.id);
-    if (!apiKey) throw conflict('Connect a Cursor API key in account settings');
-
-    const { runId, conversationId } = await runs.startRun({
-      user,
-      conversation,
-      message: input.message,
-      runMode: input.runMode,
-      currentPath: input.currentPath ?? null,
-      space: input.space ?? null,
-      pageId: input.pageId ?? null,
-      apiKey,
-    });
+    // Everything that can refuse (space/page access, key, runtime) happens in
+    // here, BEFORE the response is hijacked below — a refusal is a plain JSON
+    // error status, never a half-open NDJSON stream.
+    const { runId, conversationId } = await startRunForRequest(request);
 
     reply.hijack();
     reply.raw.writeHead(200, ndjsonHeaders);

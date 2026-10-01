@@ -119,21 +119,29 @@ export async function performSync(space: string, requestedBy?: GitIdentity): Pro
 
     await setSpaceStatus(space, { status: 'syncing' }, actor);
     try {
+      // Open rooms first: whatever they still hold unwritten goes into this
+      // commit, so git merges it with the remote (three-way, on files) rather
+      // than the room writing it over the merge result later. See
+      // reconcileMergedRooms for the other half.
+      const roomBases = await collab.settleRoomsForSync(space);
       await git.commitAll(dir, 'folio:update', actor);
 
       const remote = await git.hasRemote(dir);
       if (remote) {
         const askpass = (await hasSpaceToken(space)) ? await ensureAskpassScript() : undefined;
         await git.fetch(dir, askpass, space);
+        const preMerge = await git.headSha(dir);
         const { conflict } = await git.mergeFetchedRemote(dir, branch, askpass, space);
         if (conflict) {
           await git.commitConflictState(dir);
           await storageMod.scanSpace(space);
+          await reconcileMergedRooms(space, dir, preMerge, roomBases, askpass);
           await setSpaceStatus(space, { status: 'conflict', lastSyncAt: true, lastError: 'merge produced conflict markers' }, actor);
           const ab = await git.aheadBehind(dir, branch);
           return { status: 'conflict', ahead: ab.ahead, behind: ab.behind, lastError: 'merge produced conflict markers' };
         }
         await storageMod.scanSpace(space);
+        await reconcileMergedRooms(space, dir, preMerge, roomBases, askpass);
 
         // Whole-tree check (listConflictedFiles), not the rootPath-scoped
         // hasConflictMarkers(dir, rootPath) this used to call: a conflict
@@ -165,6 +173,43 @@ export async function performSync(space: string, requestedBy?: GitIdentity): Pro
       return { status: 'error', ahead: 0, behind: 0, lastError: message };
     }
   });
+}
+
+/**
+ * The other half of performSync's room handling (01.10.2026): a merge rewrites
+ * files on disk, outside any Y.Doc, and an open room would otherwise keep the
+ * pre-merge content and write it straight back. Every open room of `space`
+ * whose file the merge changed (preMerge..HEAD) gets the merged file through
+ * collab.reconcileLiveRoomAfterMerge. Runs after scanSpace, so a page the remote
+ * renamed is found under its new path. Content comes from the merge commit, not
+ * the working tree: a room write that slipped in right after the merge cannot
+ * pass for the merge result, and the reconcile's own write repairs the file.
+ */
+async function reconcileMergedRooms(
+  space: string,
+  dir: string,
+  preMerge: string,
+  roomBases: Map<string, Uint8Array>,
+  askpass: string | undefined,
+): Promise<void> {
+  const live = collab.liveRoomIds();
+  if (live.length === 0) return;
+  const changed = new Set(await git.filesChangedBetween(dir, preMerge, 'HEAD', askpass, space));
+  if (changed.size === 0) return;
+  const rootPath = storageMod.getRootPath(space);
+  for (const id of live) {
+    const entry = await storageMod.getEntry(id);
+    if (!entry || entry.space !== space) continue;
+    const repoRelPath = rootPath ? `${rootPath}/${entry.relPath}` : entry.relPath;
+    if (!changed.has(repoRelPath)) continue;
+    try {
+      const merged = await git.showFileAt(dir, 'HEAD', repoRelPath, askpass, space);
+      collab.reconcileLiveRoomAfterMerge(entry, merged, roomBases.get(id));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`[git-sync] failed to bring live room ${id} up to the merge in "${space}":`, err);
+    }
+  }
 }
 
 /**

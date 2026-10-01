@@ -56,10 +56,12 @@ audit of the current user of the session, without a separate token.
 
 ## Important pitfalls (from `docs/AGENT-API.md`, checked against the code)
 
-- **`create_page` does not take ready text as "create and fill at once" in
-  an arbitrary way** — it creates a page (empty or with an optional
-  `markdown` for a `doc`, or a starting `columns` for a `table`). To add
-  content to a document later, make a separate `update_page` call.
+- **`create_page` takes ready text only for a document.** An optional
+  `markdown` (only for `kind: 'doc'`, the default) is written right after the
+  page is created; for `kind: 'table'` the text is ignored and an optional
+  `columns` sets the starting schema. A page without `markdown` gets only the
+  title as an `# H1`. To change the text of an existing page, call
+  `update_page`.
 - **`update_page` does not work for tables and boards.** For a table — only
   `folio_table_*`. For a board — only `update_board`.
 - **The git commit is delayed** by about 90 seconds of silence in the

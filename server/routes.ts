@@ -777,10 +777,8 @@ export function registerRoutes(app: FastifyInstance): void {
     );
     // Streamed straight from the working-tree file — this scope has no
     // @fastify/static registered (unlike the separate /files/ scope in
-    // index.ts, which enforces only space-level, not page-level, access —
-    // see the round's report for why this route doesn't just reuse it), so
-    // a plain read stream is the simplest way to avoid holding a 50MB+ file
-    // in memory.
+    // server/fileAccess.ts), so a plain read stream is the simplest way to
+    // avoid holding a 50MB+ file in memory.
     return reply.send(fsSync.createReadStream(entry.absPath));
   });
 
@@ -1178,8 +1176,14 @@ export function registerRoutes(app: FastifyInstance): void {
 
   // --- Share links (round 8) -----------------------------------------------
 
+  // Cookie-only, all four: a share link IS a credential (ShareLinkInfo.url
+  // embeds the live token, and an `edit` token writes the page as a guest,
+  // outside any PAT scope and under a different audit identity). Same
+  // reasoning as the invite routes below — security review F-03 found a
+  // `scopes: ['read']` token of an editor reading back live edit URLs here.
   app.get('/api/pages/:id/shares', async (request) => {
     const { id } = request.params as { id: string };
+    session.requireCookieAuth(request);
     await session.requirePageRole(request, id, 'editor');
     const list: ShareLinkInfo[] = await shares.listSharesForPage(id, requestOrigin(request));
     return { shares: list };
@@ -1187,6 +1191,7 @@ export function registerRoutes(app: FastifyInstance): void {
 
   app.post('/api/pages/:id/shares', async (request, reply) => {
     const { id } = request.params as { id: string };
+    session.requireCookieAuth(request);
     await session.requirePageRole(request, id, 'editor');
     session.requireWriteScope(request);
     const body = parseBody(createShareLinkBodySchema, request.body);
@@ -1201,6 +1206,7 @@ export function registerRoutes(app: FastifyInstance): void {
   /** Round 23 follow-up: flip includeChildren on an existing link — same creator-or-space-admin gate as revoke below (it can WIDEN what an already-distributed link exposes). */
   app.patch('/api/shares/:id', async (request) => {
     const { id } = request.params as { id: string };
+    session.requireCookieAuth(request);
     const body = parseBody(updateShareLinkBodySchema, request.body);
     session.requireWriteScope(request);
     const share = await shares.getShareForRevoke(id);
@@ -1220,6 +1226,7 @@ export function registerRoutes(app: FastifyInstance): void {
 
   app.delete('/api/shares/:id', async (request) => {
     const { id } = request.params as { id: string };
+    session.requireCookieAuth(request);
     session.requireWriteScope(request);
     const share = await shares.getShareForRevoke(id);
     if (!share) throw notFound('share link');

@@ -7,7 +7,9 @@
  * share link is closer to "a resource you can list and manage" than "a
  * password" — GET /api/pages/:id/shares needs to keep showing the full
  * shareable URL (which embeds the token) every time it's listed, not just
- * once at creation the way a PAT is.
+ * once at creation the way a PAT is. That is also why every share-management
+ * route (list/create/change/revoke) is browser-session only: a PAT, whatever
+ * its scope, never sees or mints a token (server/routes.ts).
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { ShareLinkInfo, ShareLinkMode } from '../shared/contracts.js';
