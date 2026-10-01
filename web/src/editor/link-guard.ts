@@ -20,6 +20,8 @@
  * (`constructDeleteGuard`), and the pair itself goes only once nothing is
  * left between its markers (`emptyConstructCleanup`). A Backspace at the
  * visual start of an ATX heading gets the same care (`headingBackspaceGuard`).
+ * A space typed at the inner edge of a folded format lands outside the pair
+ * (`edgeSpaceGuard`): next to a space a `**` is no longer a marker.
  *
  * Two different lookups feed the same guard, because the constructs come in
  * two shapes:
@@ -33,7 +35,7 @@
  */
 import { insertNewlineContinueMarkup } from '@codemirror/lang-markdown';
 import { syntaxTree } from '@codemirror/language';
-import { EditorSelection, EditorState, Prec, findClusterBreak, type Extension, type Text } from '@codemirror/state';
+import { EditorSelection, EditorState, Prec, Transaction, findClusterBreak, type Extension, type Text } from '@codemirror/state';
 import { keymap, type Command } from '@codemirror/view';
 import type { SyntaxNode, Tree } from '@lezer/common';
 import { nearestLinkEdge } from './gfm-table';
@@ -511,6 +513,106 @@ const emptyConstructCleanup = EditorState.transactionFilter.of((tr) => {
   return [tr, { changes: drops, sequential: true }];
 });
 
+/**
+ * One step outwards from `at`, if `at` is the inner edge of a folded
+ * construct: its outer edge on the same side. Null when `at` is no such edge,
+ * or the construct is inline code — there a space is part of the code.
+ */
+function stepOutOfConstruct(tree: Tree, doc: Text, at: number, start: boolean): number | null {
+  const inner = start ? 'innerFrom' : 'innerTo';
+  const outer = start ? 'outerFrom' : 'outerTo';
+  for (let node = constructNodeAt(tree, at); node; node = node.parent) {
+    if (!(node.name in MARK_CHILD)) continue;
+    const span = foldedSpan(node, doc);
+    if (span && span[inner] === at) return node.name === 'InlineCode' ? null : span[outer];
+  }
+  // `<ins>`/`<mark>` pairs take a whole-document walk to find, so only look
+  // when the character on that side can be the end of a tag at all.
+  const beside = start ? doc.sliceString(Math.max(0, at - 1), at) : doc.sliceString(at, Math.min(doc.length, at + 1));
+  if (beside !== (start ? '>' : '<')) return null;
+  const html = htmlPairAt(tree, doc, at);
+  return html && html[inner] === at ? html[outer] : null;
+}
+
+/**
+ * Where a space typed at `pos` belongs: `pos` itself, or — when `pos` is the
+ * inner edge of a folded construct — the outside of it.
+ *
+ * For bold, italic, strikethrough and `==highlight==` this is a matter of
+ * the markup surviving: CommonMark's flanking rule says an opening marker
+ * followed by whitespace opens nothing, and a closing one preceded by
+ * whitespace closes nothing. For a link or an underline nothing breaks, but
+ * the space is no more wanted inside — it would be underlined, or part of the
+ * link — so every folded construct is treated alike, inline code excepted.
+ *
+ * At the START of the visible text the answer is always "before the opening
+ * marker": a leading space inside the pair is never what was meant. At the
+ * END it is "after the closing marker" only while a WORD follows the
+ * construct directly (`**JSON**path`) — the space is there to part the two.
+ * Anywhere else — end of line, a space, a full stop — a space at the end is
+ * the middle of typing "bold more", the commonest way a bold phrase gets
+ * written, and it stays inside so the phrase can go on.
+ *
+ * Nested pairs (`***x***`, `<ins>**x**</ins>`) are stepped out of one after
+ * another, for as long as each outer edge is the next construct's inner edge.
+ */
+export function edgeSpacePos(tree: Tree, doc: Text, pos: number): number {
+  const walk = (start: boolean): number => {
+    let at = pos;
+    // Bounded: real nesting is two or three deep.
+    for (let depth = 0; depth < 8; depth++) {
+      const next = stepOutOfConstruct(tree, doc, at, start);
+      if (next === null || next === at) break;
+      at = next;
+    }
+    return at;
+  };
+
+  const before = walk(true);
+  if (before !== pos) return before;
+
+  const after = walk(false);
+  if (after === pos) return pos;
+  const line = doc.lineAt(after);
+  // Two code units, so a letter outside the BMP is still read whole.
+  const next = doc.sliceString(after, Math.min(line.to, after + 2));
+  return /^[\p{L}\p{N}]/u.test(next) ? after : pos;
+}
+
+/**
+ * A space typed at the folded edge of a format — bold, italic, strikethrough,
+ * highlight, underline, a link — goes OUTSIDE the pair. The owner,
+ * 01.10.2026: the caret stood between `thing:` and a bold phrase, one press
+ * of the space bar — and the line read `thing:** JSON path**`, asterisks and
+ * all: the caret had been resting after the hidden `**`, and `** ` opens
+ * nothing. "It may not be only bold" — it is every format with hidden markers.
+ */
+const edgeSpaceGuard = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged || !tr.isUserEvent('input') || !tr.startState.facet(liveModeFacet)) return tr;
+  // Mid-composition the browser owns where the text is; moving it would fight the IME.
+  if (tr.isUserEvent('input.type.compose')) return tr;
+  const state = tr.startState;
+  if (state.selection.ranges.length !== 1 || !state.selection.main.empty) return tr;
+
+  let change: { at: number; text: string } | null = null;
+  let single = true;
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    if (change || fromA !== toA) single = false;
+    else change = { at: fromA, text: inserted.toString() };
+  });
+  const typed = change as { at: number; text: string } | null;
+  if (!single || !typed || !/^[ \t\u00a0]+$/.test(typed.text)) return tr;
+
+  const target = edgeSpacePos(syntaxTree(state), state.doc, typed.at);
+  if (target === typed.at) return tr;
+  return {
+    changes: { from: target, insert: typed.text },
+    selection: EditorSelection.cursor(target + typed.text.length),
+    scrollIntoView: tr.scrollIntoView,
+    userEvent: tr.annotation(Transaction.userEvent),
+  };
+});
+
 /** Wired into `livePreview` at the highest precedence — see live-preview.ts. */
 export const linkEditingGuard: Extension = [
   Prec.highest(
@@ -524,4 +626,5 @@ export const linkEditingGuard: Extension = [
     ]),
   ),
   emptyConstructCleanup,
+  edgeSpaceGuard,
 ];

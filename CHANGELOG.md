@@ -12,6 +12,14 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   tables, forms and file pages; "Copy to…" remains for a copy in another
   place or another space.
 
+### Fixed
+
+- A space typed at the edge of formatted text no longer breaks the
+  formatting. With the caret right before a bold, italic, struck-through,
+  highlighted or underlined phrase, or before a link, the space now goes in
+  front of the hidden marker instead of after it, where it used to turn
+  `**bold**` into plain text with the asterisks showing.
+
 ### Changed
 
 - Interface languages are picked up from the bundle files that exist, so
