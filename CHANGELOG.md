@@ -4,6 +4,14 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Added
+
+- **Duplicate** in the page menu of the sidebar. The copy appears next to
+  the original together with all of its child pages, is named
+  "Title (copy)" and opens at once. Works for documents, whiteboards, data
+  tables, forms and file pages; "Copy to…" remains for a copy in another
+  place or another space.
+
 ### Changed
 
 - Interface languages are picked up from the bundle files that exist, so

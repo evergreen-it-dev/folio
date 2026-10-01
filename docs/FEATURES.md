@@ -137,6 +137,10 @@ authorship.
 - A **tree** with drag and drop, a templates folder for creating "from a
   template", and the `.agent` folder (see section 11). The tree updates by
   itself.
+- **Duplicate** and **Copy to…** in the page menu. Duplicate puts a copy
+  next to the original, child pages included; Copy to… puts it under any
+  page of any space you can edit, with or without the child pages. Every
+  copied page gets an identity of its own.
 
 ## 9. Data tables
 
