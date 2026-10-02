@@ -582,4 +582,15 @@ describe('parseInlineSpans: bare addresses', () => {
     expect(link?.target).toBe('https://example.com');
     expect(link?.text).toBe('here');
   });
+
+  it('reads a <…> destination whole, parentheses and all', () => {
+    const raw = 'see [page](<https://example.com/a(1)>) now';
+    const spans = parseInlineSpans(raw);
+    const link = spans.find((span) => span.type === 'link');
+
+    expect(link?.text).toBe('page');
+    expect(link?.target).toBe('<https://example.com/a(1)>');
+    expect(raw.slice(link!.from, link!.to)).toBe('[page](<https://example.com/a(1)>)');
+    expect(spans.at(-1)).toMatchObject({ type: 'text', text: ' now' });
+  });
 });

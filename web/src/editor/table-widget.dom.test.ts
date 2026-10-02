@@ -1614,3 +1614,160 @@ describe('the cell context menu', () => {
   });
 
 });
+
+/**
+ * The owner, 02.10.2026: with text selected in a table cell, pasting a link
+ * replaced the text with the address instead of linking it, "the way it was in
+ * Confluence". The rules are format.ts's `linkOverSelectionEdit` — the same
+ * ones the document follows; these tests pin the cell side of the wiring.
+ */
+describe('cell paste: a URL over selected text', () => {
+  const URL = 'https://example.com/page';
+
+  function pasteIn(field: HTMLTextAreaElement, plain: string): Event {
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: { getData: () => plain } });
+    field.dispatchEvent(event);
+    return event;
+  }
+
+  /** Open cell (0, 0) holding `value` with `selected` selected. */
+  function select(h: Harness, value: string, selected: string): HTMLTextAreaElement {
+    const field = openCell(h, 0, 0);
+    field.value = value;
+    const at = value.indexOf(selected);
+    field.setSelectionRange(at, at + selected.length);
+    return field;
+  }
+
+  it('turns the selected words into a link and puts the caret after it', () => {
+    const h = mount();
+    const field = select(h, 'Meeting 02/10 at noon', '02/10');
+    const event = pasteIn(field, URL);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(field.value).toBe(`Meeting [02/10](${URL}) at noon`);
+    // A caret, not a selection: the toolbar over the old selection goes away.
+    expect(field.selectionStart).toBe(field.selectionEnd);
+    expect(field.querySelector('.cm-md-link')?.textContent).toBe('02/10');
+  });
+
+  it('writes the link into the document when the cell is committed', () => {
+    const h = mount();
+    const field = select(h, 'Meeting 02/10 at noon', '02/10');
+    pasteIn(field, URL);
+    commit(field);
+
+    expect(parseGfmTable(h.text())?.rows[0][0]).toBe(`Meeting [02/10](${URL}) at noon`);
+  });
+
+  it('links the words of a list item, with the whole line selected as well', () => {
+    const h = mount();
+    const field = select(h, '• first\n• 02/10', '02/10');
+    pasteIn(field, URL);
+    expect(field.value).toBe(`• first\n• [02/10](${URL})`);
+
+    const again = select(mount(), '• 02/10', '• 02/10');
+    pasteIn(again, URL);
+    expect(again.value).toBe(`• [02/10](${URL})`);
+  });
+
+  it('keeps formatting inside the selection', () => {
+    const h = mount();
+    const field = select(h, 'a **bold** word', '**bold**');
+    pasteIn(field, URL);
+
+    expect(field.value).toBe(`a [**bold**](${URL}) word`);
+  });
+
+  it('writes an address with a parenthesis in <…> form, and the cell still reads it back', () => {
+    const h = mount();
+    const field = select(h, 'see Folio now', 'Folio');
+    pasteIn(field, 'https://en.wikipedia.org/wiki/Folio_(book)');
+    const linked = 'see [Folio](<https://en.wikipedia.org/wiki/Folio_(book)>) now';
+    expect(field.value).toBe(linked);
+
+    // The cell parser reads one link, not a link plus stray `>)` text...
+    const link = field.querySelector<HTMLElement>('.cm-md-link');
+    expect(link?.textContent).toBe('Folio');
+    expect(field.textContent).toBe('see Folio now');
+
+    // ...and what gets committed is the same markdown.
+    commit(field);
+    expect(h.text()).toContain(linked);
+  });
+
+  it('is one undo step inside the cell', () => {
+    // The cell opens holding the text, so that is the state undo returns to.
+    const h = mount('| a | b |\n| --- | --- |\n| Meeting 02/10 at noon | 2 |');
+    const field = openCell(h, 0, 0);
+    field.setSelectionRange(8, 13);
+    pasteIn(field, URL);
+    expect(field.value).toBe(`Meeting [02/10](${URL}) at noon`);
+
+    press(field, 'z', { ctrlKey: true });
+    expect(field.value).toBe('Meeting 02/10 at noon');
+  });
+
+  it('with nothing selected pastes the URL as text', () => {
+    const h = mount();
+    const field = openCell(h, 0, 0);
+    field.value = 'Meeting ';
+    field.setSelectionRange(8, 8);
+    pasteIn(field, URL);
+
+    expect(field.value).toBe(`Meeting ${URL}`);
+  });
+
+  it('with text that is not a lone URL replaces the selection', () => {
+    for (const clipboard of ['see https://example.com/page', 'https://example.com/a https://example.com/b', 'plain words']) {
+      const field = select(mount(), 'Meeting 02/10 at noon', '02/10');
+      pasteIn(field, clipboard);
+
+      expect(field.value).toBe(`Meeting ${clipboard} at noon`);
+    }
+  });
+
+  it('over a visible link label never writes a link inside the link', () => {
+    // The grid hides `[` and `](…)`, so what the DOM selection reports for the
+    // visible label may include the opening bracket — either way the pasted
+    // URL goes in as text and no second link is made.
+    const field = select(mount(), 'a [label](https://example.com/old) b', 'label');
+    const before = field.value;
+    pasteIn(field, URL);
+
+    expect(field.value).not.toContain(`[label](${URL})`);
+    expect(field.value).not.toMatch(/\[\[|\]\(\S*\]\(/);
+    expect(field.value).not.toBe(before);
+  });
+
+  it('over a selection that spans lines replaces it', () => {
+    const field = select(mount(), 'one\ntwo', 'one\ntwo');
+    pasteIn(field, URL);
+
+    expect(field.value).toBe(URL);
+  });
+
+  it('over a selection that is itself a URL replaces it', () => {
+    const field = select(mount(), 'go https://example.com/old now', 'https://example.com/old');
+    pasteIn(field, URL);
+
+    expect(field.value).toBe(`go ${URL} now`);
+  });
+
+  it('inside inline code replaces the selection', () => {
+    const field = select(mount(), 'run `npm test` now', 'npm test');
+    // Select the code's own visible text, the way a drag inside it would.
+    const code = field.querySelector('code')!.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(code, 0);
+    range.setEnd(code, 3);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([5, 8]);
+    pasteIn(field, URL);
+
+    expect(field.value).toBe(`run \`${URL} test\` now`);
+  });
+});

@@ -37,6 +37,7 @@ import { listIndentKeymap } from './list-indent';
 import { pinToolbar } from './pin-toolbar';
 import { t as translate } from './i18n';
 import { mentionCompletions } from './mentions';
+import { pasteLinkOverSelection } from './paste-link';
 import { wikilinkCompletions } from './wikilink';
 
 const folioHighlight = HighlightStyle.define([
@@ -158,7 +159,11 @@ const folioTheme = EditorView.theme({
 /** Everything the editor needs except the Yjs binding and the live-preview mode config. */
 export function markdownEditorExtensions(): Extension {
   return [
-    markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [FolioHighlight] }),
+    // Not the package's own `pasteURLAsLink`: it wraps on any clipboard that
+    // merely STARTS with a URL, refuses a selection with formatting in it and
+    // writes a `)` into the target unescaped. `pasteLinkOverSelection` below
+    // does the same job by the rules in format.ts, shared with table cells.
+    markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [FolioHighlight], pasteURLAsLink: false }),
     syntaxHighlighting(folioHighlight),
     folioTheme,
     EditorView.lineWrapping,
@@ -191,6 +196,10 @@ export function markdownEditorExtensions(): Extension {
     // Round 21: the floating bar over a selection, plus Mod+B/I/U/Shift+X/E.
     // Both modes get it — source mode writes the same markdown.
     formatting,
+    // A URL pasted over selected text links the text instead of replacing it.
+    // Before the page-level paste handlers (they come after this list), and it
+    // claims nothing but "selection + one URL".
+    pasteLinkOverSelection,
     // Round 25: the pinned command strip above the document, and its hotkey.
     pinToolbar,
     // Tab/Shift+Tab nest and un-nest a list item. Prec.high so it beats

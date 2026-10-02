@@ -320,6 +320,71 @@ const tablePointerGuard = EditorState.transactionFilter.of((tr) => {
   ];
 });
 
+/**
+ * Text typed on the line right under a folded table keeps a blank line between
+ * them.
+ *
+ * The caret rests there on purpose: it is where `tablePointerGuard` sends a
+ * click beside the table, and the blank line under the last row is where the
+ * author goes to keep writing. But GFM ends a table only at a blank line, and
+ * a line without pipes directly after the last row is read as one more ROW —
+ * so the first character typed there (an emoji from the OS picker or the `((`
+ * list, a letter) joined the table, put the caret inside the block and
+ * unfolded the grid into `[//]: # (folio-table: …)` and pipe rows (the owner,
+ * 02.10.2026: "I insert an emoji into a table and it breaks at once").
+ *
+ * The blank line that separates stays, and what was typed goes onto a line of
+ * its own below it — the same document the author would have written with a
+ * second Enter. Only the author's own input (`input…`): a peer's change comes
+ * through Yjs and is written back to the shared text as it is, and a
+ * composition is not moved from under the IME (as `edgeSpaceGuard` does).
+ * Source mode is plain text and keeps GFM's rule.
+ */
+const tableTypingGuard = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged || !tr.isUserEvent('input') || tr.isUserEvent('input.type.compose')) return tr;
+  const state = tr.startState;
+  if (!state.facet(liveModeFacet)) return tr;
+
+  // Most typing is on a line with text on it: that is answered by the first
+  // test, before anything is parsed.
+  const glued: { from: number; tableEnd: number }[] = [];
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    const line = state.doc.lineAt(fromA);
+    if (line.number === 1 || toA > line.to || line.text.trim() !== '') return;
+    // The line stays blank for a space, or for Enter: nothing is glued then.
+    if (inserted.line(1).text.trim() === '') return;
+    const above = state.doc.line(line.number - 1);
+    if (above.text.trim() === '' || !tableEndsAt(state, above.to)) return;
+    glued.push({ from: line.from, tableEnd: above.to });
+  });
+  if (glued.length === 0) return tr;
+
+  const folded = computeBlockSpecs({
+    doc: state.doc,
+    tree: syntaxTree(state),
+    selection: state.selection.ranges,
+    ranges: [{ from: 0, to: state.doc.length }],
+    live: true,
+  }).filter((spec) => spec.kind === 'table');
+  const lines = glued.filter(({ tableEnd }) => folded.some((spec) => spec.to === tableEnd));
+  if (lines.length === 0) return tr;
+  return [
+    tr,
+    {
+      changes: lines.map(({ from }) => ({ from: tr.changes.mapPos(from, -1), insert: '\n' })),
+      sequential: true,
+    },
+  ];
+});
+
+/** True when a top-level table's last row ends at `pos` — the end of a line. */
+function tableEndsAt(state: EditorState, pos: number): boolean {
+  for (let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent) {
+    if (node.name === 'Table') return node.parent?.name === 'Document' && state.doc.lineAt(node.to).to === pos;
+  }
+  return false;
+}
+
 /** Wired into `livePreview` at the highest precedence — see live-preview.ts. */
 export const blockWidgetNav: Extension = [
   Prec.highest(
@@ -331,4 +396,5 @@ export const blockWidgetNav: Extension = [
     ]),
   ),
   tablePointerGuard,
+  tableTypingGuard,
 ];

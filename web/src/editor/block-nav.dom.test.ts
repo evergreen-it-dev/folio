@@ -17,14 +17,14 @@ import { markdownEditorExtensions } from './markdown-setup';
 
 const views: EditorView[] = [];
 
-function mount(doc: string, pos: number): EditorView {
+function mount(doc: string, pos: number, live = true): EditorView {
   const view = new EditorView({
     state: EditorState.create({
       doc,
       extensions: [
         markdownEditorExtensions(),
         livePreview,
-        livePreviewConfig(true, { space: 'eng', pagePath: 'a.md', pageId: 'P1' }),
+        livePreviewConfig(live, { space: 'eng', pagePath: 'a.md', pageId: 'P1' }),
       ],
       selection: EditorSelection.single(pos),
     }),
@@ -175,5 +175,103 @@ describe('a pointer caret never rests on a folded table', () => {
     expect(folded(view)).toBe(false);
     point(view, from + 5);
     expect(view.state.selection.main.head).toBe(from + 5);
+  });
+});
+
+/**
+ * The owner, 02.10.2026: "I insert an emoji into a table and it breaks at
+ * once" — the table stopped being a grid and showed its `[//]: #
+ * (folio-table: …)` line and pipe rows. A click under a table parks the caret
+ * on the blank line right below it (`tablePointerGuard`), and whatever is
+ * typed there — an emoji from the OS picker, the `((` picker, a letter — lands
+ * on the line directly after the last row. GFM reads such a line as one more
+ * ROW of the table, so the table swallowed it, the caret was inside the table
+ * and the grid unfolded.
+ */
+describe('text typed on the line right under a folded table', () => {
+  const TABLE = ['| a | b |', '| --- | --- |', '| 1 | 2 |'].join('\n');
+  const BLOCK = `[//]: # (folio-table: display=medium; bg=A9:blue; w=1:43%,2:57%)\n\n${TABLE}`;
+  const DOC = `# T\n\nabove\n\n${BLOCK}\n\nbelow`;
+  /** The blank line between the last row and "below". */
+  const gap = DOC.indexOf(BLOCK) + BLOCK.length + 1;
+  const folded = (view: EditorView) => view.dom.querySelector('.cm-md-table-widget') !== null;
+  const typeAt = (view: EditorView, at: number, text: string, userEvent = 'input.type') =>
+    view.dispatch({
+      changes: { from: at, insert: text },
+      selection: EditorSelection.cursor(at + text.length),
+      userEvent,
+    });
+
+  it.each([
+    ['a letter', 'x'],
+    ['an emoji outside the BMP', '😀'],
+    ['an emoji with a variation selector', '❤️'],
+  ])('%s keeps the table folded and a blank line between them', (_name, text) => {
+    const view = mount(DOC, gap);
+    expect(folded(view)).toBe(true);
+    expect(view.state.doc.lineAt(gap).text).toBe('');
+
+    typeAt(view, gap, text);
+
+    expect(view.state.doc.toString()).toBe(`# T\n\nabove\n\n${BLOCK}\n\n${text}\nbelow`);
+    expect(view.state.sliceDoc(view.state.selection.main.head - text.length, view.state.selection.main.head)).toBe(text);
+    expect(folded(view)).toBe(true);
+    expect(view.dom.textContent).not.toContain('folio-table');
+  });
+
+  it('a pasted block is moved down as a whole', () => {
+    const view = mount(DOC, gap);
+    typeAt(view, gap, '😀 first\nsecond', 'input.paste');
+    expect(view.state.doc.toString()).toBe(`# T\n\nabove\n\n${BLOCK}\n\n😀 first\nsecond\nbelow`);
+    expect(folded(view)).toBe(true);
+  });
+
+  it('a table that ends the page gets its writing line separated too', () => {
+    const doc = `# T\n\n${TABLE}`;
+    const view = mount(doc, 0);
+    // The caret that came from a click below the table (`tablePointerGuard`).
+    view.dispatch({ selection: EditorSelection.cursor(doc.length), userEvent: 'select.pointer' });
+    expect(view.state.doc.toString()).toBe(`${doc}\n`);
+
+    typeAt(view, doc.length + 1, '😀');
+
+    expect(view.state.doc.toString()).toBe(`${doc}\n\n😀`);
+    expect(view.state.selection.main.head).toBe(view.state.doc.length);
+    expect(folded(view)).toBe(true);
+  });
+
+  it('whitespace and Enter on that line leave it blank, so they are not touched', () => {
+    const view = mount(DOC, gap);
+    typeAt(view, gap, ' ');
+    expect(view.state.doc.toString()).toBe(`${DOC.slice(0, gap)} ${DOC.slice(gap)}`);
+    view.dispatch({
+      changes: { from: gap + 1, insert: '\n' },
+      selection: EditorSelection.cursor(gap + 2),
+      userEvent: 'input',
+    });
+    expect(view.state.doc.toString()).toBe(`${DOC.slice(0, gap)} \n${DOC.slice(gap)}`);
+    expect(folded(view)).toBe(true);
+  });
+
+  it('a line that already has a blank line above it is typed on as usual', () => {
+    const doc = DOC.replace('\n\nbelow', '\n\n\nbelow');
+    const view = mount(doc, gap + 1);
+    typeAt(view, gap + 1, '😀');
+    expect(view.state.doc.toString()).toBe(doc.slice(0, gap + 1) + '😀' + doc.slice(gap + 1));
+    expect(folded(view)).toBe(true);
+  });
+
+  it('only the author\'s own input is rewritten: a peer\'s change is applied as it came', () => {
+    const view = mount(DOC, 0);
+    // Remote and programmatic transactions carry no user event; rewriting one
+    // would put the local document out of step with the shared text.
+    view.dispatch({ changes: { from: gap, insert: 'x' } });
+    expect(view.state.doc.toString()).toBe(`${DOC.slice(0, gap)}x${DOC.slice(gap)}`);
+  });
+
+  it('source mode is plain text: nothing is moved', () => {
+    const view = mount(DOC, gap, false);
+    typeAt(view, gap, 'x');
+    expect(view.state.doc.toString()).toBe(`${DOC.slice(0, gap)}x${DOC.slice(gap)}`);
   });
 });

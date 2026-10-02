@@ -1041,7 +1041,10 @@ const INLINE_RULES: { re: RegExp; type: InlineToken['type'] }[] = [
   { re: /~~([^~]+?)~~/y, type: 'del' },
   { re: /\*([^*]+?)\*/y, type: 'em' },
   { re: /_([^_]+?)_/y, type: 'em' },
-  { re: /\[([^\]]*?)\]\(([^)]*)\)/y, type: 'link' },
+  // The destination may be `<…>` (paths.ts `formatLinkTarget`), which is how an
+  // address with a `)` in it is written; the target keeps its brackets so the
+  // cell serializes back to exactly what it was read from.
+  { re: /\[([^\]]*?)\]\((<[^>]*>|[^)]*)\)/y, type: 'link' },
   // The formatting toolbar's two HTML formats. Written by us, and shown as the
   // format rather than as tags — otherwise underlining a cell would leave
   // `<ins>` sitting there in the grid.

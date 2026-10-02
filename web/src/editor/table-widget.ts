@@ -83,6 +83,7 @@ import {
 } from './gfm-table';
 import { bgClass } from '../markdown/tableSyntax';
 import { emojiFavouritesFacet } from './emoji-complete';
+import { linkOverSelectionEdit, pastedUrl } from './format';
 import { attachFieldFormatting, formatForEvent } from './format-toolbar';
 import { t } from './i18n';
 import { attachEmojiInput, openEmojiPicker } from './emoji-popover';
@@ -2826,10 +2827,19 @@ function beginEdit(
     const text = event.clipboardData?.getData('text/plain');
     if (text === undefined) return;
     event.preventDefault();
-    const clean = sanitizeCellPaste(text);
     const start = field.selectionStart ?? field.value.length;
     const end = field.selectionEnd ?? start;
-    field.setRangeText(clean, start, end, 'end');
+    // A lone URL pasted over selected words links them instead of replacing
+    // them (format.ts decides; it is the same rule the document uses).
+    const url = start === end ? null : pastedUrl(text);
+    const link = url ? linkOverSelectionEdit(field.value, start, end, url) : null;
+    if (link) {
+      const [change] = link.changes;
+      field.setRangeText(change.insert, change.from, change.to, 'end');
+      autosize();
+      return;
+    }
+    field.setRangeText(sanitizeCellPaste(text), start, end, 'end');
     autosize();
   });
 

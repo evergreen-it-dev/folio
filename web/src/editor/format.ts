@@ -31,6 +31,7 @@
  * the bold off that part") instead of nesting another pair inside it.
  */
 import { BG_TOKENS, type BgToken } from '../markdown/tableSyntax';
+import { formatLinkTarget } from './paths';
 
 export type InlineFormat = 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'highlight';
 
@@ -463,6 +464,234 @@ export function linkEdit(text: string, from: number, to: number): FormatEdit {
     selection: labelIsPlaceholder
       ? { from: labelAt, to: labelAt + label.length }
       : { from: targetAt, to: targetAt + target.length },
+  };
+}
+
+/* ------------------------------------------------------ paste a link over -- */
+
+/** Exactly one address, no whitespace and no angle brackets inside. */
+const SINGLE_URL = /^https?:\/\/[^\s<>]+$/i;
+/** `www.example.com` — what @codemirror/lang-markdown's own paste-as-link took, and wrote with `https://` in front. */
+const WWW_URL = /^www\.[^\s<>]+$/i;
+const MAILTO_URL = /^mailto:[^\s<>@]+@[^\s<>]+$/i;
+
+/** A selection that already is an address: wrapping it would nest one address in another. */
+const ADDRESS_SELECTION = /^(?:https?:\/\/|www\.|mailto:)\S+$/i;
+
+/**
+ * What a list item, quote or heading writes before its text. A selection that
+ * starts on that marker (`field.select()` in a table cell does) is only ever
+ * meant to cover the words after it.
+ */
+const LINE_PREFIX =
+  /^[ \t]*(?:>[ \t]*)*(?:(?:[-*+•·◦]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?|\[[ xX]\][ \t]+|#{1,6}[ \t]+)?/;
+
+/**
+ * The link target for a clipboard whose plain text is exactly ONE address
+ * (surrounding whitespace and the trailing newline a terminal adds are
+ * ignored); null for anything else, which is then pasted as ordinary text.
+ *
+ * `http(s)://…` is taken as it is. `www.…` gets `https://` in front and
+ * `mailto:` stays — both are what the markdown language package's own
+ * paste-as-link accepted before this took its place (see markdown-setup.ts).
+ */
+export function pastedUrl(clipboard: string): string | null {
+  const value = clipboard.trim();
+  if (MAILTO_URL.test(value)) return value;
+  const target = WWW_URL.test(value) ? `https://${value}` : value;
+  if (!SINGLE_URL.test(target)) return null;
+  try {
+    return new URL(target).hostname ? target : null;
+  } catch {
+    return null;
+  }
+}
+
+interface InlineSpan {
+  from: number;
+  to: number;
+  kind: 'link' | 'code';
+}
+
+const BARE_ADDRESS = /(?:https?:\/\/|www\.)[^\s<>]+/gi;
+const AUTOLINK = /<(?:https?|mailto|ftp):[^\s<>]*>/gi;
+const HTML_ANCHOR = /<a\s[^>]*>[\s\S]*?<\/a>/gi;
+const HTML_IMAGE = /<img\b[^>]*>/gi;
+
+/** Index just past the `)` that closes the inline link whose `[` is at `open`, or -1 when it is not one. */
+function inlineLinkEnd(text: string, open: number): number {
+  let depth = 0;
+  let close = -1;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '\\') {
+      i++;
+      continue;
+    }
+    if (text[i] === '[') depth++;
+    else if (text[i] === ']' && --depth === 0) {
+      close = i;
+      break;
+    }
+  }
+  if (close < 0 || text[close + 1] !== '(') return -1;
+  let at = close + 2;
+  // `<…>` destinations may hold parentheses; the closer comes after them.
+  if (text[at] === '<') {
+    const angle = text.indexOf('>', at + 1);
+    if (angle < 0) return -1;
+    at = angle + 1;
+  }
+  let parens = 1;
+  for (; at < text.length; at++) {
+    if (text[at] === '\\') {
+      at++;
+      continue;
+    }
+    if (text[at] === '(') parens++;
+    else if (text[at] === ')' && --parens === 0) return at + 1;
+  }
+  return -1;
+}
+
+/** Inline code spans, links, images and bare addresses of one line, with their source ranges. */
+function inlineSpans(line: string): InlineSpan[] {
+  const spans: InlineSpan[] = [];
+  for (let i = 0; i < line.length; ) {
+    const ch = line[i];
+    if (ch === '\\') {
+      i += 2;
+      continue;
+    }
+    if (ch === '`') {
+      let run = i;
+      while (line[run] === '`') run++;
+      const size = run - i;
+      let close = -1;
+      for (let k = run; k < line.length && close < 0; ) {
+        if (line[k] !== '`') {
+          k++;
+          continue;
+        }
+        let end = k;
+        while (line[end] === '`') end++;
+        if (end - k === size) close = end;
+        k = end;
+      }
+      if (close < 0) {
+        i = run;
+        continue;
+      }
+      spans.push({ from: i, to: close, kind: 'code' });
+      i = close;
+      continue;
+    }
+    if (ch === '[') {
+      const end = inlineLinkEnd(line, i);
+      if (end > 0) {
+        spans.push({ from: i > 0 && line[i - 1] === '!' ? i - 1 : i, to: end, kind: 'link' });
+        i = end;
+        continue;
+      }
+    }
+    i++;
+  }
+  for (const pattern of [BARE_ADDRESS, AUTOLINK, HTML_ANCHOR, HTML_IMAGE]) {
+    for (const match of line.matchAll(pattern)) {
+      spans.push({ from: match.index, to: match.index + match[0].length, kind: 'link' });
+    }
+  }
+  return spans;
+}
+
+/** `[` and `]` in `label` pair up (escaped ones aside) and it does not end on a lone backslash. */
+function labelIsSafe(label: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < label.length; i++) {
+    if (label[i] === '\\') {
+      if (i === label.length - 1) return false;
+      i++;
+      continue;
+    }
+    if (label[i] === '[') depth++;
+    else if (label[i] === ']' && --depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+/**
+ * Paste a URL over a selection: `[selected text](url)`, the way Confluence and
+ * Google Docs do it, instead of replacing the text with the address.
+ *
+ * Returns null whenever the plain replacement is the right behaviour — the
+ * caller then lets the paste through untouched:
+ *  - nothing is selected, or only blanks;
+ *  - the selection spans lines (a table cell value is lines too);
+ *  - the selection is itself an address, or touches an existing link, image,
+ *    bare address or raw HTML anchor — links never nest;
+ *  - the selection is inside inline code, or cuts a code span or an emphasis
+ *    pair in two (the link would straddle the markers);
+ *  - the text has stray brackets that would end the label early.
+ * Formatting the selection fully contains (`**bold**`) is kept as the label;
+ * a selection that stops at the visible edge of a run (a table cell hides its
+ * markers) is widened over the marker first. The destination is written like
+ * every other link target here, through `formatLinkTarget`, so a `)` in the
+ * address gets the `<…>` form.
+ *
+ * Pure, like every edit in this file: one rule for the CodeMirror document in
+ * both modes and for a table cell's text field.
+ */
+export function linkOverSelectionEdit(text: string, from: number, to: number, url: string): FormatEdit | null {
+  const start = Math.max(0, Math.min(from, text.length));
+  const end = Math.max(0, Math.min(to, text.length));
+  if (start >= end) return null;
+
+  const lineFrom = start === 0 ? 0 : text.lastIndexOf('\n', start - 1) + 1;
+  const newline = text.indexOf('\n', lineFrom);
+  const lineTo = newline < 0 ? text.length : newline;
+  if (end > lineTo) return null;
+
+  const line = text.slice(lineFrom, lineTo);
+  const prefix = LINE_PREFIX.exec(line)?.[0].length ?? 0;
+  const trimmed = trimRange(text, Math.max(start, lineFrom + prefix), end);
+  if (!text.slice(trimmed.from, trimmed.to).trim()) return null;
+
+  // The marker is blanked out, not cut: offsets stay aligned and a bullet `*`
+  // can no longer pair up with an emphasis `*` further along.
+  const scan = ' '.repeat(prefix) + line.slice(prefix);
+  let selFrom = trimmed.from - lineFrom;
+  let selTo = trimmed.to - lineFrom;
+
+  // A table cell hides its markers, so a selection that covers the VISIBLE
+  // text of a run ends at the inner edge, not past the marker. Widen it over
+  // the marker: a selection reading `a **bold` was meant as `a **bold**`.
+  const runs = (['bold', 'italic', 'underline', 'strike', 'highlight', 'code'] as const).flatMap((format) =>
+    runsOf(scan, format),
+  );
+  for (const run of runs) {
+    if (selTo === run.innerTo && selFrom <= run.outerFrom) selTo = run.outerTo;
+    else if (selFrom === run.innerFrom && selTo >= run.outerTo) selFrom = run.outerFrom;
+  }
+
+  const label = line.slice(selFrom, selTo);
+  if (ADDRESS_SELECTION.test(label) || !labelIsSafe(label)) return null;
+
+  for (const span of inlineSpans(scan)) {
+    if (span.from >= selTo || selFrom >= span.to) continue;
+    if (span.kind === 'link') return null;
+    if (selFrom > span.from || selTo < span.to) return null;
+  }
+  for (const run of runs) {
+    if (run.outerFrom >= selTo || selFrom >= run.outerTo) continue;
+    const inside = run.innerFrom <= selFrom && selTo <= run.innerTo;
+    const whole = selFrom <= run.outerFrom && run.outerTo <= selTo;
+    if (!inside && !whole) return null;
+  }
+
+  const insert = `[${label}](${formatLinkTarget(url)})`;
+  const caret = lineFrom + selFrom + insert.length;
+  return {
+    changes: [{ from: lineFrom + selFrom, to: lineFrom + selTo, insert }],
+    selection: { from: caret, to: caret },
   };
 }
 

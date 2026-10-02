@@ -6,6 +6,11 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **Paste a link over selected text.** Select some words and paste a single
+  address: the words become a link to it instead of being replaced. Works in
+  the page text and inside table cells. A selection that is already a link or
+  an address, a selection inside code, or a clipboard holding anything other
+  than one address is replaced as before.
 - **Search in the space switcher.** Long space lists scroll inside the menu,
   while the action for creating a new space stays visible.
 - Markdown tables have three labelled width modes: narrow, medium and full
@@ -26,6 +31,10 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- Text typed on the line right under a table no longer joins the table. The
+  first character there — a letter or an emoji — used to become one more table
+  row and turn the grid back into raw Markdown; a blank line now stays between
+  the table and the new text.
 - A whiteboard box no longer looks empty in the picture of a board. When a
   board was created or updated by the assistant, or imported, the label of a
   box could be drawn underneath the box in the preview used by a document that
