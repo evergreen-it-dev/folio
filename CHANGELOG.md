@@ -26,6 +26,13 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- The AI assistant starts again in the Docker image. After the Cursor SDK
+  update, its native parts (built for glibc) could not be loaded by the
+  Alpine-based image, so the first question failed with "Error loading shared
+  library" on both x86-64 and ARM (Apple Silicon). The image now carries the
+  compatibility layer they need, and the build checks that these parts load,
+  so an image in which the assistant cannot start fails the build instead of
+  failing for the first user.
 - Opening an invitation while already signed in now offers a primary
   **Continue** action that accepts the invitation with the current account.
   Signing out remains available as a secondary action.
