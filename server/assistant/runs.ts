@@ -145,10 +145,19 @@ interface RawRunRow {
   finished_at: Date | null;
 }
 
-async function dbInsertRun(row: { id: string; conversationId: string; userId: string; runMode: AssistantRunMode }): Promise<void> {
+async function dbInsertRun(row: {
+  id: string;
+  conversationId: string;
+  userId: string;
+  runMode: AssistantRunMode;
+  space: string | null;
+  pageId: string | null;
+  userMessageId: string;
+}): Promise<void> {
   await query(
-    `INSERT INTO ai_runs (id, conversation_id, user_id, run_mode, status) VALUES ($1, $2, $3, $4, 'running')`,
-    [row.id, row.conversationId, row.userId, row.runMode],
+    `INSERT INTO ai_runs (id, conversation_id, user_id, run_mode, status, space, page_id, user_message_id)
+     VALUES ($1, $2, $3, $4, 'running', $5, $6, $7)`,
+    [row.id, row.conversationId, row.userId, row.runMode, row.space, row.pageId, row.userMessageId],
   );
 }
 
@@ -264,8 +273,16 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string; c
   // POSTs for the same conversation can't both pass the check above.
   activeByConversation.set(conversationId, runId);
   try {
-    await assistantStore.insertMessage(conversationId, 'user', input.message);
-    await dbInsertRun({ id: runId, conversationId, userId: input.user.id, runMode: input.runMode });
+    const userMessage = await assistantStore.insertMessage(conversationId, 'user', input.message);
+    await dbInsertRun({
+      id: runId,
+      conversationId,
+      userId: input.user.id,
+      runMode: input.runMode,
+      space: input.space ?? null,
+      pageId: input.pageId ?? null,
+      userMessageId: userMessage.id,
+    });
   } catch (err) {
     activeByConversation.delete(conversationId);
     throw err;
@@ -339,6 +356,7 @@ async function executeRun(run: RunState, input: StartRunInput): Promise<void> {
     let replyText: string;
     try {
       replyText = await runCursorAssistant({
+        runId: run.id,
         apiKey: input.apiKey,
         user: input.user,
         conversation: input.conversation,

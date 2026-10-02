@@ -23,6 +23,12 @@ import type {
   AccessRequestSummary,
   ApiTokenInfo,
   ActiveAssistantRunResponse,
+  AdminAssistantConversationDetail,
+  AdminAssistantConversationsResponse,
+  AdminAssistantUnansweredResponse,
+  AssistantFeedbackRating,
+  AssistantFeedbackResponse,
+  AssistantSurveyBody,
   AssistantConnectionCheck,
   AssistantConversation,
   AssistantConversationsResponse,
@@ -159,6 +165,23 @@ function sleep(ms: number): Promise<void> {
 /** A network-level failure (offline, DNS, connection reset) — fetch rejects with this rather than resolving with a bad status. */
 function isNetworkError(error: unknown): boolean {
   return error instanceof TypeError;
+}
+
+/** Filters shared by the admin assistant-analytics lists; empty values are left out of the query string. */
+export interface AdminAssistantFilters {
+  space?: string;
+  userId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+function queryString(filters?: object): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters ?? {})) if (value !== undefined && value !== '') params.set(key, String(value));
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
 }
 
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
@@ -871,6 +894,34 @@ export const api = {
   /** POST /api/assistant/runs/:runId/stop — the only way to cancel a run; disconnecting the events stream does not. */
   stopAssistantRun: (runId: string) =>
     request<{ stopped: boolean }>(`/api/assistant/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' }),
+
+  /** PUT /api/assistant/messages/:messageId/feedback — one rating per message; `null` removes it. */
+  setAssistantFeedback: (messageId: string, rating: AssistantFeedbackRating | null) =>
+    request<AssistantFeedbackResponse>(`/api/assistant/messages/${encodeURIComponent(messageId)}/feedback`, {
+      method: 'PUT',
+      body: JSON.stringify({ rating }),
+    }),
+
+  /** POST /api/assistant/conversations/:id/survey — upserts on (conversation, afterMessageId), so a later POST adds the comment. */
+  submitAssistantSurvey: (conversationId: string, body: AssistantSurveyBody) =>
+    request<{ ok: true }>(`/api/assistant/conversations/${encodeURIComponent(conversationId)}/survey`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // ---------- AI assistant analytics (instance admin only) ----------
+
+  /** GET /api/admin/assistant/conversations — newest activity first; `from`/`to` are yyyy-mm-dd (inclusive). */
+  listAdminAssistantConversations: (filters?: AdminAssistantFilters) =>
+    request<AdminAssistantConversationsResponse>(`/api/admin/assistant/conversations${queryString(filters)}`),
+
+  /** GET /api/admin/assistant/conversations/:id — the whole dialog, read-only. */
+  getAdminAssistantConversation: (conversationId: string) =>
+    request<AdminAssistantConversationDetail>(`/api/admin/assistant/conversations/${encodeURIComponent(conversationId)}`),
+
+  /** GET /api/admin/assistant/unanswered — questions the assistant could not answer, newest first. */
+  listAdminAssistantUnanswered: (filters?: AdminAssistantFilters & { reason?: string }) =>
+    request<AdminAssistantUnansweredResponse>(`/api/admin/assistant/unanswered${queryString(filters)}`),
 
   // ---------- notifications and access requests (round 31) ----------
   // Cookie-only, like the `/events` socket — a PAT does not come here (see the

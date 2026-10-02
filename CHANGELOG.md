@@ -6,6 +6,14 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **Assistant feedback and analytics.** Every saved assistant answer can be
+  rated 👍 or 👎, the panel asks "Did the assistant solve your question?" after
+  every third answer, and the assistant records questions it could not answer
+  or was unsure about. Instance administrators get an "Assistant analytics"
+  page (`/admin/assistant`) with the conversations, ratings, survey results and
+  a "Questions without an answer" list, filtered by space, user and date.
+  Opening someone's conversation is recorded in the audit log. Adds migration
+  032.
 - **Paste a link over selected text.** Select some words and paste a single
   address: the words become a link to it instead of being replaced. Works in
   the page text and inside table cells. A selection that is already a link or
@@ -31,6 +39,8 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- **The trash page scrolls.** A long list of deleted items no longer runs
+  past the bottom of the window with no way to reach the rest.
 - **The sidebar page tree now updates by itself when someone else changes it.**
   A page created, renamed, moved, deleted or restored by another user, an API or
   MCP client, the assistant, an import or a Git sync used to stay invisible in an

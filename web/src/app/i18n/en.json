@@ -34,6 +34,7 @@
       "settings": "Settings",
       "users": "Users",
       "spaces": "Spaces",
+      "assistantAnalytics": "Assistant analytics",
       "help": "Tips",
       "signOut": "Sign out",
       "sections": {
@@ -1115,11 +1116,98 @@
       "modeHints": { "ask": "Read-only", "agent": "Can make allowed changes" },
       "agentRules": ".agent rules ({{count}})",
       "agentRulesHint": "Rules for the AI assistant in this space — admins maintain them.",
+      "privacyNote": "Administrators can review conversations with the assistant.",
+      "feedback": {
+        "group": "Rate this answer",
+        "up": "Helpful answer",
+        "down": "Not helpful",
+        "failed": "Couldn't save your rating."
+      },
+      "survey": {
+        "question": "Did the assistant solve your question?",
+        "solved": "Yes",
+        "partly": "Partly",
+        "notSolved": "No",
+        "skip": "Not now",
+        "commentPlaceholder": "What was missing? (optional)",
+        "send": "Send",
+        "skipComment": "Skip comment",
+        "thanks": "Thanks for your feedback!",
+        "failed": "Couldn't save your answer."
+      },
       "errors": {
         "keyRequired": "Connect your Cursor key in settings first.",
         "busy": "Please wait, the previous request is still running.",
         "generic": "Couldn't get a reply. Please try again."
       }
+    }
+  },
+  "assistantAdmin": {
+    "title": "Assistant analytics",
+    "loadFailed": "Failed to load assistant analytics.",
+    "empty": "No conversations yet.",
+    "emptyUnanswered": "No unanswered questions.",
+    "openConversation": "Open conversation",
+    "likes": "Helpful answers (👍)",
+    "dislikes": "Not helpful answers (👎)",
+    "tabs": {
+      "conversations": "Conversations",
+      "unanswered": "Questions without an answer"
+    },
+    "filters": {
+      "space": "Space",
+      "allSpaces": "All spaces",
+      "user": "User",
+      "allUsers": "All users",
+      "reason": "Reason",
+      "allReasons": "Any reason",
+      "from": "From",
+      "to": "To"
+    },
+    "columns": {
+      "date": "Date",
+      "user": "User",
+      "space": "Space",
+      "firstQuestion": "First question",
+      "questions": "Questions",
+      "ratings": "Ratings",
+      "survey": "Survey",
+      "unanswered": "Unanswered",
+      "question": "Question",
+      "reason": "Reason",
+      "missing": "What's missing"
+    },
+    "reasons": {
+      "no_answer": "No answer",
+      "low_confidence": "Not sure"
+    },
+    "surveyShort": {
+      "solved": "Solved",
+      "partly": "Partly",
+      "notSolved": "Not solved"
+    },
+    "surveyAnswers": {
+      "solved": "Solved",
+      "partly": "Partly solved",
+      "not_solved": "Not solved",
+      "skipped": "Skipped"
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} of {{total}}",
+      "prev": "Previous",
+      "next": "Next"
+    },
+    "conversation": {
+      "back": "Back",
+      "notFound": "This conversation was not found.",
+      "started": "Started",
+      "updated": "Last activity",
+      "title": "Title",
+      "survey": "Survey: {{answer}}",
+      "unanswered": "Question without an answer",
+      "missing": "Missing",
+      "ratedUp": "Helpful",
+      "ratedDown": "Not helpful"
     }
   },
   "notifications": {

@@ -25,7 +25,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { AssistantRunMode } from '../../shared/contracts.js';
 import type { User } from '../../shared/contracts.js';
+import { reportUnansweredQuestionInputSchema } from '../../shared/contracts.js';
 import { buildFolioMcpServer } from '../mcp.js';
+import { MAX_UNANSWERED_REPORTS_PER_RUN, insertUnanswered } from './analytics.js';
 
 const MAX_TOOL_RESPONSE_CHARS = 120_000;
 
@@ -52,8 +54,67 @@ function truncate(text: string): { truncated: boolean; body: string } {
   return { truncated: true, body: `${text.slice(0, MAX_TOOL_RESPONSE_CHARS)}\n…[truncated]` };
 }
 
+/** Where the built-in report_unanswered_question tool writes: the run it belongs to and where that run was started from. */
+export interface AssistantToolContext {
+  runId: string;
+  conversationId: string;
+  space: string | null;
+  pageId: string | null;
+}
+
+export const REPORT_UNANSWERED_TOOL = 'report_unanswered_question';
+
+/**
+ * Built-in (not MCP) tool: lets the assistant flag a question the space's
+ * pages could not answer, for the admin analytics. Never throws into the run —
+ * a failure comes back as an isError result, and a run records at most
+ * MAX_UNANSWERED_REPORTS_PER_RUN reports.
+ */
+function buildReportUnansweredTool(user: User, context: AssistantToolContext): SDKCustomTool {
+  return {
+    description:
+      'Report a user question that the available Folio pages could not answer, or that you answered without confidence ' +
+      '(inferred, contradictory or outdated pages). Call it at most once per question, then continue answering the user. ' +
+      'This is for the documentation owners; it is not shown to the user.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: "The user's question, restated so that it reads on its own." },
+        reason: {
+          type: 'string',
+          enum: ['no_answer', 'low_confidence'],
+          description: 'no_answer: the pages do not contain the answer. low_confidence: you answered but are not sure.',
+        },
+        missing: { type: 'string', description: 'What is missing or unclear in the documentation, if you can tell.' },
+      },
+      required: ['question', 'reason'],
+    },
+    async execute(args) {
+      const fail = (text: string) => ({ content: [{ type: 'text' as const, text }], isError: true });
+      try {
+        const parsed = reportUnansweredQuestionInputSchema.safeParse(args);
+        if (!parsed.success) return fail(`Invalid arguments: ${parsed.error.issues[0]?.message ?? 'invalid input'}`);
+        const inserted = await insertUnanswered({
+          conversationId: context.conversationId,
+          runId: context.runId,
+          userId: user.id,
+          space: context.space,
+          pageId: context.pageId,
+          question: parsed.data.question,
+          reason: parsed.data.reason,
+          missing: parsed.data.missing?.trim() || null,
+        });
+        if (!inserted) return 'Already recorded.';
+        return 'Recorded. Continue answering the user.';
+      } catch (error) {
+        return fail(error instanceof Error ? error.message : 'could not record the report');
+      }
+    },
+  };
+}
+
 /** Builds the assistant's in-process tool set for one run, and a close() to tear the client/server pair down again once the run is over. */
-export async function buildAssistantTools(user: User, runMode: AssistantRunMode): Promise<AssistantToolsHandle> {
+export async function buildAssistantTools(user: User, runMode: AssistantRunMode, context: AssistantToolContext): Promise<AssistantToolsHandle> {
   const server = buildFolioMcpServer({
     user,
     scopes: runMode === 'agent' ? ['read', 'write'] : ['read'],
@@ -88,6 +149,9 @@ export async function buildAssistantTools(user: User, runMode: AssistantRunMode)
       },
     };
   }
+
+  // Built-in, in both modes, and deliberately not registered in the public MCP server (mcp.ts).
+  tools[REPORT_UNANSWERED_TOOL] = buildReportUnansweredTool(user, context);
 
   return {
     tools,

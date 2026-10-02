@@ -77,6 +77,7 @@ In the order it was built.
 | 40 | First steps | A welcome wizard for a fresh installation; duplicating a page with its whole subtree |
 | 41 | Dense content and navigation | Resizable document tables, searchable space switching, and accepting an invitation with the current signed-in account |
 | 42 | Live tree and input methods | The sidebar page tree updates by itself when someone else changes it; emoji panels, dead keys and phone keyboards no longer break tables; a pasted address over selected text makes a link; whiteboard labels stay on top in rendered pictures; the assistant starts again in the Docker image |
+| 43 | Assistant analytics | 👍/👎 on answers, a periodic "did it solve your question?" survey, questions the assistant could not answer, and an instance-administrator page with filters (migration 032) |
 
 ## What comes next
 

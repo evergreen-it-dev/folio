@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Bot, Building2, CircleHelp, Compass, GitBranch, HardDriveDownload, KeyRound, LogOut, SlidersHorizontal, Trash2, Users } from 'lucide-react';
+import { Bot, Building2, ChartColumn, CircleHelp, Compass, GitBranch, HardDriveDownload, KeyRound, LogOut, SlidersHorizontal, Trash2, Users } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { Menu, MenuItem } from '../ui/Menu';
 import { SettingsDialog } from './SettingsDialog';
@@ -138,6 +138,17 @@ export function UserMenu({ space = '' }: UserMenuProps) {
                 }}
               >
                 {t('auth.userMenu.spaces')}
+              </MenuItem>
+            )}
+            {user.isAdmin && (
+              <MenuItem
+                icon={<ChartColumn size={14} />}
+                onSelect={() => {
+                  close();
+                  navigate('/admin/assistant');
+                }}
+              >
+                {t('auth.userMenu.assistantAnalytics')}
               </MenuItem>
             )}
             {/* Trash round: instance-wide trash. Space admins reach the same

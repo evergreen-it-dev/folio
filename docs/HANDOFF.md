@@ -103,6 +103,12 @@ quick switcher, subtree, backlinks, collaboration, MCP, export.
 - **`.agent`**: pages in this folder of a space are added to every assistant
   run in that space, up to about 60,000 characters, cut at a page boundary.
   The folder is visible to space administrators only.
+- **Assistant analytics** (migration 032): ratings of answers, a periodic
+  survey, and questions the assistant reported through the built-in
+  `report_unanswered_question` tool. They are read at `/admin/assistant`
+  (`/api/admin/assistant/*`), which needs a cookie session of an instance
+  administrator; a token is refused. Opening someone's conversation is written
+  to the audit log. Today the page is for instance administrators only.
 
 ## What must never break
 

@@ -21,6 +21,7 @@ import { registerAccessRoutes } from './access/routes.js';
 import { registerTrashRoutes } from './trash/routes.js';
 import { registerPageChangeRoutes } from './pageChangesRoutes.js';
 import { registerAssistantRoutes } from './assistant/routes.js';
+import { registerAssistantAdminRoutes } from './assistant/adminRoutes.js';
 import { registerNotificationRoutes } from './notifications/routes.js';
 import * as notificationSocket from './notifications/socket.js';
 import { startTreeSignal, stopTreeSignal } from './treeSignal.js';
@@ -268,6 +269,7 @@ async function main(): Promise<void> {
     registerTrashRoutes(protectedScope);
     registerPageChangeRoutes(protectedScope);
     registerAssistantRoutes(protectedScope);
+    registerAssistantAdminRoutes(protectedScope);
     registerNotificationRoutes(protectedScope);
   });
 
