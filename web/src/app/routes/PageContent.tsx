@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { officeFormat, type PageDoc } from '@shared/contracts';
@@ -82,6 +82,23 @@ export function PageContent({ id }: PageContentProps) {
   // (403/404), the page itself is exactly what is missing — and that is when
   // the "ask for access" button is needed.
   const { space: routeSpace } = useParams<{ space: string }>();
+  // The welcome wizard opens the first document ready to type in. It says so
+  // through router state, never the URL: every link to a page — pasted,
+  // bookmarked, reloaded — still opens for reading.
+  //
+  // "Reloaded" takes care: router state is kept in the browser's history
+  // entry and comes back after F5, so the request is taken ONCE — remembered
+  // for this page while it stays on screen, and wiped from the history entry.
+  const route = useLocation();
+  const navigate = useNavigate();
+  const requested = (route.state as { startEditing?: boolean } | null)?.startEditing === true;
+  const editRequest = useRef<string | null>(null);
+  if (requested) editRequest.current = id;
+  else if (editRequest.current !== id) editRequest.current = null;
+  const startEditing = editRequest.current === id;
+  useEffect(() => {
+    if (requested) navigate(route.pathname + route.search + route.hash, { replace: true, state: null });
+  }, [requested, navigate, route.pathname, route.search, route.hash]);
   const errorText = useApiErrorText();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['page', id],
@@ -297,6 +314,7 @@ export function PageContent({ id }: PageContentProps) {
               title={data.title}
               collabUrl={collabUrl}
               readOnly={!editable}
+              defaultMode={startEditing ? 'live' : 'reading'}
               chromeStart={
                 data.cover ? undefined : (
                   <PageChrome pageId={data.id} space={data.space} icon={data.icon} cover={data.cover} canEdit={chromeEditable} compact />

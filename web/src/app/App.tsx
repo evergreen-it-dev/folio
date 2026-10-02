@@ -8,6 +8,7 @@ import { AssistantHost } from './assistant/AssistantHost';
 import { NotificationsHost } from './notifications/NotificationsHost';
 import { Shell } from './Shell';
 import { RootRedirect } from './routes/RootRedirect';
+import { Onboarding } from './onboarding/Onboarding';
 import { SpaceHome } from './routes/SpaceHome';
 import { PageView } from './routes/PageView';
 import { FolderView } from './routes/FolderView';
@@ -106,6 +107,9 @@ function AppRoutes() {
       <NotificationsHost />
       <Routes>
         <Route path="/" element={<RootRedirect />} />
+        {/* The welcome wizard on purpose, as a tour (the account menu links
+            here). On a first run RootRedirect shows the same component. */}
+        <Route path="/welcome" element={<Onboarding />} />
         <Route path="/s/:space" element={<Shell />}>
           <Route index element={<SpaceHome />} />
           <Route path="p/:id" element={<PageView />} />

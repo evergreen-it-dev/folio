@@ -74,6 +74,7 @@ In the order it was built.
 | 37 | Editor hardening | Caret and Enter around hidden markup, paste from spreadsheets, highlights with colors, tables that do not lose typed text |
 | 38 | Offline mode | Create and edit pages and whiteboards without a connection |
 | 39 | Public release | One-command installation, optional automatic HTTPS, documentation |
+| 40 | First steps | A welcome wizard for a fresh installation; duplicating a page with its whole subtree |
 
 ## What comes next
 

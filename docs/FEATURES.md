@@ -146,6 +146,11 @@ authorship.
 - A **tree** with drag and drop, a templates folder for creating "from a
   template", and the `.agent` folder (see section 11). The tree updates by
   itself.
+- A **welcome wizard** for someone with no space yet: choose a document, a
+  whiteboard or a data table to start with, read a short overview of Folio and
+  of the assistant, and the first space is created with that page open. The
+  same tour is in the account menu ("Welcome tour") at any time; with spaces
+  already there it creates the page in the one you were last in.
 - **Duplicate** and **Copy to…** in the page menu. Duplicate puts a copy
   next to the original, child pages included; Copy to… puts it under any
   page of any space you can edit, with or without the child pages. Every

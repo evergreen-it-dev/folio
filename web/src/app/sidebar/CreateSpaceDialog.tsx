@@ -24,6 +24,8 @@ type Tab = 'empty' | 'git';
 
 export interface CreateSpaceDialogProps {
   onClose: () => void;
+  /** Which tab is open first; the welcome wizard's "connect a repository" link starts on `git`. */
+  initialTab?: 'empty' | 'git';
 }
 
 /**
@@ -44,12 +46,12 @@ export interface CreateSpaceDialogProps {
  * alongside the always-present manual text field, degrading silently to
  * just that field on any failure.
  */
-export function CreateSpaceDialog({ onClose }: CreateSpaceDialogProps) {
+export function CreateSpaceDialog({ onClose, initialTab = 'empty' }: CreateSpaceDialogProps) {
   const { t } = useTranslation('app');
   const errorText = useApiErrorText();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>('empty');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [name, setName] = useState('');
   // Round 19: once the user edits Name by hand, picking a (different) repo
   // must never clobber it again — same "manual edit always wins" contract

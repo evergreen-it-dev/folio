@@ -404,6 +404,13 @@ The first start builds the application and takes a few minutes. Then open
 <http://localhost:4870> and create the first account — it becomes the
 administrator.
 
+A short welcome takes it from there: pick what to create first — a document,
+a whiteboard or a data table — look through what Folio can do, and land in
+your first space with that page open. Connecting an existing Git repository
+is one link away on the same screen.
+
+![The welcome screen: what do you want to create first](docs/images/welcome.png)
+
 | Where | How |
 |---|---|
 | Your computer | `docker compose up -d` |

@@ -6,6 +6,12 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **A welcome wizard for a fresh installation.** Instead of an empty screen
+  with one button, someone who has no space yet gets three steps: what to
+  create first (a document, a whiteboard or a data table), what Folio can do,
+  and what the assistant is. Then the first space is created with the chosen
+  page in it, and a first document opens ready to type in. "Skip" goes
+  straight to that result. The tour can be reopened from the account menu.
 - **Duplicate** in the page menu of the sidebar. The copy appears next to
   the original together with all of its child pages, is named
   "Title (copy)" and opens at once. Works for documents, whiteboards, data

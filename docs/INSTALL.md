@@ -27,6 +27,9 @@ command starts all of them.
    about 1 GB.
 4. Open <http://localhost:4870> and fill in the form. The first account
    becomes the administrator of the instance.
+5. A short welcome follows: choose what to create first and name your first
+   space, or connect a Git repository you already have. "Skip" creates the
+   space straight away.
 
 To stop Folio: `docker compose stop`. To start it again: `docker compose up -d`.
 Your pages stay where they are.

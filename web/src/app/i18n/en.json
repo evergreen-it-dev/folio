@@ -1140,6 +1140,109 @@
       "failed": "Could not send the request"
     }
   },
+  "onboarding": {
+    "skip": "Skip",
+    "back": "Back",
+    "continue": "Continue",
+    "progress": "Step {{step}} of {{total}}",
+    "menuLabel": "Welcome tour",
+    "start": {
+      "title": "Welcome to Folio! What do you want to create first?",
+      "subtitleFirstRun": "We will set up your first space around it. Everything else is one click away later.",
+      "subtitleTour": "It will be added to the space “{{space}}”. Everything else is one click away later.",
+      "subtitleReadOnly": "Take a look at what each of them is. Creating one needs editing rights in a space.",
+      "kinds": {
+        "doc": {
+          "name": "Document",
+          "hint": "Write in Markdown — alone or together, in real time."
+        },
+        "board": {
+          "name": "Whiteboard",
+          "hint": "Sketch ideas, flows and schemes on a canvas."
+        },
+        "table": {
+          "name": "Data table",
+          "hint": "Typed columns, views and filters. Forms can fill it in."
+        }
+      },
+      "spaceName": "Name of your first space",
+      "spaceNameDefault": "Team wiki",
+      "spaceNameHint": "A space is the home of one team or topic, with a Git repository behind it.",
+      "git": "Already keep your docs in a Git repository?",
+      "gitAction": "Connect it instead"
+    },
+    "features": {
+      "title": "What you can do in Folio",
+      "subtitle": "One place for what your team knows — and it stays yours.",
+      "items": {
+        "git": {
+          "title": "Everything lives in Git",
+          "text": "Every page is a Markdown file and every change is a commit. Connect your own repository and keep the whole history."
+        },
+        "together": {
+          "title": "Write together, live",
+          "text": "Several people edit a document, a table or a whiteboard at once, and see who else is on the page."
+        },
+        "offline": {
+          "title": "Works offline",
+          "text": "Keep writing and creating pages without a connection. Everything syncs when it is back."
+        },
+        "tables": {
+          "title": "Data tables and forms",
+          "text": "Typed columns, saved views, filters and sorting. A form collects answers straight into a table."
+        },
+        "boards": {
+          "title": "Whiteboards and diagrams",
+          "text": "Draw on an Excalidraw canvas, or build a Mermaid diagram by clicking instead of writing code."
+        },
+        "access": {
+          "title": "Access under control",
+          "text": "Roles per space, access to a single page, share links for guests and an audit log."
+        }
+      }
+    },
+    "ai": {
+      "title": "Meet Folio AI",
+      "subtitle": "An assistant that knows your wiki. It is optional: Folio works in full without it.",
+      "items": {
+        "ask": {
+          "title": "Ask",
+          "text": "Ask a question and get an answer drawn from your pages. This mode only reads and changes nothing."
+        },
+        "agent": {
+          "title": "Agent",
+          "text": "Ask it to write a page, fill in a table or draw a whiteboard. It can do only what you are allowed to do yourself."
+        },
+        "rules": {
+          "title": "Your own rules for every space",
+          "text": "Pages in the .agent folder tell the assistant how your team writes and what it must follow."
+        },
+        "mcp": {
+          "title": "Open to your own agents",
+          "text": "An MCP endpoint with personal access tokens lets outside agents and scripts read and write the wiki."
+        }
+      },
+      "art": {
+        "question": "Where do we describe the release checklist?",
+        "answer": "On the “Release process” page: seven steps, the last one is the rollback plan.",
+        "source": "Release process"
+      },
+      "byos": "Bring your own subscription: the assistant runs on your Cursor API key. Add it whenever you like — the account menu, “Folio AI”."
+    },
+    "finish": {
+      "doc": "Create my first document",
+      "board": "Create my first whiteboard",
+      "table": "Create my first table",
+      "done": "Go to Folio",
+      "creating": "Setting things up…",
+      "failed": "Could not finish the setup"
+    },
+    "firstTitle": {
+      "doc": "Getting started",
+      "board": "First whiteboard",
+      "table": "First table"
+    }
+  },
   "offline": {
     "pageUnavailable": "This page is not available offline: it has not been opened on this device yet. It will load by itself as soon as the connection is back.",
     "status": {
