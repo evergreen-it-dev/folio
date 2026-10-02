@@ -222,6 +222,35 @@ export function replaceFirstH1(body: string, newTitle: string): string {
   return lines.join('\n');
 }
 
+/**
+ * Makes sure a document body made from caller-supplied markdown names itself the
+ * way the page was asked to be named. A doc's title IS its first H1 (extractH1;
+ * without one the title falls back to the file's slug), so markdown handed to a
+ * new page without an H1 would silently retitle it to "release-notes".
+ *
+ *  - The first non-blank line is an H1: the body is returned untouched, even when
+ *    that heading differs from `title`. The heading is the page's real title and
+ *    the file name was already derived from `title`; rewriting the caller's own
+ *    heading would silently change their content, whereas keeping it only makes
+ *    the title in the reply differ from the argument — and the reply states it.
+ *  - Anything else (no heading, a paragraph or a fenced block first, a `##`
+ *    heading, an empty string): `# <title>` and a blank line are put above it, the
+ *    same starter heading a blank page gets. An H1 further down the body does not
+ *    count: extractH1 would otherwise let it override the requested title.
+ *
+ * "First non-blank line" and "is an H1" use the very same test as extractH1 (an
+ * ATX `# text` line, no indentation), so the answer here and the title that ends
+ * up in the index cannot disagree. `body` must already be free of front matter.
+ */
+export function ensureLeadingTitle(body: string, title: string): string {
+  const rest = body.replace(/^(?:[ \t]*\r?\n)+/, '');
+  const firstLine = rest.split('\n', 1)[0];
+  const m = H1_RE.exec(firstLine);
+  if (m && m[1].trim()) return body;
+  const heading = `# ${title.trim()}`;
+  return rest.trim() === '' ? `${heading}\n` : `${heading}\n\n${rest}`;
+}
+
 function titleFallback(relPath: string, kind: PageKind): string {
   const base = path.basename(relPath);
   if (kind === 'board') return base.slice(0, -'.excalidraw.svg'.length);

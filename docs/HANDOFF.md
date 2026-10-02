@@ -78,6 +78,8 @@ Roles per space (admin, editor, viewer); space visibility (private, or open
 to the instance for reading); page-level access that can only narrow what the
 space allows and is not inherited by child pages. The instance administrator
 manages people and access but has no automatic access to private spaces.
+An invitation opened by someone who is already signed in can be accepted with
+that account; signing out is a separate secondary action.
 
 Every path that returns content filters by these rules: the tree, search,
 quick switcher, subtree, backlinks, collaboration, MCP, export.
@@ -158,6 +160,9 @@ Each of these was a real defect. They are here so that nobody pays twice.
 
 **Front end and deployment**
 
+- Keep long popover lists internally scrollable and keep their persistent
+  actions outside the scroll area. Scroll events from inside a menu must not
+  be mistaken for page scroll and close it.
 - A missing chunk after a deployment must be a real 404, not `index.html`
   with status 200, and the client should reload once when it sees it.
 - A browser remembers a failed dynamic import for the life of the document.

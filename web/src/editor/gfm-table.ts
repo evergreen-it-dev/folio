@@ -34,10 +34,11 @@ import {
   type CellBox,
   type CellLine as ListLine,
   type TableAttrs,
+  type TableDisplay,
   type TableLayout,
 } from '../markdown/tableSyntax';
 
-export type { BgToken, CellBox, TableAttrs, TableLayout };
+export type { BgToken, CellBox, TableAttrs, TableDisplay, TableLayout };
 export { BG_TOKENS, ROW_SPAN, isRowSpan } from '../markdown/tableSyntax';
 
 export type ColumnAlign = 'left' | 'center' | 'right' | null;
@@ -231,6 +232,7 @@ function mergeAttrs(base: TableAttrs | null, next: TableAttrs): TableAttrs {
     bg: { ...base.bg, ...next.bg },
     width: { ...base.width, ...next.width },
     ...(next.layout ?? base.layout ? { layout: next.layout ?? base.layout } : {}),
+    ...(next.display ?? base.display ? { display: next.display ?? base.display } : {}),
   };
 }
 
@@ -334,6 +336,7 @@ function remapAttrs(
 ): TableAttrs {
   const next: TableAttrs = { bg: {}, width: {} };
   if (attrs.layout) next.layout = attrs.layout;
+  if (attrs.display) next.display = attrs.display;
   for (const [key, token] of Object.entries(attrs.bg)) {
     const ref = parseCellKey(key);
     if (!ref) continue;
@@ -765,6 +768,14 @@ export function setColumnWidths(table: GfmTable, widths: ReadonlyMap<number, str
     for (const [col, value] of widths) {
       if (col >= 0 && col < draft.header.length) draft.attrs.width[col + 1] = value;
     }
+  });
+}
+
+/** Set the table's page width; the default narrow mode needs no metadata. */
+export function setTableDisplay(table: GfmTable, display: TableDisplay): GfmTable {
+  return rewrite(table, (draft) => {
+    if (display === 'narrow') delete draft.attrs.display;
+    else draft.attrs.display = display;
   });
 }
 

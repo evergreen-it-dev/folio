@@ -101,6 +101,14 @@ page, and an optional `columns` for `kind: "table"`, where `markdown` is
 ignored. It cannot create a whiteboard: use `create_board`. To change the text
 of an existing page, use `update_page` over MCP or `PUT /api/pages/:id`.
 
+**A page's title is the first `# H1` of its text.** So when `create_page`
+gets a `markdown` that does not open with an H1, it puts `# <title>` above it
+(with a blank line between), and you can send the body alone. If the markdown
+opens with its own H1, that heading is left as it is and becomes the page
+title, while the `title` argument only names the file; the resulting title is
+in the `title` field of the reply. A leading front matter block with `icon` or
+`cover` is applied as page metadata instead of staying in the text.
+
 **The Git commit is delayed.** After a write the file is already changed, but
 the commit is made after about 90 seconds of quiet in the space, so
 `page_history` may be empty right after an edit. For an immediate commit call

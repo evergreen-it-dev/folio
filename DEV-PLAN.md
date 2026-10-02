@@ -75,6 +75,7 @@ In the order it was built.
 | 38 | Offline mode | Create and edit pages and whiteboards without a connection |
 | 39 | Public release | One-command installation, optional automatic HTTPS, documentation |
 | 40 | First steps | A welcome wizard for a fresh installation; duplicating a page with its whole subtree |
+| 41 | Dense content and navigation | Resizable document tables, searchable space switching, and accepting an invitation with the current signed-in account |
 
 ## What comes next
 

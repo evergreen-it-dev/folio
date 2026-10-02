@@ -23,10 +23,9 @@ const REASON_KEY: Record<string, string> = {
  * Public `/invite/:token` (round 9) — rendered OUTSIDE AuthProvider, same
  * split as /share/:token in App.tsx's AppRoutes: no session required to
  * even LOAD this screen. Still checks GET /api/auth/state itself (a plain
- * query, not the gate) purely to detect "already logged in as someone else"
- * and offer to sign out first, per the coordinator's spec — accepting an
- * invite always creates a brand-new account, so an existing session here is
- * very likely a mismatch the visitor wants to resolve before continuing.
+ * query, not the gate) to detect an existing browser session. A signed-in
+ * visitor can accept the invite into that account directly; signing out stays
+ * available as the secondary path when the link was meant for someone else.
  */
 export function AcceptInviteView() {
   const { t } = useTranslation('app');
@@ -62,6 +61,16 @@ export function AcceptInviteView() {
     },
   });
 
+  const acceptCurrent = useMutation({
+    mutationFn: () => api.acceptInviteAsCurrentUser(token!),
+    onSuccess: (authData) => {
+      queryClient.setQueryData(['auth', 'state'], authData);
+      const invitedSpace = invite.data?.spaces[0]?.space;
+      const firstSpace = invitedSpace ?? Object.keys(authData.memberships)[0];
+      navigate(firstSpace ? `/s/${firstSpace}` : '/', { replace: true });
+    },
+  });
+
   const logout = useMutation({
     mutationFn: api.logout,
     onSuccess: () => {
@@ -79,24 +88,6 @@ export function AcceptInviteView() {
     return <CenteredCard>{t('ui.loading')}</CenteredCard>;
   }
 
-  if (authState.data?.user) {
-    return (
-      <CenteredCard>
-        <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-400">
-          {t('invites.accept.alreadyLoggedIn', { name: authState.data.user.name })}
-        </p>
-        <button
-          type="button"
-          disabled={logout.isPending}
-          onClick={() => logout.mutate()}
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
-        >
-          {logout.isPending ? t('invites.accept.signingOut') : t('auth.userMenu.signOut')}
-        </button>
-      </CenteredCard>
-    );
-  }
-
   if (invite.isError || !invite.data) {
     return <CenteredCard>{t('invites.accept.loadFailed')}</CenteredCard>;
   }
@@ -104,6 +95,39 @@ export function AcceptInviteView() {
   if (!invite.data.valid) {
     const key = REASON_KEY[invite.data.reason ?? 'not_found'] ?? REASON_KEY.not_found!;
     return <CenteredCard>{t(key)}</CenteredCard>;
+  }
+
+  if (authState.data?.user) {
+    return (
+      <CenteredCard>
+        <p className="mb-4 text-sm text-neutral-600 dark:text-neutral-400">
+          {t('invites.accept.alreadyLoggedIn', { name: authState.data.user.name })}
+        </p>
+        {acceptCurrent.isError && (
+          <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">
+            {errorText(acceptCurrent.error, 'invites.accept.continueFailed')}
+          </p>
+        )}
+        <div className="flex justify-center gap-2">
+          <button
+            type="button"
+            disabled={acceptCurrent.isPending}
+            onClick={() => acceptCurrent.mutate()}
+            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+          >
+            {acceptCurrent.isPending ? t('invites.accept.continuing') : t('invites.accept.continue')}
+          </button>
+          <button
+            type="button"
+            disabled={logout.isPending}
+            onClick={() => logout.mutate()}
+            className="rounded-md border border-neutral-300 bg-transparent px-4 py-2 text-sm font-medium text-neutral-700 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200"
+          >
+            {logout.isPending ? t('invites.accept.signingOut') : t('auth.userMenu.signOut')}
+          </button>
+        </div>
+      </CenteredCard>
+    );
   }
 
   const info = invite.data;

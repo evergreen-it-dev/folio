@@ -6,6 +6,12 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **Search in the space switcher.** Long space lists scroll inside the menu,
+  while the action for creating a new space stays visible.
+- Markdown tables have three labelled width modes: narrow, medium and full
+  viewport. In narrow and full-width mode the highlighted right edge can be
+  dragged to set an exact width. A full-width table may grow past the viewport
+  and scroll horizontally inside its own container.
 - **A welcome wizard for a fresh installation.** Instead of an empty screen
   with one button, someone who has no space yet gets three steps: what to
   create first (a document, a whiteboard or a data table), what Folio can do,
@@ -20,6 +26,9 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- Opening an invitation while already signed in now offers a primary
+  **Continue** action that accepts the invitation with the current account.
+  Signing out remains available as a secondary action.
 - A space typed at the edge of formatted text no longer breaks the
   formatting. With the caret right before a bold, italic, struck-through,
   highlighted or underlined phrase, or before a link, the space now goes in
@@ -43,6 +52,13 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 - "Take the version from Git" on a whiteboard now really restores the
   version from Git: the open canvas switches to it, and closing the tab no
   longer writes the discarded version back to the repository.
+- Two small fixes in the MCP server found while an agent used it. A document
+  made with `create_page` from text that does not start with a heading now
+  keeps the title you asked for (it used to be named after the file, for
+  example "release-notes"): the heading is added above the text, and a
+  leading heading you write yourself is kept and becomes the title. And
+  `folio_table_insert` now stores an unticked checkbox as `false` in a column
+  you did not fill, as adding a row by hand does, instead of `null`.
 
 ### Changed
 

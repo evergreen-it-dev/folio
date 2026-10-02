@@ -729,8 +729,17 @@ describe('rendering', () => {
 
   it('keeps the compact toolbar and drops the visual-editor button', () => {
     const h = mount();
-    const labels = [...h.dom.querySelectorAll('.cm-md-table-barbtn')].map((b) => b.textContent);
-    expect(labels).toEqual(['Row', 'Column', 'Source']);
+    const labels = [...h.dom.querySelectorAll('.cm-md-table-barbtn')].map(
+      (button) => button.getAttribute('aria-label') ?? button.textContent,
+    );
+    expect(labels).toEqual([
+      'Row',
+      'Column',
+      'Narrow table',
+      'Medium table',
+      'Full-width table',
+      'Source',
+    ]);
   });
 
   it('falls back to the source when the block does not parse as a table', () => {
@@ -1022,6 +1031,71 @@ describe('cell backgrounds and column widths', () => {
     mouse(document, 'mouseup', { clientX: 170 });
 
     expect(h.text().split('\n')[0]).toBe('[//]: # (folio-table: w=1:75%,2:25%)');
+  });
+});
+
+describe('table display width', () => {
+  it('offers narrow, medium and full-width buttons and persists the choice', () => {
+    const h = mount();
+    const buttons = () => [...h.dom.querySelectorAll<HTMLButtonElement>('.cm-md-table-widthbtn')];
+
+    expect(buttons()).toHaveLength(3);
+    expect(buttons().map((button) => button.textContent)).toEqual([
+      'Narrow table',
+      'Medium table',
+      'Full-width table',
+    ]);
+    expect(buttons().map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+    expect(h.dom.dataset.display).toBe('narrow');
+
+    mouse(buttons()[1], 'click');
+    expect(h.text().split('\n')[0]).toBe('[//]: # (folio-table: display=medium)');
+    expect(h.dom.dataset.display).toBe('medium');
+    expect(buttons().map((button) => button.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false']);
+
+    mouse(buttons()[2], 'click');
+    expect(h.text().split('\n')[0]).toBe('[//]: # (folio-table: display=full)');
+    expect(h.dom.dataset.display).toBe('full');
+
+    mouse(buttons()[0], 'click');
+    expect(parseGfmTable(h.text())?.attrs).toBeUndefined();
+    expect(h.text()).not.toContain('folio-table:');
+    expect(h.dom.dataset.display).toBe('narrow');
+  });
+
+  it('shrinks a narrow table from its highlighted right edge', async () => {
+    const h = await mountLaidOut();
+    const lines = h.dom.querySelectorAll<HTMLElement>('.cm-md-edge--col .cm-md-edge__line');
+    expect(lines[0].dataset.resize).toBeUndefined();
+    expect(lines[2].dataset.resize).toBe('true');
+
+    mouse(lines[2], 'mousedown', { clientX: 220 });
+    mouse(document, 'mousemove', { clientX: 120 });
+    mouse(document, 'mouseup', { clientX: 120 });
+
+    expect(h.text().split('\n')[0]).toBe('[//]: # (folio-table: w=1:50px,2:50px)');
+    expect(h.dom.querySelector<HTMLElement>('.cm-md-grid')?.dataset.pixelSized).toBe('true');
+  });
+
+  it('grows a full-width table past its viewport from the right edge', async () => {
+    const h = await mountLaidOut(['[//]: # (folio-table: display=full)', '', SIMPLE].join('\n'));
+    const lines = h.dom.querySelectorAll<HTMLElement>('.cm-md-edge--col .cm-md-edge__line');
+    expect(lines[2].dataset.resize).toBe('true');
+
+    mouse(lines[2], 'mousedown', { clientX: 220 });
+    mouse(document, 'mousemove', { clientX: 320 });
+    mouse(document, 'mouseup', { clientX: 320 });
+
+    expect(h.text().split('\n')[0]).toBe(
+      '[//]: # (folio-table: display=full; w=1:150px,2:150px)',
+    );
+  });
+
+  it('leaves the outer edge fixed in medium mode', async () => {
+    const h = await mountLaidOut(['[//]: # (folio-table: display=medium)', '', SIMPLE].join('\n'));
+    const lines = h.dom.querySelectorAll<HTMLElement>('.cm-md-edge--col .cm-md-edge__line');
+    expect(lines[1].dataset.resize).toBe('true');
+    expect(lines[2].dataset.resize).toBeUndefined();
   });
 });
 

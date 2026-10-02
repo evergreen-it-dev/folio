@@ -225,6 +225,45 @@ export function registerRoutes(app: FastifyInstance): void {
     return { defaultRepoUrl: process.env.FOLIO_DEFAULT_REPO_URL || null };
   });
 
+  /**
+   * Accept an invite into the account behind the current browser session.
+   * This lives in the protected scope (unlike new-account invite acceptance)
+   * and explicitly rejects PATs: following a link in the browser is an
+   * interactive account action. Existing stronger roles are never downgraded.
+   */
+  app.post('/api/invite/:token/accept-existing', async (request): Promise<AuthState> => {
+    session.requireCookieAuth(request);
+    const { token } = request.params as { token: string };
+    const current = request.authUser!;
+
+    const invite = await invites.getInviteByToken(token);
+    const reason = invites.invalidReason(invite);
+    if (reason || !invite) throw gone(`this invite is no longer valid (${reason ?? 'not_found'})`);
+    if (invite.email && invite.email.trim().toLowerCase() !== current.email.toLowerCase()) {
+      throw badRequest('this invite is pinned to a different email address');
+    }
+
+    const claimed = await invites.claimInviteUse(token);
+    if (!claimed) throw gone('this invite is no longer valid (exhausted, revoked, or expired)');
+
+    let user = current;
+    if (claimed.isAdmin && !user.isAdmin) user = await authStore.updateUser(user.id, { isAdmin: true });
+    for (const membership of claimed.memberships) {
+      const existing = await authStore.getMembershipRole(membership.space, user.id);
+      if (!session.roleAtLeast(existing, membership.role)) {
+        await authStore.setMembership(membership.space, user.id, membership.role);
+      }
+    }
+
+    recordAudit(user.id, 'invite.accepted', claimed.id, { email: user.email, existingUser: true });
+    return {
+      needsSetup: false,
+      user,
+      memberships: await session.membershipsFor(user),
+      google: isGoogleEnabled(),
+    };
+  });
+
   /** Lists a remote's branches without cloning it — feeds the create-space dialog's branch picker. Any authenticated user; not space-scoped (there's no space yet). */
   app.post('/api/git/branches', async (request): Promise<RepoBranches> => {
     const body = parseBody(listBranchesBodySchema, request.body);

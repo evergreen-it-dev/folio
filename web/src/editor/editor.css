@@ -184,6 +184,7 @@ html[data-width='wide'] .folio-editor {
   min-height: 0;
   height: 100%;
   color: var(--folio-ed-fg);
+  container-type: inline-size;
 }
 
 /* ---------------------------------------------------------------- chrome -- */
@@ -1069,6 +1070,23 @@ html[data-theme='dark'] .folio-editor .cm-md-callout-caution {
   overscroll-behavior-x: contain;
 }
 
+/* Like Confluence, a table may leave the prose measure without widening the
+   page itself. Container units bind the breakout to the editor pane rather
+   than to the browser window, so a sidebar or split view stays accounted for. */
+.folio-editor .cm-md-table-widget[data-display='medium'],
+.folio-editor .cm-md-table-widget[data-display='full'] {
+  left: 50%;
+  margin-inline: 0;
+  max-width: none;
+  transform: translateX(-50%);
+}
+.folio-editor .cm-md-table-widget[data-display='medium'] {
+  width: min(calc(100cqw - 3rem), max(100%, 60rem));
+}
+.folio-editor .cm-md-table-widget[data-display='full'] {
+  width: calc(100cqw - 3rem);
+}
+
 /* Room above the header for the column handles and left of the first column for
    the row handles: both live in the overlay, positioned against this box. */
 .cm-md-table-frame {
@@ -1414,6 +1432,36 @@ ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
   flex: 1;
 }
 
+.cm-md-table-widths {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cm-md-table-widths .cm-md-table-widthbtn {
+  min-width: 28px;
+  padding-inline: 0.45rem;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+}
+
+.cm-md-table-widths .cm-md-table-widthbtn + .cm-md-table-widthbtn {
+  border-left: 1px solid var(--folio-ed-border);
+}
+
+.cm-md-table-widthbtn[aria-pressed='true'] {
+  background: var(--folio-ed-selection);
+  color: var(--folio-ed-accent);
+}
+
+.cm-md-table-widthbtn svg {
+  width: 13px;
+  height: 13px;
+}
+
 .cm-md-table-barbtn {
   display: inline-flex;
   align-items: center;
@@ -1474,6 +1522,15 @@ ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
 .cm-md-grid[data-sized='true'] th,
 .cm-md-grid[data-sized='true'] td { overflow-wrap: anywhere; min-width: 0; }
 
+/* Outer-edge resize stores a complete pixel width map. Narrow mode may become
+   smaller than its text column; the other modes keep at least their selected
+   container width and overflow into the table's own horizontal scroller when
+   the pixel sum is larger. */
+.cm-md-grid[data-pixel-sized='true'] { width: auto; }
+.folio-editor .cm-md-table-widget:not([data-display='narrow']) .cm-md-grid[data-pixel-sized='true'] {
+  min-width: 100%;
+}
+
 /* The selected range: an inset ring rather than a fill, so a cell's own
    background stays readable underneath it. Same accent the column drag uses —
    both mean "these cells are what the next action is about". */
@@ -1491,6 +1548,7 @@ ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
    the affordance looks exactly as it did before round 17 and merely became
    draggable. The `+` keeps its own hit box on top. */
 .cm-md-edge--col .cm-md-edge__line[data-resize='true'] {
+  top: 0;
   width: 8px;
   transform: translateX(-4px);
   background: transparent;
@@ -1503,6 +1561,12 @@ ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
   inset: 0 3px;
   border-radius: 1px;
   background: var(--folio-ed-accent);
+}
+.cm-md-edge:has(.cm-md-edge__line[data-resize='true']:hover) {
+  opacity: 1;
+}
+.cm-md-edge--col .cm-md-edge__line[data-resize='true']:hover::after {
+  inset-inline: 2px;
 }
 .cm-md-table-frame[data-resizing='true'] { cursor: col-resize; }
 .cm-md-table-frame[data-resizing='true'] .cm-md-edge { opacity: 1; }
@@ -2735,6 +2799,12 @@ ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
   .folio-editor .cm-md-table-widget,
   .folio-editor .cm-md-table-widget:hover {
     margin-inline: max(0px, calc(1rem - var(--folio-tbl-gutter))) 1rem;
+  }
+
+  .folio-editor .cm-md-table-widget[data-display='medium'],
+  .folio-editor .cm-md-table-widget[data-display='full'] {
+    width: calc(100cqw - 2rem);
+    margin-inline: 0;
   }
 
   .cm-md-emptyhint {

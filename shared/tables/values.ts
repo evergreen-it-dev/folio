@@ -199,6 +199,23 @@ export function getOutOfListLabels(col: TableColumn, value: TableCellValue): str
   return labels.filter((l) => !known.has(l));
 }
 
+// ---------- value of an unfilled cell in a new row ----------
+
+/**
+ * What a brand-new row holds in column `col` when nobody filled that cell: the
+ * column's own `default` (spec §2.3), else `false` for a checkbox (it always has
+ * a definite state, see isEmptyCellValue), else `null`. ONE definition for every
+ * way a row comes into being — the grid's "add row" (web/src/tables/patch.ts),
+ * and the server's insert behind REST, MCP and form submissions
+ * (server/tables/service.ts) — so a row added by an agent is indistinguishable
+ * from one added by hand. An explicit `null` default counts as "no default" for a
+ * checkbox: there is no null state to default to.
+ */
+export function defaultCellValue(col: TableColumn): TableCellValue {
+  if (col.default !== undefined && col.default !== null) return col.default as TableCellValue;
+  return col.type === 'checkbox' ? false : null;
+}
+
 // ---------- emptiness ----------
 
 /** Is `value` "empty" for `col`'s type? Also used by query.ts (empty always sorts last) and convertColumnType below. */

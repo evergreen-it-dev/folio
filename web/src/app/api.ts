@@ -756,6 +756,9 @@ export const api = {
   acceptInvite: (token: string, body: AcceptInviteBody) =>
     request<AuthState>(`/api/invite/${encodeURIComponent(token)}/accept`, { method: 'POST', body: JSON.stringify(body) }),
 
+  acceptInviteAsCurrentUser: (token: string) =>
+    request<AuthState>(`/api/invite/${encodeURIComponent(token)}/accept-existing`, { method: 'POST' }),
+
   // ---------- saved Confluence credentials (round 22b) ----------
 
   /**

@@ -532,6 +532,9 @@
     "notLive": "The server hasn't been updated yet — invites are coming soon.",
     "accept": {
       "alreadyLoggedIn": "You're already logged in as {{name}}.",
+      "continue": "Continue",
+      "continuing": "Continuing…",
+      "continueFailed": "Could not accept the invite for this account",
       "signingOut": "Signing out…",
       "loadFailed": "Could not load the invite.",
       "reasonExpired": "This invite link has expired.",
@@ -722,6 +725,9 @@
     },
     "spaceSwitcher": {
       "label": "Switch space",
+      "searchLabel": "Search spaces",
+      "searchPlaceholder": "Search spaces…",
+      "noMatches": "No matching spaces",
       "noSpaces": "No spaces",
       "newSpace": "New space"
     },

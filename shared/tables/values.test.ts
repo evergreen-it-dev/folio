@@ -4,6 +4,7 @@ import {
   convertColumnType,
   convertMultipleToSingle,
   decodeCell,
+  defaultCellValue,
   encodeCell,
   formatLinkValue,
   getOutOfListLabels,
@@ -189,5 +190,26 @@ describe('values: isEmptyCellValue', () => {
   it('an empty multiselect array is empty', () => {
     expect(isEmptyCellValue(col({ id: 'a', type: 'select', multiple: true }), [])).toBe(true);
     expect(isEmptyCellValue(col({ id: 'a', type: 'select', multiple: true }), ['x'])).toBe(false);
+  });
+});
+
+describe('defaultCellValue: what a brand-new row holds in a column nobody filled', () => {
+  it('is false for a checkbox, which always has a definite state, and null for every other type without a default', () => {
+    expect(defaultCellValue(col({ id: 'a', type: 'checkbox' }))).toBe(false);
+    for (const type of ['text', 'longtext', 'number', 'date', 'select', 'status', 'user', 'link'] as const) {
+      expect(defaultCellValue(col({ id: 'a', type }))).toBeNull();
+    }
+  });
+
+  it("the column's own default wins, for any type", () => {
+    expect(defaultCellValue(col({ id: 'a', type: 'checkbox', default: true }))).toBe(true);
+    expect(defaultCellValue(col({ id: 'a', type: 'text', default: 'n/a' }))).toBe('n/a');
+    expect(defaultCellValue(col({ id: 'a', type: 'number', default: 0 }))).toBe(0);
+    expect(defaultCellValue(col({ id: 'a', type: 'checkbox', default: false }))).toBe(false);
+  });
+
+  it('an explicit null default on a checkbox is "no default": there is no null state for a checkbox', () => {
+    expect(defaultCellValue(col({ id: 'a', type: 'checkbox', default: null }))).toBe(false);
+    expect(defaultCellValue(col({ id: 'a', type: 'text', default: null }))).toBeNull();
   });
 });

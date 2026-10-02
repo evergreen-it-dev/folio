@@ -144,6 +144,93 @@ describe('server/mcp.ts — folio_table_* tools (real fs + real PG, in-memory MC
     }
   });
 
+  describe('create_page: the requested title always names the page', () => {
+    async function createDoc(arguments_: { title: string; markdown?: string }): Promise<{ meta: { id: string; title: string; path: string; kind: string }; body: string }> {
+      const { client, close } = await connectedClient(editorActor());
+      try {
+        const meta = resultJson(await client.callTool({ name: 'create_page', arguments: { space: spaceSlug, parentPath: '', ...arguments_ } })) as {
+          id: string;
+          title: string;
+          path: string;
+          kind: string;
+        };
+        return { meta, body: await storage.readFreshDocBody(meta.id) };
+      } finally {
+        await close();
+      }
+    }
+    const h1Lines = (body: string): string[] => body.split('\n').filter((line) => /^# /.test(line));
+
+    it('markdown without an H1 is given the requested title as its first heading (the observed agent call)', async () => {
+      const { meta, body } = await createDoc({
+        title: 'Release notes',
+        markdown: 'A short summary of what shipped this week.\n\n## Done\n\n- one\n- two\n',
+      });
+      expect(meta.title).toBe('Release notes');
+      expect(meta.path).toMatch(/release-notes(-\d+)?\.md$/);
+      expect(body.startsWith('# Release notes\n\nA short summary of what shipped this week.\n')).toBe(true);
+      expect(body).toContain('## Done');
+      // the stored index agrees with the response, not just the tool's reply
+      expect((await storage.requireEntry(meta.id)).title).toBe('Release notes');
+    });
+
+    it('does not double the heading when the markdown already opens with the same H1, with or without leading blank lines', async () => {
+      const plain = await createDoc({ title: 'Same H1 plain', markdown: '# Same H1 plain\n\nBody.\n' });
+      expect(plain.meta.title).toBe('Same H1 plain');
+      expect(h1Lines(plain.body)).toEqual(['# Same H1 plain']);
+
+      const padded = await createDoc({ title: 'Same H1 padded', markdown: '\n\n# Same H1 padded\n\nBody.\n' });
+      expect(padded.meta.title).toBe('Same H1 padded');
+      expect(h1Lines(padded.body)).toEqual(['# Same H1 padded']);
+    });
+
+    it('keeps a different leading H1 as the page title and says so in the reply (the H1 is the title, the `title` argument only names the file)', async () => {
+      const { meta, body } = await createDoc({ title: 'File name only', markdown: '# Heading the author chose\n\nBody.\n' });
+      expect(meta.title).toBe('Heading the author chose');
+      expect(meta.path).toMatch(/file-name-only(-\d+)?\.md$/);
+      expect(h1Lines(body)).toEqual(['# Heading the author chose']);
+    });
+
+    it('treats a front matter block as metadata, not as content: icon and cover are applied, the heading goes below it', async () => {
+      const withoutH1 = await createDoc({ title: 'Front matter no H1', markdown: '---\nicon: "\u{1F4DD}"\n---\nJust a paragraph.\n' });
+      expect(withoutH1.meta.title).toBe('Front matter no H1');
+      expect(withoutH1.body.startsWith('# Front matter no H1\n\nJust a paragraph.\n')).toBe(true);
+      expect(withoutH1.body).not.toContain('---');
+      expect((await storage.requireEntry(withoutH1.meta.id)).icon).toBe('\u{1F4DD}');
+
+      const withH1 = await createDoc({ title: 'Front matter with H1', markdown: '---\nicon: "\u{1F4DD}"\n---\n\n# Front matter with H1\n\nBody.\n' });
+      expect(withH1.meta.title).toBe('Front matter with H1');
+      expect(h1Lines(withH1.body)).toEqual(['# Front matter with H1']);
+      expect(withH1.body).not.toContain('---');
+    });
+
+    it('works for a non-ASCII title (the file name is transliterated, the title is not)', async () => {
+      const title = '\u041D\u043E\u0442\u0430\u0442\u043A\u0438 \u0440\u0435\u043B\u0456\u0437\u0443';
+      const { meta, body } = await createDoc({ title, markdown: 'Short summary without a heading.\n' });
+      expect(meta.title).toBe(title);
+      expect(body.startsWith(`# ${title}\n\nShort summary without a heading.\n`)).toBe(true);
+      expect(meta.path).toMatch(/\.md$/);
+    });
+
+    it('a fenced code block that opens the markdown is not mistaken for a heading, even if a line inside starts with "#"', async () => {
+      const { meta, body } = await createDoc({ title: 'Install guide', markdown: '```bash\n# install deps\nnpm ci\n```\n' });
+      expect(meta.title).toBe('Install guide');
+      expect(body.startsWith('# Install guide\n\n```bash\n')).toBe(true);
+    });
+
+    it('empty markdown gives the same blank starter page as omitting it', async () => {
+      const { meta, body } = await createDoc({ title: 'Empty markdown', markdown: '' });
+      expect(meta.title).toBe('Empty markdown');
+      expect(body).toBe('# Empty markdown\n');
+    });
+
+    it('omitting markdown is unchanged: the blank starter page is just the title as an H1', async () => {
+      const { meta, body } = await createDoc({ title: 'No markdown at all' });
+      expect(meta.title).toBe('No markdown at all');
+      expect(body).toBe('# No markdown at all\n');
+    });
+  });
+
   it('update_page refuses a table page with a clear pointer to the dedicated tools, instead of a generic "not doc" error', async () => {
     const { client, close } = await connectedClient(editorActor());
     try {
@@ -244,6 +331,48 @@ describe('server/mcp.ts — folio_table_* tools (real fs + real PG, in-memory MC
         await editor.close();
       }
     });
+  });
+
+  it('folio_table_insert gives an unfilled checkbox the same value the grid does (false, not null), and update leaves it alone', async () => {
+    const { client, close } = await connectedClient(editorActor());
+    try {
+      const created = resultJson(
+        await client.callTool({
+          name: 'folio_table_create',
+          arguments: {
+            space: spaceSlug,
+            parentPath: '',
+            title: 'Checkbox Defaults',
+            columns: [
+              { name: 'Task', type: 'text' },
+              { name: 'Done', type: 'checkbox' },
+              { name: 'Reviewed', type: 'checkbox', default: true },
+              { name: 'Note', type: 'text' },
+            ],
+          },
+        }),
+      ) as { id: string };
+
+      const inserted = resultJson(
+        await client.callTool({ name: 'folio_table_insert', arguments: { id: created.id, rows: [{ task: 'omit the checkboxes' }, { task: 'tick one', done: true }] } }),
+      ) as { rows: { id: string; values: Record<string, unknown> }[] };
+      // unfilled checkbox -> false; its own `default` still wins; other column types stay null
+      expect(inserted.rows[0].values).toEqual({ task: 'omit the checkboxes', done: false, reviewed: true, note: null });
+      expect(inserted.rows[1].values).toEqual({ task: 'tick one', done: true, reviewed: true, note: null });
+
+      // folio_table_update touches only the listed columns: the checkbox stays false and no other column gains a value
+      const updated = resultJson(
+        await client.callTool({ name: 'folio_table_update', arguments: { id: created.id, rowId: inserted.rows[0].id, values: { note: 'edited' } } }),
+      ) as { values: Record<string, unknown> };
+      expect(updated.values).toEqual({ task: 'omit the checkboxes', done: false, reviewed: true, note: 'edited' });
+
+      const queried = resultJson(await client.callTool({ name: 'folio_table_query', arguments: { id: created.id, format: 'json' } })) as {
+        rows: { values: Record<string, unknown> }[];
+      };
+      expect(queried.rows.map((r) => r.values.done)).toEqual([false, true]);
+    } finally {
+      await close();
+    }
   });
 
   it('a read-scoped (viewer) actor can query but every write tool is refused', async () => {

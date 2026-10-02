@@ -42,6 +42,7 @@ import {
   checkViewCount,
   convertColumnType,
   convertMultipleToSingle,
+  defaultCellValue,
   dumpTableYaml,
   encodeCell,
   generateRowId,
@@ -337,7 +338,7 @@ export async function queryRows(pageId: string, params: RowQueryParams): Promise
 function newRow(columns: TableColumn[], values: Record<string, TableCellValue>): TableRow {
   const out: Record<string, TableCellValue> = {};
   for (const col of columns) {
-    out[col.id] = col.id in values ? values[col.id] : (col.default as TableCellValue | undefined) ?? null;
+    out[col.id] = col.id in values ? values[col.id] : defaultCellValue(col);
   }
   return { id: generateRowId(), values: out };
 }

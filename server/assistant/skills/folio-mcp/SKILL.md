@@ -60,8 +60,11 @@ audit of the current user of the session, without a separate token.
   `markdown` (only for `kind: 'doc'`, the default) is written right after the
   page is created; for `kind: 'table'` the text is ignored and an optional
   `columns` sets the starting schema. A page without `markdown` gets only the
-  title as an `# H1`. To change the text of an existing page, call
-  `update_page`.
+  title as an `# H1`. The title of a page is the first `# H1` of its text:
+  if your `markdown` does not open with one, the server puts `# <title>`
+  above it; if it does, that heading is kept and becomes the page title (the
+  `title` argument then only names the file) — check `title` in the reply.
+  To change the text of an existing page, call `update_page`.
 - **`update_page` does not work for tables and boards.** For a table — only
   `folio_table_*`. For a board — only `update_board`.
 - **The git commit is delayed** by about 90 seconds of silence in the

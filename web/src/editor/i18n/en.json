@@ -58,6 +58,11 @@
     "emoji": "Emoji…",
     "resetWidth": "Auto column widths",
     "columnWidth": "Column {{n}} width — drag",
+    "tableWidth": "Table width — drag the outer edge",
+    "widthGroup": "Table width",
+    "widthNarrow": "Narrow table",
+    "widthMedium": "Medium table",
+    "widthFull": "Full-width table",
     "bg": {
       "yellow": "Yellow",
       "green": "Green",

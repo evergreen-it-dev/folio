@@ -310,6 +310,29 @@ html[data-theme='dark'] .folio-markdown .md-alert-caution { --alert-accent: #ff7
   overflow-x: auto;
   margin: 1.25em 0;
 }
+
+/* Per-table width modes. `100cqw` resolves to the reading pane when Markdown
+   is inside the editor and to the viewport for standalone/shared rendering. */
+.folio-markdown .folio-table-wrap:has(> table.folio-table-display-medium),
+.folio-markdown .folio-table-wrap:has(> table.folio-table-display-full) {
+  position: relative;
+  left: 50%;
+  max-width: none;
+  transform: translateX(-50%);
+}
+.folio-markdown .folio-table-wrap:has(> table.folio-table-display-medium) {
+  width: min(calc(100cqw - 3rem), max(100%, 60rem));
+}
+.folio-markdown .folio-table-wrap:has(> table.folio-table-display-full) {
+  width: calc(100cqw - 3rem);
+}
+
+@media (max-width: 767.98px) {
+  .folio-markdown .folio-table-wrap:has(> table.folio-table-display-medium),
+  .folio-markdown .folio-table-wrap:has(> table.folio-table-display-full) {
+    width: calc(100cqw - 2rem);
+  }
+}
 .folio-markdown table {
   border-collapse: collapse;
   width: 100%;
@@ -361,6 +384,16 @@ html[data-theme='dark'] .folio-markdown .md-alert-caution { --alert-accent: #ff7
 .folio-markdown table.folio-table-sized { table-layout: fixed; }
 .folio-markdown table.folio-table-sized th,
 .folio-markdown table.folio-table-sized td { overflow-wrap: anywhere; }
+
+/* A drag of the outer right edge stores every column in pixels. In narrow mode
+   their sum may be smaller than the prose column; in full-width mode it may be
+   wider than the viewport, in which case the wrapper owns the horizontal
+   scrollbar. */
+.folio-markdown table.folio-table-pixel-sized { width: auto; }
+.folio-markdown table.folio-table-pixel-sized.folio-table-display-medium,
+.folio-markdown table.folio-table-pixel-sized.folio-table-display-full {
+  min-width: 100%;
+}
 
 /* Fit/scroll toggle: a wide table (no explicit `w=` widths above — those
    already get table-layout: fixed unconditionally) defaults to fitting the

@@ -1,4 +1,5 @@
 import type { TableCellValue, TableDoc, TableRow } from '@shared/contracts';
+import { defaultCellValue } from '@shared/tables/values';
 import type { TablePatch } from './types';
 
 /**
@@ -203,11 +204,7 @@ export function applyPatches(doc: TableDoc, patches: TablePatch[]): TableDoc {
 /** A blank row carrying every column's `default` (spec §2.3). */
 export function makeEmptyRow(doc: TableDoc, id: string): TableRow {
   const values: TableRow['values'] = {};
-  for (const column of doc.columns) {
-    if (column.default !== undefined) values[column.id] = column.default as TableRow['values'][string];
-    else if (column.type === 'checkbox') values[column.id] = false;
-    else values[column.id] = null;
-  }
+  for (const column of doc.columns) values[column.id] = defaultCellValue(column);
   return { id, values };
 }
 

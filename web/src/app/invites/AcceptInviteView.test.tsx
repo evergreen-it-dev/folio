@@ -122,3 +122,41 @@ describe('AcceptInviteView — @username handling', () => {
     expect(screen.getByText('Will be saved as @ivan.k')).toBeTruthy();
   });
 });
+
+describe('AcceptInviteView — existing session', () => {
+  it('offers primary Continue and secondary Sign out, then accepts into the current account', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/auth/state') {
+        return jsonResponse({
+          needsSetup: false,
+          user: { id: 'u-existing', name: 'Sergii', email: 'sergii@test.local', isAdmin: false },
+          memberships: {},
+        });
+      }
+      if (url === '/api/invite/tok123') {
+        return jsonResponse({ ...INVITE_INFO, spaces: [{ space: 'team', name: 'Team', role: 'editor' }] });
+      }
+      if (url === '/api/invite/tok123/accept-existing') {
+        return jsonResponse({
+          needsSetup: false,
+          user: { id: 'u-existing', name: 'Sergii', email: 'sergii@test.local', isAdmin: false },
+          memberships: { team: 'editor' },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderView();
+
+    const continueButton = await screen.findByRole('button', { name: 'Continue' });
+    const signOutButton = screen.getByRole('button', { name: 'Sign out' });
+    expect(continueButton.className).toContain('bg-neutral-900');
+    expect(signOutButton.className).toContain('border-neutral-300');
+    expect(signOutButton.className).not.toContain('bg-neutral-900');
+
+    fireEvent.click(continueButton);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/invite/tok123/accept-existing', expect.anything()),
+    );
+  });
+});

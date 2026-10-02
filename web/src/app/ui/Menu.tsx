@@ -89,7 +89,10 @@ export function Menu({ trigger, triggerLabel, align = 'left', className, childre
   // (Escape, outside click, scroll/resize dismissal, or an item selected),
   // so keyboard behavior doesn't regress versus the old inline layout.
   useEffect(() => {
-    if (open && coords) panelRef.current?.focus();
+    if (open && coords) {
+      const panel = panelRef.current;
+      if (panel && !panel.contains(document.activeElement)) panel.focus();
+    }
   }, [open, coords]);
 
   useEffect(() => {
@@ -102,7 +105,12 @@ export function Menu({ trigger, triggerLabel, align = 'left', className, childre
     function handleKey(event: KeyboardEvent) {
       if (event.key === 'Escape') setOpen(false);
     }
-    function handleDismiss() {
+    function handleDismiss(event: Event) {
+      // A long space switcher scrolls inside the menu itself. Capture-phase
+      // listening is still needed for ancestor scrolls, but the menu's own
+      // scroll area must not dismiss the surface the user is navigating.
+      const target = event.target;
+      if (target instanceof Node && panelRef.current?.contains(target)) return;
       setOpen(false);
     }
     document.addEventListener('keydown', handleKey);

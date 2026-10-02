@@ -91,6 +91,7 @@ function readTableSource(lines: string[], startLine: number, endLine: number): T
       bg: { ...attrs.bg, ...next.bg },
       width: { ...attrs.width, ...next.width },
       ...(next.layout ?? attrs.layout ? { layout: next.layout ?? attrs.layout } : {}),
+      ...(next.display ?? attrs.display ? { display: next.display ?? attrs.display } : {}),
     };
   };
 
@@ -224,6 +225,9 @@ function applyLayout(table: Element, rows: Element[], read: TableSource, width: 
 
   applyWidths(table, read.attrs, width);
   if (read.attrs.layout === 'columns') addClass(table, 'folio-layout-columns');
+  if (read.attrs.display && read.attrs.display !== 'narrow') {
+    addClass(table, `folio-table-display-${read.attrs.display}`);
+  }
 }
 
 /**
@@ -257,6 +261,12 @@ function applyWidths(table: Element, attrs: TableAttrs, width: number): void {
   };
   table.children.unshift(group);
   addClass(table, 'folio-table-sized');
+  if (
+    widths.length === width &&
+    widths.every(([, value]) => /^\d{1,4}px$/.test(value))
+  ) {
+    addClass(table, 'folio-table-pixel-sized');
+  }
 }
 
 /* ------------------------------------------------------------ cell lists -- */

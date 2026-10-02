@@ -77,6 +77,14 @@ export const BG_TOKENS = [
 ] as const;
 export type BgToken = (typeof BG_TOKENS)[number];
 
+/** How far a table may break out of the prose column. */
+export const TABLE_DISPLAYS = ['narrow', 'medium', 'full'] as const;
+export type TableDisplay = (typeof TABLE_DISPLAYS)[number];
+
+export function isTableDisplay(value: string): value is TableDisplay {
+  return (TABLE_DISPLAYS as readonly string[]).includes(value);
+}
+
 /** Written by the palette's "no background" entry; never stored. */
 export const BG_NONE = 'none';
 
@@ -103,16 +111,28 @@ export interface TableAttrs {
   width: Record<number, string>;
   /** Borderless page-layout columns; storage remains a valid GFM table. */
   layout?: 'columns';
+  /** Table width relative to the prose column. `narrow` is the implicit default. */
+  display?: TableDisplay;
 }
 
 export const EMPTY_ATTRS: TableAttrs = { bg: {}, width: {} };
 
 export function cloneAttrs(attrs: TableAttrs): TableAttrs {
-  return { bg: { ...attrs.bg }, width: { ...attrs.width }, ...(attrs.layout ? { layout: attrs.layout } : {}) };
+  return {
+    bg: { ...attrs.bg },
+    width: { ...attrs.width },
+    ...(attrs.layout ? { layout: attrs.layout } : {}),
+    ...(attrs.display ? { display: attrs.display } : {}),
+  };
 }
 
 export function hasAttrs(attrs: TableAttrs): boolean {
-  return Object.keys(attrs.bg).length > 0 || Object.keys(attrs.width).length > 0 || attrs.layout !== undefined;
+  return (
+    Object.keys(attrs.bg).length > 0 ||
+    Object.keys(attrs.width).length > 0 ||
+    attrs.layout !== undefined ||
+    (attrs.display !== undefined && attrs.display !== 'narrow')
+  );
 }
 
 /** Row index that addresses the header row, matching editor/gfm-table.ts. */
@@ -206,6 +226,12 @@ export function parseTableAttrLine(line: string): TableAttrs | null {
       continue;
     }
 
+    if (key === 'display' && isTableDisplay(body.toLowerCase())) {
+      const display = body.toLowerCase() as TableDisplay;
+      if (display !== 'narrow') attrs.display = display;
+      continue;
+    }
+
     for (const entry of body.split(',')) {
       const colon = entry.indexOf(':');
       if (colon < 0) continue;
@@ -232,6 +258,7 @@ export function formatTableAttrLine(attrs: TableAttrs): string | null {
   const parts: string[] = [];
 
   if (attrs.layout) parts.push(`layout=${attrs.layout}`);
+  if (attrs.display && attrs.display !== 'narrow') parts.push(`display=${attrs.display}`);
 
   const bgKeys = Object.keys(attrs.bg).sort(compareCellKeys);
   if (bgKeys.length > 0) {

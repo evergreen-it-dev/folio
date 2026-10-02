@@ -525,7 +525,12 @@ export function buildFolioMcpServer(actor: McpActor): McpServer {
         parentPath: z.string().describe('Parent directory path relative to the space root; "" for the space root'),
         title: z.string().min(1).describe('Page title'),
         kind: z.enum(['doc', 'table']).optional().describe('"doc" (default) or "table" (round 26 data table). markdown is ignored for "table".'),
-        markdown: z.string().optional().describe('Initial body markdown (doc only); omit for a blank starter page (just the title as an H1)'),
+        markdown: z
+          .string()
+          .optional()
+          .describe(
+            'Initial body markdown (doc only); omit for a blank starter page (just the title as an H1). A page\'s title is the first "# Heading" of its body: if your markdown does not open with one, "# <title>" is added above it, so you can send body text only. If it does open with an H1, that heading is kept as is and becomes the page title (the `title` argument then only names the file) — the reply shows the resulting title. A leading front matter block with icon/cover is applied as page metadata. Ignored for "table".',
+          ),
         columns: z.array(tableColumnSchema.omit({ id: true }).extend({ id: tableColumnSchema.shape.id.optional() })).optional().describe('Table only: starter column schema. Column `id` is auto-derived from `name` when omitted.'),
       },
     },
@@ -551,7 +556,18 @@ export function buildFolioMcpServer(actor: McpActor): McpServer {
       }
 
       const meta = await storage.createPage({ space, parentPath, title, kind: 'doc' });
-      const result = markdown !== undefined ? await collab.editDocBody(meta.id, markdown) : meta;
+      let result = meta;
+      if (markdown !== undefined) {
+        // `markdown` replaces the whole starter body, `# <title>` line included — and a doc's
+        // title is its first H1. Without this step a body that does not open with a heading
+        // retitles the page to its file slug (observed: "Release notes" came back as
+        // "release-notes"). A front matter block is split off the way the REST save does it
+        // (icon/cover become page metadata) so it is neither left in the body nor mistaken
+        // for the first line. If the body opens with its own H1 that heading stays and is the
+        // page's title — see storage.ensureLeadingTitle for why we do not rewrite it.
+        const { icon, cover, body } = storage.splitLeadingFrontmatter(markdown);
+        result = await collab.editDocBody(meta.id, storage.ensureLeadingTitle(body, title), icon, cover);
+      }
       gitSync.noteActivity(space);
       recordAudit(actor.user.id, 'page.created', meta.id, { source: 'mcp', tool: 'create_page' });
       return textResult(result);

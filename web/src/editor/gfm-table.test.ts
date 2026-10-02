@@ -25,6 +25,7 @@ import {
   serializeGfmTable,
   setAlign,
   setCell,
+  setTableDisplay,
   shiftCellIndent,
   splitCellLines,
   splitTableRow,
@@ -148,6 +149,18 @@ describe('round trip', () => {
     expect(parsed?.attrs?.layout).toBe('columns');
     expect(serializeGfmTable(parsed!)).toContain('[//]: # (folio-table: layout=columns)');
   });
+
+  it('round-trips a table width mode and omits the default narrow mode', () => {
+    const source = '[//]: # (folio-table: display=medium)\n\n' + SIMPLE;
+    const parsed = parseGfmTable(source)!;
+    expect(parsed.attrs?.display).toBe('medium');
+    expect(serializeGfmTable(parsed)).toContain('folio-table: display=medium');
+
+    const full = setTableDisplay(parsed, 'full');
+    expect(serializeGfmTable(full)).toContain('folio-table: display=full');
+    expect(setTableDisplay(full, 'narrow').attrs).toBeUndefined();
+    expect(parseGfmTable('[//]: # (folio-table: display=narrow)\n\n' + SIMPLE)?.attrs).toBeUndefined();
+  });
 });
 
 describe('escapeCell / unescapeCell', () => {
@@ -211,6 +224,13 @@ describe('structure edits', () => {
     deleteRow(table, 0);
     setCell(table, 0, 0, 'zzz');
     expect(JSON.stringify(table)).toBe(before);
+  });
+
+  it('keeps the table width mode through structural edits', () => {
+    const wide = setTableDisplay(table, 'medium');
+    expect(insertRow(wide, 0).attrs?.display).toBe('medium');
+    expect(insertColumn(wide, 0).attrs?.display).toBe('medium');
+    expect(deleteRow(wide, 0).attrs?.display).toBe('medium');
   });
 });
 

@@ -117,6 +117,8 @@ connection is back.
   to them. They can grant access to themselves — and that is written to the
   audit log and shown with a mark.
 - **Invitations** — links with preset roles, an expiry date and a usage limit.
+  A signed-in person can accept one with the current account, or sign out to
+  use another account.
 - **Access requests**: a user who runs into a 403 sends a request; the space
   administrators are notified and decide.
 
@@ -142,6 +144,7 @@ authorship.
 
 - **Full-text search** across documents and tables.
 - **Cmd+K** — quick switch between pages.
+- The space switcher has search and scrolls long lists inside its menu.
 - Recent pages, favorites (a star on a space and on a page), **backlinks**.
 - A **tree** with drag and drop, a templates folder for creating "from a
   template", and the `.agent` folder (see section 11). The tree updates by
@@ -164,6 +167,11 @@ authorship.
 ## 9. Data tables
 
 A table is a small database inside the wiki.
+
+Markdown tables inside documents have narrow, medium and full-viewport width
+modes. Narrow and full-width tables can be resized from their highlighted
+right edge; a table wider than the viewport scrolls horizontally inside its
+own container.
 
 - **Column types**: text, long text, number, date, checkbox, select, status,
   user, link.

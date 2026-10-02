@@ -225,6 +225,41 @@ describe('renderMarkdownToHtml: column widths', () => {
     expect(html).toContain('width="120px"');
     expect(html).not.toContain('9rem');
   });
+
+  it('marks a complete pixel map as an explicitly resizable table', () => {
+    const html = renderMarkdownToHtml(
+      '[//]: # (folio-table: w=1:120px,2:180px)\n\n| a | b |\n| - | - |\n| x | y |',
+      opts,
+    );
+    expect(html).toContain('folio-table-pixel-sized');
+  });
+
+  it('does not mark a partial pixel map as the table width', () => {
+    const html = renderMarkdownToHtml(
+      '[//]: # (folio-table: w=1:120px)\n\n| a | b |\n| - | - |\n| x | y |',
+      opts,
+    );
+    expect(html).not.toContain('folio-table-pixel-sized');
+  });
+});
+
+describe('renderMarkdownToHtml: table display width', () => {
+  it.each(['medium', 'full'] as const)('adds the %s breakout class', (display) => {
+    const html = renderMarkdownToHtml(
+      `[//]: # (folio-table: display=${display})\n\n| a | b |\n| - | - |\n| x | y |`,
+      opts,
+    );
+    expect(html).toContain(`folio-table-display-${display}`);
+    expect(html).not.toContain('folio-table:');
+  });
+
+  it('ignores an unknown display width', () => {
+    const html = renderMarkdownToHtml(
+      '[//]: # (folio-table: display=huge)\n\n| a | b |\n| - | - |\n| x | y |',
+      opts,
+    );
+    expect(html).not.toContain('folio-table-display-');
+  });
 });
 
 describe('renderMarkdownToHtml: metadata line', () => {

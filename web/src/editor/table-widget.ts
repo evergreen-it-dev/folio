@@ -67,6 +67,7 @@ import {
   setCell,
   setColumnWidths,
   setRangeBackground,
+  setTableDisplay,
   shiftCellIndent,
   splitCellLines,
   tableLayout,
@@ -77,6 +78,7 @@ import {
   type ColumnAlign,
   type GfmTable,
   type InlineTokenType,
+  type TableDisplay,
   type TableLayout,
 } from './gfm-table';
 import { bgClass } from '../markdown/tableSyntax';
@@ -550,6 +552,7 @@ function render(wrap: HTMLElement, view: EditorView, source: string): void {
   // still know the real shape.
   wrap.dataset.cols = String(table.header.length);
   wrap.dataset.rows = String(table.rows.length);
+  wrap.dataset.display = table.attrs?.display ?? 'narrow';
 
   const scroll = document.createElement('div');
   scroll.className = 'cm-md-table-scroll';
@@ -564,7 +567,7 @@ function render(wrap: HTMLElement, view: EditorView, source: string): void {
 
   scroll.appendChild(frame);
   wrap.appendChild(scroll);
-  wrap.appendChild(buildBar(view, wrap));
+  wrap.appendChild(buildBar(view, wrap, table));
 
   mountControls(view, wrap, frame, overlay, table);
   rendering = true;
@@ -580,7 +583,7 @@ function render(wrap: HTMLElement, view: EditorView, source: string): void {
  * cover a header cell or the column controls, and it does not jump around as
  * the table grows.
  */
-function buildBar(view: EditorView, wrap: HTMLElement): HTMLElement {
+function buildBar(view: EditorView, wrap: HTMLElement, table: GfmTable): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'cm-md-table-bar';
 
@@ -602,6 +605,27 @@ function buildBar(view: EditorView, wrap: HTMLElement): HTMLElement {
   const spacer = document.createElement('span');
   spacer.className = 'cm-md-table-bar__spacer';
   bar.appendChild(spacer);
+
+  const widthGroup = document.createElement('span');
+  widthGroup.className = 'cm-md-table-widths';
+  widthGroup.setAttribute('role', 'group');
+  widthGroup.setAttribute('aria-label', t('table.widthGroup'));
+  const current = table.attrs?.display ?? 'narrow';
+  const widths: Array<{ display: TableDisplay; icon: IconName; label: string }> = [
+    { display: 'narrow', icon: 'widthNarrow', label: t('table.widthNarrow') },
+    { display: 'medium', icon: 'widthMedium', label: t('table.widthMedium') },
+    { display: 'full', icon: 'widthFull', label: t('table.widthFull') },
+  ];
+  for (const { display, icon, label } of widths) {
+    const button = barButton(icon, label, label, () => {
+      if (current !== display) applyEdit(view, wrap, (next) => setTableDisplay(next, display));
+    });
+    button.classList.add('cm-md-table-widthbtn');
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(current === display));
+    widthGroup.appendChild(button);
+  }
+  bar.appendChild(widthGroup);
 
   bar.appendChild(
     barButton('code', t('table.source'), t('table.sourceTitle'), () => revealSource(view, wrap)),
@@ -653,6 +677,12 @@ function buildGrid(view: EditorView, wrap: HTMLElement, table: GfmTable): HTMLTa
   }
   grid.appendChild(group);
   if (widths.size > 0) grid.dataset.sized = 'true';
+  if (
+    widths.size === table.header.length &&
+    [...widths.values()].every((width) => /^\d{1,4}px$/.test(width))
+  ) {
+    grid.dataset.pixelSized = 'true';
+  }
 
   const emit = (host: HTMLElement, row: number, cells: readonly string[], tag: 'th' | 'td') => {
     cells.forEach((text, col) => {
@@ -884,15 +914,20 @@ function mountControls(
       zone.style.width = `${EDGE_REACH * 2}px`;
       zone.style.top = `${strip}px`;
       zone.style.height = `${geo.bottom - strip}px`;
-      // Round 17: the same border also sets the column's width. Dragging is
-      // hung on the line that is already drawn there rather than on a control
-      // of its own — the `+` keeps its own hit box on top of it.
-      if (index > 0 && index < geo.cols.length) {
+      // Inner borders resize a pair of columns. Narrow and full-width tables
+      // also expose the same outer right handle: narrow is capped at the prose
+      // column, while full width may grow past its viewport and scroll.
+      const display = table.attrs?.display ?? 'narrow';
+      const outer =
+        index === geo.cols.length && (display === 'narrow' || display === 'full')
+          ? 'right'
+          : null;
+      if (outer || (index > 0 && index < geo.cols.length)) {
         const line = zone.querySelector<HTMLElement>('.cm-md-edge__line');
         if (line) {
           line.dataset.resize = 'true';
-          line.title = t('table.columnWidth', { n: index });
-          line.addEventListener('mousedown', (event) => startResize(event, index - 1));
+          line.title = outer ? t('table.tableWidth') : t('table.columnWidth', { n: index });
+          line.addEventListener('mousedown', (event) => startResize(event, index - 1, outer));
         }
       }
       colZones.push(zone);
@@ -1362,19 +1397,27 @@ function mountControls(
   /* ------------------------------------------------------ column width -- */
 
   /**
-   * Drag the border between two columns. The pair's total width is held
-   * constant, so the table never grows sideways while being adjusted, and the
-   * commit writes EVERY column as a percentage — a half-specified width map
-   * would leave the browser to guess the rest, which is how the owner's
-   * five-column layout collapsed into noodles in the first place.
+   * An inner border redistributes a fixed-width pair. An outer border scales
+   * the whole table, preserving the proportions the author already chose, and
+   * writes every column in pixels so reading mode can reproduce a table that
+   * is either narrower than the prose column or wider than the viewport.
    *
    * Only the preview is live; one edit lands on mouse-up.
    */
-  const startResize = (event: MouseEvent, leftCol: number) => {
+  const startResize = (
+    event: MouseEvent,
+    leftCol: number,
+    outer: 'right' | null = null,
+  ) => {
     if (!geometry) return;
     const sizes = geometry.cols.map((col) => col.size);
     const total = sizes.reduce((sum, size) => sum + size, 0);
-    if (total <= 0 || leftCol + 1 >= sizes.length) return;
+    if (
+      total <= 0 ||
+      leftCol < 0 ||
+      leftCol >= sizes.length ||
+      (!outer && leftCol + 1 >= sizes.length)
+    ) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -1382,8 +1425,13 @@ function mountControls(
     const columns = [...frame.querySelectorAll<HTMLElement>('colgroup col')];
     const grid = frame.querySelector<HTMLElement>('.cm-md-grid');
     const startX = event.clientX;
-    const pair = sizes[leftCol] + sizes[leftCol + 1];
+    const pair = outer ? 0 : sizes[leftCol] + sizes[leftCol + 1];
     const MIN = 40;
+    const display = table.attrs?.display ?? 'narrow';
+    const outerMax =
+      outer && display === 'narrow'
+        ? Math.max(MIN * sizes.length, frame.getBoundingClientRect().width - geometry.left - 2)
+        : Number.POSITIVE_INFINITY;
     let next = sizes.slice();
     let moved = false;
 
@@ -1392,6 +1440,21 @@ function mountControls(
       if (!moved && Math.abs(delta) < 2) return;
       moved = true;
       frame.dataset.resizing = 'true';
+      if (outer) {
+        const requested = total + delta;
+        const nextTotal = Math.min(outerMax, Math.max(MIN * sizes.length, requested));
+        const scale = nextTotal / total;
+        next = sizes.map((size) => size * scale);
+        if (grid) {
+          grid.dataset.sized = 'true';
+          grid.dataset.pixelSized = 'true';
+          grid.style.width = `${Math.round(nextTotal)}px`;
+        }
+        columns.forEach((col, index) => {
+          col.style.width = `${Math.round(next[index])}px`;
+        });
+        return;
+      }
       const left = Math.min(Math.max(sizes[leftCol] + delta, MIN), Math.max(MIN, pair - MIN));
       next = sizes.slice();
       next[leftCol] = left;
@@ -1409,7 +1472,12 @@ function mountControls(
       if (!moved) return;
       const widths = new Map<number, string>();
       next.forEach((size, index) => {
-        widths.set(index, `${Math.min(100, Math.max(1, Math.round((size / total) * 100)))}%`);
+        widths.set(
+          index,
+          outer
+            ? `${Math.min(9999, Math.max(1, Math.round(size)))}px`
+            : `${Math.min(100, Math.max(1, Math.round((size / total) * 100)))}%`,
+        );
       });
       applyEdit(view, wrap, (current) => setColumnWidths(current, widths));
     };

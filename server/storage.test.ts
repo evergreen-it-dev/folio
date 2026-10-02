@@ -3,7 +3,7 @@ import { setUpTestSchema, deleteTestSpace } from './db/testSchema.js';
 import * as storage from './storage.js';
 import * as authStore from './auth/store.js';
 import * as session from './auth/session.js';
-import { clampSubtreeDepth, extractH1, replaceFirstH1, type SubtreeNode } from './storage.js';
+import { clampSubtreeDepth, ensureLeadingTitle, extractH1, replaceFirstH1, type SubtreeNode } from './storage.js';
 import type { FastifyRequest } from 'fastify';
 import { parseTableFile, isTableParseError } from '../shared/tables/index.js';
 import type { TableColumn, TableDoc } from '../shared/contracts.js';
@@ -228,6 +228,46 @@ describe('replaceFirstH1', () => {
 
   it('prepends an H1 when none exists', () => {
     expect(replaceFirstH1('Just a paragraph.\n', 'Title')).toBe('# Title\n\nJust a paragraph.\n');
+  });
+});
+
+describe('ensureLeadingTitle', () => {
+  it('puts the title above a body that has no heading', () => {
+    expect(ensureLeadingTitle('Just a paragraph.\n', 'Title')).toBe('# Title\n\nJust a paragraph.\n');
+  });
+
+  it('puts the title above a body that opens with a lower-level heading', () => {
+    expect(ensureLeadingTitle('## Done\n\n- one\n', 'Title')).toBe('# Title\n\n## Done\n\n- one\n');
+  });
+
+  it('drops leading blank lines instead of stacking them under the new heading', () => {
+    expect(ensureLeadingTitle('\n \n\nText.\n', 'Title')).toBe('# Title\n\nText.\n');
+  });
+
+  it('gives an empty or whitespace-only body just the heading', () => {
+    expect(ensureLeadingTitle('', 'Title')).toBe('# Title\n');
+    expect(ensureLeadingTitle('\n\n  \n', 'Title')).toBe('# Title\n');
+  });
+
+  it('leaves a body that opens with an H1 untouched, whether or not it matches the title', () => {
+    expect(ensureLeadingTitle('# Title\n\nBody.\n', 'Title')).toBe('# Title\n\nBody.\n');
+    expect(ensureLeadingTitle('\n\n# Other\n\nBody.\n', 'Title')).toBe('\n\n# Other\n\nBody.\n');
+  });
+
+  it('does not count an H1 that comes after other content, nor one inside a fenced block', () => {
+    expect(ensureLeadingTitle('Intro.\n\n# Later\n', 'Title')).toBe('# Title\n\nIntro.\n\n# Later\n');
+    expect(ensureLeadingTitle('```sh\n# comment\n```\n', 'Title')).toBe('# Title\n\n```sh\n# comment\n```\n');
+  });
+
+  it('does not take "#hashtag" or an indented "# x" for a heading, as extractH1 does not', () => {
+    expect(ensureLeadingTitle('#hashtag first\n', 'Title')).toBe('# Title\n\n#hashtag first\n');
+    expect(ensureLeadingTitle('  # indented\n', 'Title')).toBe('# Title\n\n  # indented\n');
+  });
+
+  it('always yields a body whose extracted title is the requested one when the input had no leading H1', () => {
+    for (const body of ['Text only.\n', '## Sub\n', '', '```\n# x\n```\n', 'Intro.\n\n# Later\n']) {
+      expect(extractH1(ensureLeadingTitle(body, 'Wanted title'))).toBe('Wanted title');
+    }
   });
 });
 

@@ -1,6 +1,6 @@
 # Folio
 
-**The vibe-coded and AI SDLC friendly, open-source alternative to Notion and Confluence.**
+**The vibe-coded, open-source alternative to Notion and Confluence.**
 Your team's wiki lives in Git. People write in the browser, together, in real
 time. AI agents read and write the same pages. One command to run it yourself.
 
@@ -428,9 +428,10 @@ Folio is written by AI coding agents. A human product owner decides what to
 build, tries every change in the browser and decides what ships; agents plan
 the work, write the code and the tests, and document what they did.
 
-From the first commit on August 21, 2026 to the first public release: under
-six weeks, more than 400 commits upstream, roughly 90,000 lines of TypeScript
-and another 50,000 lines of tests. It runs in production for a real team.
+From the first commit on August 21, 2026 to version 0.1.0 on September 29,
+2026: 39 days, more than 400 commits upstream, roughly 90,000 lines of
+TypeScript and another 50,000 lines of tests. It runs in production for a real
+team.
 
 We publish how it is made, not only what was made:
 

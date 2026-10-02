@@ -65,6 +65,20 @@ describe('server/tables/service.ts (real fs + real PG)', () => {
       }
     });
 
+    it('insertRows gives an unfilled checkbox false (what the grid\'s own "add row" gives), not null', async () => {
+      const done: TableColumn = { id: 'done', name: 'Done', type: 'checkbox' };
+      const { spaceSlug, pageId } = await makeTable('Insert Checkbox', [OWNER, done]);
+      try {
+        const { rows } = await service.insertRows(pageId, [{ owner: 'alice' }, { owner: 'bob', done: true }]);
+        expect(rows.map((r) => r.values)).toEqual([
+          { owner: 'alice', done: false },
+          { owner: 'bob', done: true },
+        ]);
+      } finally {
+        await deleteTestSpace(spaceSlug);
+      }
+    });
+
     it('updateRowCells patches only the given columns, leaving the rest untouched', async () => {
       const { spaceSlug, pageId } = await makeTable('Update Row');
       try {
