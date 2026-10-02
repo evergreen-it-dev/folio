@@ -149,7 +149,12 @@ authorship.
 - **Duplicate** and **Copy to…** in the page menu. Duplicate puts a copy
   next to the original, child pages included; Copy to… puts it under any
   page of any space you can edit, with or without the child pages. Every
-  copied page gets an identity of its own.
+  copied page gets an identity of its own. A copy takes only what you can
+  open: a page with access restrictions that hide it from you is left out
+  together with everything below it and the files only such pages use, and the
+  `.agent` folder is never copied for someone who is not an administrator.
+  The copy of a page that has its own access rules is private to the person
+  who made it.
 
 ## 9. Data tables
 

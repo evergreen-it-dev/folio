@@ -83,6 +83,16 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Security
 
+- "Copy to…" and "Duplicate" no longer carry over what the person copying
+  cannot open. Before, an editor (or a viewer who could edit another space)
+  could copy a page together with its children and read, in the copy, a child
+  hidden from them by page access, with its files; copying the root page of a
+  space into another space also took the `.agent` folder along. Now a page
+  hidden from the person copying is left out together with everything below it
+  and the files only such pages use, the `.agent` folder is not copied unless
+  the person administers the space, and dot files and folders are never
+  copied. The copy of a page that has its own access rules is private to the
+  person who made it; sharing it again is a deliberate step.
 - Raw files of a space can no longer be read around page access, and a share
   link to one page no longer opens other files of its space (other pages'
   Markdown and tables, repository internals). Hidden paths (anything starting

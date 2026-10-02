@@ -262,6 +262,33 @@ export async function requireSessionFileAccess(request: FastifyRequest, space: s
   throw forbidden('this file belongs to a page you cannot open');
 }
 
+/**
+ * The non-page files of `space` that belong ONLY to the `hidden` pages — the
+ * rule `requireSessionFileAccess` applies to one file, asked of all of them at
+ * once: a file belongs to the pages that reference it, and is withheld when
+ * every page referencing it is hidden. A file shared with a page that is not
+ * hidden, or used by nothing, is not in the set. Used by a subtree copy
+ * (server/copyScope.ts) to leave a hidden page's private attachments behind.
+ */
+export async function filesOfHiddenPagesOnly(space: string, hidden: ReadonlyArray<{ id: string; path: string; kind: PageKind }>): Promise<Set<string>> {
+  const only = new Set<string>();
+  if (hidden.length === 0) return only;
+  const root = storage.getSpaceDir(space);
+  for (const page of hidden) {
+    const source: PageSource = { ...page, space, relPath: page.path, absPath: path.join(root, page.path) };
+    for (const ref of await pageReferences(source)) only.add(ref);
+  }
+  if (only.size === 0) return only;
+
+  const hiddenIds = new Set(hidden.map((page) => page.id));
+  for (const entry of await storage.listEntries(space)) {
+    if (hiddenIds.has(entry.id)) continue;
+    for (const ref of await pageReferences(entry)) only.delete(ref);
+    if (only.size === 0) break;
+  }
+  return only;
+}
+
 /** True when `relPath` under `root` is a regular file reached without crossing a symlink. */
 async function isPlainFileInside(root: string, relPath: string): Promise<boolean> {
   try {

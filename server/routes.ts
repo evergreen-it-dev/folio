@@ -73,6 +73,7 @@ import * as gitProviders from './gitProviders.js';
 import { buildSpaceZip } from './export/spaceZip.js';
 import * as importProgress from './spaceImportProgress.js';
 import * as pageAccess from './pageAccess.js';
+import { resolveCopyScope } from './copyScope.js';
 import { findTrashItemId, recordPageChange, snapshotPageChange } from './pageChanges.js';
 import * as bootScan from './bootScan.js';
 
@@ -960,7 +961,9 @@ export function registerRoutes(app: FastifyInstance): void {
     await session.requireAgentWriteAllowed(request.authUser!, body.toSpace, storage.normalizeDirParam(body.toParentPath));
 
     gitSync.recordEditor(body.toSpace, { name: request.authUser!.name, email: request.authUser!.email });
-    const result = await storage.copyPage(id, body.toSpace, body.toParentPath, await liveCopyContent(entry), body.includeChildren);
+    // What this caller may not take along (pages page access hides from them, their private files, .agent) and whose the restricted copies become.
+    const scope = await resolveCopyScope(request.authUser!, entry, body.includeChildren);
+    const result = await storage.copyPage(id, body.toSpace, body.toParentPath, await liveCopyContent(entry), body.includeChildren, scope);
     const after = snapshotPageChange(await storage.requireEntry(result.id));
     await recordPageChange(request.authUser!.id, 'page.copy', result.id, body.toSpace, undefined, after);
     gitSync.noteActivity(body.toSpace);
@@ -982,7 +985,8 @@ export function registerRoutes(app: FastifyInstance): void {
     await session.requireAgentWriteAllowed(request.authUser!, entry.space, storage.duplicateParentPath(entry));
 
     gitSync.recordEditor(entry.space, { name: request.authUser!.name, email: request.authUser!.email });
-    const result = await storage.duplicatePage(id, await liveCopyContent(entry), body.title);
+    const scope = await resolveCopyScope(request.authUser!, entry, true);
+    const result = await storage.duplicatePage(id, await liveCopyContent(entry), body.title, scope);
     const after = snapshotPageChange(await storage.requireEntry(result.id));
     await recordPageChange(request.authUser!.id, 'page.copy', result.id, entry.space, undefined, after);
     gitSync.noteActivity(entry.space);

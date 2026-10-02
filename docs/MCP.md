@@ -52,7 +52,7 @@ Three access rules:
 | create a page | `POST /api/pages` |
 | child pages | `GET /api/pages/:id/subtree?depth=N` |
 | move / rename / change slug | `POST /api/pages/:id/{move,rename,slug}` |
-| copy | `POST /api/pages/:id/copy` `{toSpace, toParentPath, includeChildren?}` — children are copied by default, `false` = the page only |
+| copy | `POST /api/pages/:id/copy` `{toSpace, toParentPath, includeChildren?}` — children are copied by default, `false` = the page only; pages hidden from you, and everything below them, are left out, and a copy of a page with its own access rules is private to you |
 | my structural changes / undo one | `GET /api/spaces/:space/changes`; `POST …/changes/:id/undo` |
 | history | `GET /api/pages/:id/history`, `…/history/:sha` |
 | export | `GET /api/pages/:id/export.{md,pdf,docx,yaml}` |
@@ -70,8 +70,8 @@ the rule and to explicit `viewer`/`editor` grants.
 
 The restriction applies to the page itself and is not inherited by child pages.
 The tree, search, quick switcher, subtree, backlinks, collaborative editing,
-MCP, authorized export and raw files (`/files/…`) all filter out inaccessible
-pages. A share token is
+MCP, authorized export, raw files (`/files/…`), copy and duplicate all filter
+out inaccessible pages. A share token is
 a separate, explicit access channel.
 
 ## Undoing structural changes

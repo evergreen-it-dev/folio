@@ -24,7 +24,7 @@ import * as matterNS from 'gray-matter';
 import { ulid } from 'ulidx';
 import type { CreatePageBody, FormDoc, PageKind, PageMeta, PageStatus, SpaceGitStatus, SpaceInfo, SpaceVisibility, TableColumn, TableDoc, TableView, TreeNode } from '../shared/contracts.js';
 import { officeFormat } from '../shared/contracts.js';
-import { badRequest, conflict, notFound } from './errors.js';
+import { badRequest, conflict, forbidden, notFound } from './errors.js';
 import { translitSlug } from './translit.js';
 import { query, queryOne, withTransaction } from './db/pool.js';
 import { withSpaceLock } from './db/redis.js';
@@ -2996,21 +2996,130 @@ async function rewritePageFileId(abs: string, kind: PageKind, newId: string, opt
   }
 }
 
-/** Copies a whole page subdirectory byte-for-byte, then sweeps every page file underneath it (recursively) to a fresh id — assets and other non-page files ride along untouched. Used both for a directory-index page's whole subtree and for a leaf page's `X/` children directory. */
+/**
+ * What a copy leaves behind for the person asking for it. A copy gets fresh
+ * page ids, and page access (`page_access`) is keyed by page id: whatever lands
+ * in a copy is open to the whole destination space unless the copy is told
+ * otherwise. So a copy must never contain a page its maker cannot open, and a
+ * copy of a restricted page must itself stay restricted.
+ *
+ * The rule (docs/spec-access.md §13):
+ *  - a page the caller cannot open (`hiddenPageIds`: a private page they
+ *    neither own nor hold a grant on, and `.agent/**` unless they administer
+ *    the space) is not copied, and neither is anything below it — its file,
+ *    its children folder, its subfolder, however open those children are by
+ *    themselves. The same "nothing below a hidden page" rule as a subtree
+ *    share link (export/shareScope.ts). Page access is per page, so the tree
+ *    still shows such a child; a copy is stricter on purpose, because it moves
+ *    the content to a place the caller can edit and strips the restriction;
+ *  - files that belong only to hidden pages (`privateFiles`: referenced by
+ *    them and by no page the caller can open — the same ownership rule as the
+ *    raw-file route, fileAccess.ts) stay behind; a file shared with an open
+ *    page, or used by nothing, is copied;
+ *  - the content root's `.agent` folder stays behind as a whole for a caller
+ *    who cannot administer the space (`skipAgentFolder`) — non-page files too;
+ *  - dot entries (`.git`, `.github`, any dotfile) are never page content and
+ *    never travel in a subtree copy, for anybody. The one exception is an
+ *    admin's `.agent` folder, which a copy of the space root carries as before;
+ *  - the copy of a page that has a `page_access` row is restricted to `actorId`
+ *    alone: owner = whoever made the copy, no grants. Never wider than the
+ *    original, and always something the maker can open and re-share on
+ *    purpose. The original owner's and grantees' rights are NOT copied: they
+ *    may not be members of the destination space at all, and a grant cannot
+ *    outlive a membership (pageAccess.setAccess refuses it).
+ *
+ * `copyPage`/`duplicatePage` without a scope apply none of the access rules
+ * above (no page is left out and no copy is restricted) — for a caller that
+ * reads every page by construction (tests, tooling); every route passes one
+ * (see server/copyScope.ts).
+ */
+export interface CopyScope {
+  /** Who makes the copy: the sole owner of the copy of every restricted page. */
+  actorId: string;
+  /** Pages of the SOURCE space the caller cannot open. */
+  hiddenPageIds: ReadonlySet<string>;
+  /** Space-relative paths of the source space's non-page files that only hidden pages use. */
+  privateFiles: ReadonlySet<string>;
+  /** Leave the source space's `.agent` folder out entirely. */
+  skipAgentFolder: boolean;
+}
+
+/**
+ * The `fs.cp` filter of one subtree copy: true = copy, false = leave this file
+ * or folder (and everything inside a folder) behind. `srcDirAbs` itself always
+ * passes — it is the page being copied.
+ */
+function copyFilter(sourceSpace: string, srcDirAbs: string, sourceEntries: PageIndexEntry[], scope?: CopyScope): (src: string) => boolean {
+  const left = new Set<string>(scope?.privateFiles);
+  if (scope?.skipAgentFolder) left.add(AGENT_FOLDER);
+  if (scope) {
+    for (const entry of sourceEntries) {
+      if (!scope.hiddenPageIds.has(entry.id)) continue;
+      left.add(entry.relPath);
+      if (entry.isIndex) {
+        // A directory-index page IS its folder: everything in the folder is below it. (The space root's own index page cannot be hidden from someone who is copying it.)
+        if (entry.dirPath !== '') left.add(entry.dirPath);
+      } else {
+        const stem = relPathStem(entry.relPath, entry.kind);
+        left.add(entry.dirPath ? `${entry.dirPath}/${stem}` : stem);
+      }
+    }
+  }
+  const spaceRootAbs = spaceDir(sourceSpace);
+  return (src) => {
+    if (path.resolve(src) === path.resolve(srcDirAbs)) return true;
+    const rel = path.relative(spaceRootAbs, src).split(path.sep).join('/');
+    if (path.basename(src).startsWith('.') && !(rel === AGENT_FOLDER && scope?.skipAgentFolder === false)) return false;
+    return !left.has(rel);
+  };
+}
+
+/**
+ * Gives every copied page that has a `page_access` row its own row in the
+ * copy, owned by `actorId` and with no grants (see CopyScope). Run after the
+ * destination has been scanned: the row references the copy's index row.
+ */
+async function restrictCopies(sourceEntries: PageIndexEntry[], copied: Array<{ sourceAbs: string; copyId: string }>, actorId: string): Promise<void> {
+  const idByAbs = new Map(sourceEntries.map((e) => [e.absPath, e.id]));
+  const sourceIds: string[] = [];
+  const copyIds: string[] = [];
+  for (const { sourceAbs, copyId } of copied) {
+    const sourceId = idByAbs.get(sourceAbs);
+    if (!sourceId) continue;
+    sourceIds.push(sourceId);
+    copyIds.push(copyId);
+  }
+  if (sourceIds.length === 0) return;
+  await query(
+    `INSERT INTO page_access (page_id, owner_id)
+     SELECT m.copy_id, $3::uuid
+       FROM unnest($1::text[], $2::text[]) AS m(source_id, copy_id)
+       JOIN page_access a ON a.page_id = m.source_id
+       JOIN pages_index c ON c.id = m.copy_id
+     ON CONFLICT (page_id) DO NOTHING`,
+    [sourceIds, copyIds, actorId],
+  );
+}
+
+interface CopiedSubtree {
+  /** The fresh id of the file named by `rootFileAbsInSrc`, or '' when none was. */
+  rootId: string;
+  /** Every page file the sweep gave a fresh id: where it came from, and the id it got. */
+  copied: Array<{ sourceAbs: string; copyId: string }>;
+}
+
+/** Copies a whole page subdirectory (minus what `keep` refuses), then sweeps every page file underneath it (recursively) to a fresh id — assets and other non-page files ride along untouched. Used both for a directory-index page's whole subtree and for a leaf page's `X/` children directory. */
 async function copySubtreeAssigningFreshIds(
   srcDirAbs: string,
   destDirAbs: string,
+  keep: (src: string) => boolean,
   rootFileAbsInSrc?: string,
   rootOverrideContent?: string,
-): Promise<string> {
-  // Never drag a repository's own `.git` along: copying a space's root
-  // index page would otherwise clone the whole git metadata into a subfolder.
-  await fs.cp(srcDirAbs, destDirAbs, {
-    recursive: true,
-    filter: (src) => path.basename(src) !== '.git',
-  });
+): Promise<CopiedSubtree> {
+  await fs.cp(srcDirAbs, destDirAbs, { recursive: true, filter: keep });
   const rootRel = rootFileAbsInSrc ? path.relative(srcDirAbs, rootFileAbsInSrc) : undefined;
   let rootId = '';
+  const copied: CopiedSubtree['copied'] = [];
 
   async function walk(dirAbs: string): Promise<void> {
     const items = await fs.readdir(dirAbs, { withFileTypes: true });
@@ -3026,11 +3135,12 @@ async function copySubtreeAssigningFreshIds(
       const isRootFile = rootRel !== undefined && path.relative(destDirAbs, abs) === rootRel;
       const newId = ulid();
       if (isRootFile) rootId = newId;
+      copied.push({ sourceAbs: path.join(srcDirAbs, path.relative(destDirAbs, abs)), copyId: newId });
       await rewritePageFileId(abs, kind, newId, { keepOrder: !isRootFile, overrideContent: isRootFile ? rootOverrideContent : undefined });
     }
   }
   await walk(destDirAbs);
-  return rootId;
+  return { rootId, copied };
 }
 
 /**
@@ -3048,6 +3158,11 @@ async function copySubtreeAssigningFreshIds(
  * on-disk directory-existence check, since this only needs to know whether
  * `X/` exists, not render a tree). Every copied page file gets its own
  * fresh id; `false` reproduces the old single-file-only behavior exactly.
+ *
+ * `scope` (see CopyScope) says what the person asking may not take along —
+ * pages page access hides from them, files only those pages use, the `.agent`
+ * folder — and who owns the restricted copies; leave it out only for a caller
+ * that reads everything.
  */
 export async function copyPage(
   id: string,
@@ -3055,9 +3170,13 @@ export async function copyPage(
   toParentPathRaw: string,
   liveContent?: string,
   includeChildren = true,
+  scope?: CopyScope,
 ): Promise<PageMeta> {
   const source = await requireEntry(id);
+  // The routes have refused a page the caller cannot open before they get here; this keeps the rule true for any other caller.
+  if (scope?.hiddenPageIds.has(source.id)) throw forbidden('this page is not available to you');
   if (!(await spaceExists(toSpace))) throw notFound('space');
+  const sourceEntries = scope ? await listEntries(source.space) : [];
 
   return withSpaceLock(toSpace, async () => {
     const toParentPath = normalizeDirParam(toParentPathRaw);
@@ -3074,14 +3193,22 @@ export async function copyPage(
       const uniqueDirRel = await uniqueRelPath(toSpace, toParentPath, stem, '');
       const destDirAbs = path.join(spaceDir(toSpace), uniqueDirRel);
 
-      const copiedId = await copySubtreeAssigningFreshIds(srcDirAbs, destDirAbs, source.absPath, liveContent);
+      const { rootId: copiedId, copied } = await copySubtreeAssigningFreshIds(
+        srcDirAbs,
+        destDirAbs,
+        copyFilter(source.space, srcDirAbs, sourceEntries, scope),
+        source.absPath,
+        liveContent,
+      );
       await scanSpace(toSpace);
+      if (scope) await restrictCopies(sourceEntries, copied, scope.actorId);
       return toPageMeta(await requireEntry(copiedId));
     }
 
     // Single-file copy (previous behavior, unchanged for includeChildren=false
     // and for any source that isn't a directory-index page).
     const copiedId = ulid();
+    const copied: CopiedSubtree['copied'] = [{ sourceAbs: source.absPath, copyId: copiedId }];
     const stem = translitSlug(copyStemFor(source));
     const ext =
       source.kind === 'board'
@@ -3143,11 +3270,13 @@ export async function copyPage(
         guardNoSelfNesting(childSrcDirAbs, destParentDirAbs);
         const destStem = relPathStem(relPath, source.kind);
         const destChildDirAbs = path.join(path.dirname(destAbs), destStem);
-        await copySubtreeAssigningFreshIds(childSrcDirAbs, destChildDirAbs);
+        const swept = await copySubtreeAssigningFreshIds(childSrcDirAbs, destChildDirAbs, copyFilter(source.space, childSrcDirAbs, sourceEntries, scope));
+        copied.push(...swept.copied);
       }
     }
 
     await scanSpace(toSpace);
+    if (scope) await restrictCopies(sourceEntries, copied, scope.actorId);
     return toPageMeta(await requireEntry(copiedId));
   });
 }
@@ -3172,9 +3301,9 @@ export function duplicateParentPath(entry: PageIndexEntry): string {
   return entry.isIndex ? posixParent(entry.dirPath) : entry.dirPath;
 }
 
-export async function duplicatePage(id: string, liveContent?: string, title?: string): Promise<PageMeta> {
+export async function duplicatePage(id: string, liveContent?: string, title?: string, scope?: CopyScope): Promise<PageMeta> {
   const source = await requireEntry(id);
-  const copied = await copyPage(id, source.space, duplicateParentPath(source), liveContent, true);
+  const copied = await copyPage(id, source.space, duplicateParentPath(source), liveContent, true, scope);
   const clean = title?.trim();
   if (!clean || clean === copied.title) return copied;
   if (copied.kind === 'doc') return renameDocDirect(copied.id, clean);
