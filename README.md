@@ -389,6 +389,18 @@ members, to you only, or to selected people with view or edit rights.
 
 ---
 
+## See it in action
+
+Short walkthroughs, no slides. The voice in the videos is synthetic.
+
+- [A team wiki that lives in Git](https://youtu.be/tm1xB9x9HeY) — edit a page in the browser, press Sync, and it is a real Git commit; a teammate edits from the terminal and the change shows up on the page (0:37)
+- [An AI agent updates your wiki over MCP](https://youtu.be/3ORtBgYlIeY) — one request: the agent reads the release process, writes release notes and adds a roadmap row (0:53)
+- [Onboarding a sales rep with Folio AI](https://youtu.be/T4JXTNRrsMg) — answers from the team's own pages with sources, a weekly check as a form, and the results in a table (1:22)
+- [Whiteboards that live in Git](https://youtu.be/HNK17qafhtc) — draw together, embed the board in a document, and keep every version in history (0:51)
+- [The editor and Mermaid diagrams](https://youtu.be/MfK7bhKoxSs) — live Markdown, a source view of the same page, and diagrams you edit visually or as code (1:04)
+
+---
+
 ## Run it
 
 You need [Docker](https://docs.docker.com/get-docker/) and
