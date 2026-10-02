@@ -99,6 +99,15 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   the person administers the space, and dot files and folders are never
   copied. The copy of a page that has its own access rules is private to the
   person who made it; sharing it again is a deliberate step.
+- A page restricted by page access that was deleted and then restored from the
+  trash used to come back open to everyone in the space, and so did restricted
+  pages inside a restored folder or a restored space. The trash now keeps who
+  could open each restricted page and puts that back together with the page, in
+  the same step that makes it visible, narrowed to people who are still members
+  of the space. An administrator who was never let into a restricted page no
+  longer sees its title or path in the trash. Items that were already in the
+  trash before the fix carry no record of their access and are restored as
+  before.
 - Raw files of a space can no longer be read around page access, and a share
   link to one page no longer opens other files of its space (other pages'
   Markdown and tables, repository internals). Hidden paths (anything starting

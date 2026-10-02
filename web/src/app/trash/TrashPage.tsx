@@ -115,10 +115,13 @@ export function TrashPage() {
       const message =
         item.kind === 'space'
           ? t('trash.restoredSpace', { space: res.pageId })
-          : res.renamed
-            ? t('trash.restoredConflict', { path: res.restoredPath })
-            : t('trash.restored', { path: res.restoredPath });
-      showToast(message, 'info', { label: t('trash.open'), href });
+          : item.restricted
+            ? t('trash.restoredRestricted')
+            : res.renamed
+              ? t('trash.restoredConflict', { path: res.restoredPath })
+              : t('trash.restored', { path: res.restoredPath });
+      // A restricted page this admin was never let into cannot be opened by them: no link to it.
+      showToast(message, 'info', item.restricted ? undefined : { label: t('trash.open'), href });
     },
     onError: (err) => showToast(errorText(err, 'trash.restoreFailed')),
   });
@@ -256,7 +259,7 @@ export function TrashPage() {
                 {items.map((item) => (
                   <tr key={item.id} className="border-b border-neutral-100 last:border-b-0 dark:border-neutral-800/60">
                     <td className="px-3 py-2">
-                      <span className="font-medium text-neutral-900 dark:text-neutral-100">{item.title}</span>
+                      <span className="font-medium text-neutral-900 dark:text-neutral-100">{item.restricted ? t('trash.restrictedItem') : item.title}</span>
                       {item.childrenCount > 0 && (
                         <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                           {t('trash.childrenCount', { count: item.childrenCount })}
@@ -361,7 +364,7 @@ export function TrashPage() {
           onConfirm={() => purge.mutate(purging)}
           onCancel={() => setPurging(null)}
         >
-          <p className="text-sm text-neutral-600 dark:text-neutral-300">{t('trash.deleteForeverText', { title: purging.title })}</p>
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">{t('trash.deleteForeverText', { title: purging.restricted ? t('trash.restrictedItem') : purging.title })}</p>
         </ConfirmDialog>
       )}
       {emptying && (

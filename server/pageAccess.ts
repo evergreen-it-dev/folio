@@ -105,6 +105,16 @@ async function candidateMembers(space: string): Promise<Array<{ userId: string; 
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Ids of the people who can read `space` right now: its active (not disabled)
+ * members, plus everybody active when the space is visible to the whole
+ * instance. A page-access rule means something only for these — a grant to
+ * anybody else is dormant (setAccess refuses to create one).
+ */
+export async function activeMemberIds(space: string): Promise<Set<string>> {
+  return new Set((await candidateMembers(space)).map((member) => member.userId));
+}
+
 export async function getInfo(user: User, entry: PageIndexEntry, effectiveRole: SpaceRole): Promise<PageAccessInfo> {
   const access = await queryOne<{ owner_id: string }>('SELECT owner_id FROM page_access WHERE page_id = $1', [entry.id]);
   const grants = access

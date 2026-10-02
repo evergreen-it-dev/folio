@@ -26,7 +26,7 @@ import * as path from 'node:path';
 import type { PageKind, TrashItemInfo, TrashKind, TrashListResponse, TrashRestoreResponse, User } from '../../shared/contracts.js';
 import { officeFormat } from '../../shared/contracts.js';
 import * as storage from '../storage.js';
-import type { TrashSpaceSnapshot } from '../storage.js';
+import type { TrashPagePayload, TrashSpaceSnapshot } from '../storage.js';
 import * as store from '../auth/store.js';
 import * as git from '../git.js';
 import * as gitSync from '../gitSync.js';
@@ -35,6 +35,7 @@ import { decodeScenePayload, extractScenePayload } from '../confluenceWhiteboard
 import { query, queryOne } from '../db/pool.js';
 import { withSpaceLock } from '../db/redis.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { canReadTrashedTarget, MemberCache, resolveRestoredAccess } from './access.js';
 import { getTrashRoot } from './paths.js';
 
 const TRASH_KINDS: TrashKind[] = ['doc', 'board', 'table', 'pdf', 'office', 'form', 'folder', 'space'];
@@ -51,7 +52,8 @@ export interface TrashRow {
   deleted_at: string;
   trash_path: string;
   children_count: number;
-  payload: TrashSpaceSnapshot | null;
+  /** kind='space': the full snapshot; any other kind: the page access rules the item carries (see ./access.ts); null when it carries none. */
+  payload: (TrashPagePayload & Partial<TrashSpaceSnapshot>) | null;
 }
 
 interface TrashRowJoined extends TrashRow {
@@ -197,14 +199,21 @@ export interface TrashListFilters {
   offset?: number;
 }
 
-function rowToInfo(row: TrashRowJoined): TrashItemInfo {
+/**
+ * `canRead` false = the item is a restricted page the caller was never let
+ * into (see access.ts canReadTrashedTarget): the list shows that something
+ * was deleted, and by whom and when, but not what it was called or where it
+ * lived (the path is made of the title).
+ */
+function rowToInfo(row: TrashRowJoined, canRead = true): TrashItemInfo {
   return {
     id: row.id,
     space: row.space_slug,
     pageId: row.page_id,
     kind: row.kind,
-    origPath: row.orig_path,
-    title: row.title,
+    origPath: canRead ? row.orig_path : '',
+    title: canRead ? row.title : '',
+    ...(canRead ? {} : { restricted: true }),
     deletedBy: row.deleted_by ? { id: row.deleted_by, name: row.deleted_by_name ?? '' } : null,
     deletedAt: new Date(row.deleted_at).toISOString(),
     childrenCount: row.children_count,
@@ -247,7 +256,9 @@ export async function listTrash(actor: User, filters: TrashListFilters = {}): Pr
 
   const limit = clampLimit(filters.limit);
   const offset = clampOffset(filters.offset);
-  const items = filtered.slice(offset, offset + limit).map(rowToInfo);
+  const members = new MemberCache();
+  const items: TrashItemInfo[] = [];
+  for (const row of filtered.slice(offset, offset + limit)) items.push(rowToInfo(row, await canReadTrashedTarget(actor, row, members)));
   return { items, total: filtered.length, spaces };
 }
 
@@ -293,6 +304,29 @@ async function syncLiveBoardAfterRestore(id: string): Promise<void> {
   await collab.editBoardScene(id, scene);
 }
 
+/**
+ * Where a file of the trashed item lives after the restore, from where it
+ * lived when it was deleted: the item's own file, and what is below it (the
+ * directory of a folder item; the same-named children directory of a leaf).
+ * The restore may land under a `-restored` name, so paths cannot be compared
+ * as they were; ids are the first match, this is the fallback for a file that
+ * has no id of its own (pdf/office).
+ */
+function restoredPathMapper(row: TrashRow, destRel: string): (oldRel: string) => string | undefined {
+  const orig = row.orig_path;
+  if (row.kind === 'folder') {
+    return (oldRel) => (oldRel === orig ? destRel : orig && oldRel.startsWith(`${orig}/`) ? `${destRel}${oldRel.slice(orig.length)}` : undefined);
+  }
+  const kind = row.kind as PageKind;
+  const childPrefix = (rel: string): string => {
+    const slash = rel.lastIndexOf('/');
+    return `${slash === -1 ? '' : rel.slice(0, slash + 1)}${storage.relPathStem(rel, kind)}/`;
+  };
+  const from = childPrefix(orig);
+  const to = childPrefix(destRel);
+  return (oldRel) => (oldRel === orig ? destRel : oldRel.startsWith(from) ? `${to}${oldRel.slice(from.length)}` : undefined);
+}
+
 async function restorePageItem(actor: User, row: TrashRow): Promise<TrashRestoreResponse> {
   const space = row.space_slug;
   if (!(await storage.spaceExists(space))) {
@@ -333,6 +367,11 @@ async function restorePageItem(actor: User, row: TrashRow): Promise<TrashRestore
       } while (await destConflicts(spaceRoot, destRel));
     }
     const destAbs = path.join(spaceRoot, destRel);
+    // The page access rules the item carries, checked against the space as it
+    // is now — BEFORE anything moves, so a failure here leaves the item in the
+    // trash untouched. They are given to the pages in the same step that
+    // indexes them (scanSpace's third argument), never afterwards.
+    const restoredAccess = await resolveRestoredAccess(row, space, actor, restoredPathMapper(row, destRel));
     await fs.mkdir(path.dirname(destAbs), { recursive: true });
     // A pdf/office file carries no id in its bytes (storage.ts "Binary page
     // files") — pin the trashed page's id to where it lands so the rescan
@@ -352,7 +391,7 @@ async function restorePageItem(actor: User, row: TrashRow): Promise<TrashRestore
         throw err;
       }
     }
-    await storage.scanSpace(space);
+    await storage.scanSpace(space, undefined, restoredAccess);
     await query('DELETE FROM trash_items WHERE id = $1', [row.id]);
     await cleanupEmptyTrashDirs(path.dirname(srcAbs));
     // page_id survives inside the file itself (frontmatter id / board's
@@ -478,7 +517,9 @@ async function restoreSpaceItem(actor: User, row: TrashRow): Promise<TrashRestor
     // Also creates the correct metadata filename when a conflicting slug
     // forced a `-restored` suffix.
     await storage.noteSpaceNameChange(slug, name);
-    await storage.scanSpace(slug);
+    // The members and the visibility are back, so the rules can be checked against them; the paths are relative to the content root and do not change.
+    const restoredAccess = await resolveRestoredAccess(row, slug, actor, (oldRel) => oldRel);
+    await storage.scanSpace(slug, undefined, restoredAccess);
     await query('DELETE FROM trash_items WHERE id = $1', [row.id]);
     await cleanupEmptyTrashDirs(path.dirname(srcAbs));
   });
@@ -495,7 +536,12 @@ async function restoreSpaceItem(actor: User, row: TrashRow): Promise<TrashRestor
 
 export async function restoreTrashItem(actor: User, id: string): Promise<TrashRestoreResponse> {
   const row = await requireVisibleRow(actor, id);
-  return row.kind === 'space' ? restoreSpaceItem(actor, row) : restorePageItem(actor, row);
+  if (row.kind === 'space') return restoreSpaceItem(actor, row);
+  // Asked before the restore: it deletes the record the answer is made from.
+  const mayRead = await canReadTrashedTarget(actor, row, new MemberCache());
+  const restored = await restorePageItem(actor, row);
+  // An admin who was never let into a restricted page may bring it back (it comes back restricted, to the same people), but is not told where it landed: the path is made of the title.
+  return mayRead ? restored : { ...restored, restoredPath: '' };
 }
 
 // ---------------------------------------------------------------------------

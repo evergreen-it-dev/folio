@@ -1031,6 +1031,8 @@
     "restored": "Restored: {{path}}",
     "restoredConflict": "The path was taken — restored alongside as: {{path}}",
     "restoredSpace": "Space restored: {{space}}",
+    "restrictedItem": "Restricted page",
+    "restoredRestricted": "Restored. The page stays restricted to the same people.",
     "open": "Open",
     "deleteForever": "Delete forever",
     "deleteForeverTitle": "Delete forever?",

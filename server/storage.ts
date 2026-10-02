@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { PoolClient } from 'pg';
 import * as matterNS from 'gray-matter';
 import { ulid } from 'ulidx';
 import type { CreatePageBody, FormDoc, PageKind, PageMeta, PageStatus, SpaceGitStatus, SpaceInfo, SpaceVisibility, TableColumn, TableDoc, TableView, TreeNode } from '../shared/contracts.js';
@@ -530,15 +531,14 @@ function rowToEntry(row: PagesIndexRow): PageIndexEntry {
   };
 }
 
-async function upsertPagesIndexRow(entry: PageIndexEntry, fileMtime: Date, fileSize: number): Promise<void> {
+async function upsertPagesIndexRow(entry: PageIndexEntry, fileMtime: Date, fileSize: number, restoredRule?: PageAccessRule): Promise<void> {
   // Round 26: a table's `body` is populated (by indexTableFile/writeTableDoc) with its
   // denormalized "column: value" text, same slot docs use for their markdown — see
   // PageIndexEntry.body's doc comment. Boards still index as unsearchable (null).
   // Round FORMS: a form's body is its title/description/field labels (indexFormFile) —
   // small, but enough that a form shows up for its own field names in search.
   const plainText = entry.kind === 'doc' || entry.kind === 'table' || entry.kind === 'form' ? (entry.body ?? '') : null;
-  await query(
-    `INSERT INTO pages_index (id, space_slug, path, kind, title, sort_order, status, icon, cover, updated_at, plain_text, is_index, file_mtime, file_size, tsv)
+  const sql = `INSERT INTO pages_index (id, space_slug, path, kind, title, sort_order, status, icon, cover, updated_at, plain_text, is_index, file_mtime, file_size, tsv)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
        setweight(to_tsvector('simple', unaccent($5)), 'A') ||
        setweight(to_tsvector('simple', unaccent(coalesce($15, ''))), 'B'))
@@ -547,25 +547,35 @@ async function upsertPagesIndexRow(entry: PageIndexEntry, fileMtime: Date, fileS
        title = EXCLUDED.title, sort_order = EXCLUDED.sort_order, status = EXCLUDED.status,
        icon = EXCLUDED.icon, cover = EXCLUDED.cover,
        updated_at = EXCLUDED.updated_at, plain_text = EXCLUDED.plain_text, is_index = EXCLUDED.is_index,
-       file_mtime = EXCLUDED.file_mtime, file_size = EXCLUDED.file_size, tsv = EXCLUDED.tsv`,
-    [
-      entry.id,
-      entry.space,
-      entry.relPath,
-      entry.kind,
-      entry.title,
-      entry.explicitOrder ?? null,
-      entry.explicitStatus ?? null,
-      entry.icon ?? null,
-      entry.cover ?? null,
-      entry.updatedAt,
-      plainText,
-      entry.isIndex,
-      fileMtime,
-      fileSize,
-      plainText === null ? null : capForTsvector(plainText),
-    ],
-  );
+       file_mtime = EXCLUDED.file_mtime, file_size = EXCLUDED.file_size, tsv = EXCLUDED.tsv`;
+  const params = [
+    entry.id,
+    entry.space,
+    entry.relPath,
+    entry.kind,
+    entry.title,
+    entry.explicitOrder ?? null,
+    entry.explicitStatus ?? null,
+    entry.icon ?? null,
+    entry.cover ?? null,
+    entry.updatedAt,
+    plainText,
+    entry.isIndex,
+    fileMtime,
+    fileSize,
+    plainText === null ? null : capForTsvector(plainText),
+  ];
+  if (!restoredRule) {
+    await query(sql, params);
+    return;
+  }
+  // A page coming back from the trash gets its access rule in the SAME
+  // transaction as its index row: the row is not visible to anybody before the
+  // rule is, so there is no moment at which a restored private page is open.
+  await withTransaction(async (client) => {
+    await client.query(sql, params);
+    await insertPageAccess(client, entry.id, restoredRule);
+  });
 }
 
 /**
@@ -1112,8 +1122,9 @@ export function isConnectionFailure(err: unknown): boolean {
   return code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'EPIPE';
 }
 
-export async function scanSpace(space: string, onProgress?: (progress: ScanProgress) => void): Promise<ScanStats> {
+export async function scanSpace(space: string, onProgress?: (progress: ScanProgress) => void, restoredAccess?: RestoredAccess): Promise<ScanStats> {
   const startedAt = Date.now();
+  const appliedRules = new Set<PageAccessRule>();
   const root = spaceDir(space);
   binaryOrphanClaims.delete(space);
 
@@ -1259,7 +1270,13 @@ export async function scanSpace(space: string, onProgress?: (progress: ScanProgr
                 : isOffice
                   ? await indexOfficeFile(space, relPath, abs, stat.mtime)
                   : await indexBoardFile(space, relPath, abs, stat.mtime);
-        if (entry) await upsertPagesIndexRow(entry, stat.mtime, stat.size);
+        if (entry) {
+          // Page access that travelled with a trash item (see RestoredAccess): by id first, then by the path the file landed on.
+          const rule = restoredAccess ? (restoredAccess.byId.get(entry.id) ?? restoredAccess.byPath.get(entry.relPath)) : undefined;
+          const give = rule && !appliedRules.has(rule) ? rule : undefined;
+          await upsertPagesIndexRow(entry, stat.mtime, stat.size, give);
+          if (give) appliedRules.add(give);
+        }
       } catch (err) {
         failedFiles++;
         lastFailure = err;
@@ -1288,6 +1305,9 @@ export async function scanSpace(space: string, onProgress?: (progress: ScanProgr
   // the scan threw, and the old boot order turned that into a dead process on
   // every restart. Only a genuine loss of the database connection is systemic.
   if (failedFiles > 0 && isConnectionFailure(lastFailure)) throw lastFailure;
+
+  // A restored page whose file the loop above skipped as unchanged (somebody else's scan indexed it first) still gets its rule.
+  if (restoredAccess) await reconcileRestoredAccess(space, restoredAccess, appliedRules);
 
   if (stillPresent.size > 0) {
     await query('DELETE FROM pages_index WHERE space_slug = $1 AND NOT (path = ANY($2::text[]))', [space, [...stillPresent]]);
@@ -3484,9 +3504,32 @@ export async function renamePageSlug(id: string, rawSlug: string): Promise<SlugR
 // UI (server/trash/*) can list and restore it.
 // ---------------------------------------------------------------------------
 
-/** trash_items.payload for kind='space' — everything the `DELETE FROM spaces` cascade destroys that files alone can't bring back. Read back by server/trash/service.ts's space restore. */
-export interface TrashSpaceSnapshot {
+/** One page's page-level access rule: a `page_access` row and its `page_access_grants`. */
+export interface PageAccessRule {
+  ownerId: string;
+  grants: Array<{ userId: string; role: 'viewer' | 'editor' }>;
+}
+
+/**
+ * What a trash item remembers about one restricted page it carried away. The
+ * rule lives in `page_access`, which hangs off the page's index row
+ * (ON DELETE CASCADE) — deleting a page drops the row and the rule with it, so
+ * the trash keeps the rule and puts it back when the page comes back.
+ */
+export interface TrashAccessEntry extends PageAccessRule {
+  pageId: string;
+  /** Space-relative path at deletion time: the fallback match for a file that cannot carry its own id (pdf/office), see RestoredAccess. */
+  relPath: string;
+}
+
+/** trash_items.payload of every kind but 'space'; absent `access` = nothing in the item was restricted, or the item is older than this record. */
+export interface TrashPagePayload {
   v: 1;
+  access?: TrashAccessEntry[];
+}
+
+/** trash_items.payload for kind='space' — everything the `DELETE FROM spaces` cascade destroys that files alone can't bring back. Read back by server/trash/service.ts's space restore. */
+export interface TrashSpaceSnapshot extends TrashPagePayload {
   name: string;
   repoUrl: string | null;
   branch: string;
@@ -3498,6 +3541,69 @@ export interface TrashSpaceSnapshot {
   fullRepo?: boolean;
 }
 
+/**
+ * The rules to put back while a restored trash item is indexed (scanSpace's
+ * third argument), already checked against who may hold them now. Matched by
+ * page id first; `byPath` (the new space-relative path) is the fallback for a
+ * pdf/office file, whose id is not stored in the file and may come out
+ * different after the move (see "Binary page files"). Each rule is applied
+ * to one page at most.
+ */
+export interface RestoredAccess {
+  byId: ReadonlyMap<string, PageAccessRule>;
+  byPath: ReadonlyMap<string, PageAccessRule>;
+}
+
+/** Writes `rule` for `pageId` on `client`, unless the page already has a rule of its own (then that one stays — a restore never rewrites a live rule). */
+async function insertPageAccess(client: PoolClient, pageId: string, rule: PageAccessRule): Promise<void> {
+  const inserted = await client.query('INSERT INTO page_access (page_id, owner_id) VALUES ($1, $2) ON CONFLICT (page_id) DO NOTHING', [pageId, rule.ownerId]);
+  if (!inserted.rowCount) return;
+  for (const grant of rule.grants) {
+    await client.query('INSERT INTO page_access_grants (page_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (page_id, user_id) DO NOTHING', [
+      pageId,
+      grant.userId,
+      grant.role,
+    ]);
+  }
+}
+
+/** The rules scanSpace did not get to give while it indexed (the file was skipped as unchanged: somebody else's scan had already indexed it). Matches the index by id, then by path; a page that is not there is skipped. */
+async function reconcileRestoredAccess(space: string, restored: RestoredAccess, applied: ReadonlySet<PageAccessRule>): Promise<void> {
+  const keys = new Map<PageAccessRule, { ids: string[]; paths: string[] }>();
+  const keyOf = (rule: PageAccessRule) => keys.get(rule) ?? keys.set(rule, { ids: [], paths: [] }).get(rule)!;
+  for (const [id, rule] of restored.byId) if (!applied.has(rule)) keyOf(rule).ids.push(id);
+  for (const [relPath, rule] of restored.byPath) if (!applied.has(rule)) keyOf(rule).paths.push(relPath);
+  const taken = new Set<string>();
+  for (const [rule, { ids, paths }] of keys) {
+    const rows = await query<{ id: string }>('SELECT id FROM pages_index WHERE space_slug = $1 AND (id = ANY($2::text[]) OR path = ANY($3::text[]))', [space, ids, paths]);
+    const row = rows.find((r) => !taken.has(r.id));
+    if (!row) continue;
+    taken.add(row.id);
+    await withTransaction((client) => insertPageAccess(client, row.id, rule));
+  }
+}
+
+/**
+ * The access rules of the restricted pages a deletion is about to take away:
+ * the page itself, plus (`dirPrefix`, with its trailing slash) every page
+ * below it, or (`all`) every page of the space. Read BEFORE the files move and
+ * the rescan drops the index rows — afterwards the rules are gone.
+ */
+async function snapshotPageAccess(space: string, scope: { all: boolean; pageId?: string; dirPrefix?: string }): Promise<TrashAccessEntry[]> {
+  const rows = await query<{ id: string; path: string; owner_id: string; grants: Array<{ userId: string; role: 'viewer' | 'editor' }> }>(
+    `SELECT p.id, p.path, a.owner_id,
+            COALESCE((SELECT json_agg(json_build_object('userId', g.user_id, 'role', g.role) ORDER BY g.user_id)
+                        FROM page_access_grants g WHERE g.page_id = a.page_id), '[]'::json) AS grants
+       FROM page_access a
+       JOIN pages_index p ON p.id = a.page_id
+      WHERE p.space_slug = $1
+        AND ($2::boolean OR p.id = $3 OR ($4::text IS NOT NULL AND substr(p.path, 1, length($4)) = $4))
+      ORDER BY p.path`,
+    [space, scope.all, scope.pageId ?? null, scope.dirPrefix ?? null],
+  );
+  return rows.map((row) => ({ pageId: row.id, relPath: row.path, ownerId: row.owner_id, grants: row.grants }));
+}
+
 interface TrashRecord {
   spaceSlug: string;
   pageId: string;
@@ -3506,7 +3612,7 @@ interface TrashRecord {
   title: string;
   trashPath: string;
   childrenCount: number;
-  payload: TrashSpaceSnapshot | null;
+  payload: TrashSpaceSnapshot | TrashPagePayload | null;
 }
 
 /**
@@ -3532,8 +3638,11 @@ async function buildSpaceSnapshot(space: string): Promise<TrashSpaceSnapshot | n
   );
   if (!row) return null;
   const members = await query<{ user_id: string; role: string }>('SELECT user_id, role FROM space_members WHERE space_slug = $1', [space]);
+  // The `DELETE FROM spaces` below cascades to pages_index and, through it, to every page-access rule of the space.
+  const access = await snapshotPageAccess(space, { all: true });
   return {
     v: 1,
+    ...(access.length > 0 ? { access } : {}),
     name: row.name,
     repoUrl: row.repo_url,
     branch: row.branch,
@@ -3542,6 +3651,12 @@ async function buildSpaceSnapshot(space: string): Promise<TrashSpaceSnapshot | n
     assetMode: row.asset_mode ?? 'store',
     members: members.map((m) => ({ userId: m.user_id, role: m.role })),
   };
+}
+
+/** The trash payload of a deleted page (or folder): the access rules of the restricted pages it takes along; null when none of them was restricted. */
+async function pagePayload(space: string, pageId: string, dirPrefix: string | undefined): Promise<TrashPagePayload | null> {
+  const access = await snapshotPageAccess(space, { all: false, pageId, dirPrefix });
+  return access.length > 0 ? { v: 1, access } : null;
 }
 
 /**
@@ -3614,7 +3729,9 @@ export async function deletePage(id: string, deletedBy: string | null = null): P
           : childDirRelPath
             ? await countTrashChildren(space, childDirRelPath, false)
             : 0,
-      payload: isSpaceDelete ? await buildSpaceSnapshot(space) : null,
+      payload: isSpaceDelete
+        ? await buildSpaceSnapshot(space)
+        : await pagePayload(space, entry.id, entry.isIndex ? `${posixParent(entry.relPath)}/` : childDirRelPath ? `${childDirRelPath}/` : undefined),
     };
 
     await fs.mkdir(path.dirname(destAbs), { recursive: true });

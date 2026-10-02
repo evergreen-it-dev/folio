@@ -174,6 +174,29 @@ describe('TrashPage', () => {
     );
   });
 
+  it('a restricted page the admin may not read shows no title or path, restores with a plain message and without a link', async () => {
+    const restricted: TrashItemInfo = {
+      id: '33333333-3333-4333-8333-333333333333',
+      space: 'eng',
+      pageId: 'p3',
+      kind: 'doc',
+      origPath: '',
+      title: '',
+      restricted: true,
+      deletedBy: { id: 'u1', name: 'Olha' },
+      deletedAt: '2026-08-22T10:00:00.000Z',
+      childrenCount: 0,
+    };
+    stubApi({ allItems: [restricted], restore: { restoredPath: '', pageId: 'p3', space: 'eng', renamed: false } });
+    renderPage();
+
+    expect(await screen.findByText('Restricted page')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Restore/ }));
+
+    expect(await screen.findByText('Restored. The page stays restricted to the same people.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Open' })).toBeNull();
+  });
+
   it('kind filter narrows the list', async () => {
     stubApi();
     renderPage();

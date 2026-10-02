@@ -921,6 +921,13 @@ export interface TrashItemInfo {
   deletedAt: string; // ISO
   /** For folder/space: how many pages went along with the target. */
   childrenCount: number;
+  /**
+   * true — the deleted page is restricted by page access and the caller is neither
+   * its owner nor holds a grant (an admin who administers the trash, not the page):
+   * `title` and `origPath` are then empty, the item can still be restored or deleted
+   * for good. Absent otherwise.
+   */
+  restricted?: boolean;
 }
 
 /**

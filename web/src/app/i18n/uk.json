@@ -1041,6 +1041,8 @@
     "restored": "Відновлено: {{path}}",
     "restoredConflict": "Шлях був зайнятий — відновлено поруч: {{path}}",
     "restoredSpace": "Простір відновлено: {{space}}",
+    "restrictedItem": "Закрита сторінка",
+    "restoredRestricted": "Відновлено. Сторінка лишається закритою для тих самих людей.",
     "open": "Відкрити",
     "deleteForever": "Видалити назавжди",
     "deleteForeverTitle": "Видалити назавжди?",
