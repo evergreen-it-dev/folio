@@ -76,15 +76,12 @@ In the order it was built.
 | 39 | Public release | One-command installation, optional automatic HTTPS, documentation |
 | 40 | First steps | A welcome wizard for a fresh installation; duplicating a page with its whole subtree |
 | 41 | Dense content and navigation | Resizable document tables, searchable space switching, and accepting an invitation with the current signed-in account |
+| 42 | Live tree and input methods | The sidebar page tree updates by itself when someone else changes it; emoji panels, dead keys and phone keyboards no longer break tables; a pasted address over selected text makes a link; whiteboard labels stay on top in rendered pictures; the assistant starts again in the Docker image |
 
 ## What comes next
 
 Not promises and not dates — the order in which things are likely to be
 picked up.
-
-**Housekeeping**
-
-- Code comments, test names and the assistant's prompts in English.
 
 **Correctness**
 
@@ -108,7 +105,7 @@ picked up.
 - User groups and single sign-on.
 - Forms that follow changes to their table.
 - Offline mode for data tables.
-- A full channel of space events in place of polling.
+- Space list and membership changes pushed to open sessions as the page tree already is, in place of polling.
 - Relative links rewritten when a page moves.
 
 ## How to propose something

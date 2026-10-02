@@ -54,6 +54,14 @@ Viewers get a connection whose updates the server discards. A write made by
 an agent goes through the live document when the room is open, so it appears
 in every open tab at once.
 
+The sidebar tree has its own signal. Database triggers on the page tables
+publish through PostgreSQL `LISTEN`/`NOTIFY`; the server listens on a
+dedicated connection and sends `{type:'tree', space, v}` over the per-user
+`/events` socket, only to sessions that can read that space. The client
+answers by invalidating its tree query, with a little jitter. Signals are
+coalesced, so a burst of changes costs a few refreshes, but the last change
+of a burst always shows within a second or two.
+
 ### Git synchronization
 
 Edits reach the file immediately. The commit is made after about 90 seconds of
@@ -105,6 +113,12 @@ quick switcher, subtree, backlinks, collaboration, MCP, export.
   old document.
 - Whatever Folio writes into a Markdown table must remain a valid GFM table
   that GitHub and GitLab render without debris.
+- The tree signal carries no titles, paths or page ids, and goes only to
+  sessions that can read the space. The tree itself is always fetched
+  through the access checks.
+- A table cell must not re-render in the middle of input-method composition.
+  During composition the cell only reads the DOM; cleanup waits for
+  `compositionend`.
 - Folio never writes into a PDF or an Office file.
 - An empty whiteboard scene never overwrites a non-empty file.
 - Access is checked on the server. The interface hiding a button is not a
@@ -137,6 +151,10 @@ Each of these was a real defect. They are here so that nobody pays twice.
   splits a link in half.
 - Third-party editor styles are often more specific than yours. Check the
   computed value, not the rule you wrote.
+- Input methods (emoji panel, dead keys, phone keyboards) compose text in
+  steps that a plain key handler never sees. Keys pressed during composition
+  belong to the composition; test with real composition events, not inserted
+  text.
 
 **Markdown**
 
@@ -157,6 +175,9 @@ Each of these was a real defect. They are here so that nobody pays twice.
   same credentials as fetch and push.
 - A health endpoint that checks the process only is green while the database
   is down.
+- Do not pace every refresh. Throttling all of them delayed the last change
+  of a burst; only intermediate progress refreshes may be spaced out. Measure
+  the interval from the start of an API call, not from when it returns.
 
 **Front end and deployment**
 
@@ -200,6 +221,8 @@ Each of these was a real defect. They are here so that nobody pays twice.
 - Moving a page does not rewrite relative links inside it.
 - Offline mode does not cover data tables, forms, uploads or templates.
 - Assets are not carried along when a space's repository is moved.
+- Folio runs as one server process. Real-time rooms and sockets live in that
+  process, so several processes behind one address need a deliberate design.
 
 **Defects**
 
@@ -210,6 +233,8 @@ Each of these was a real defect. They are here so that nobody pays twice.
   user's language is.
 - Emptying the trash can leave a folder with nested pages behind.
 - Nested collapsible sections may not collapse in Live edit.
+- On Android the keyboard uses `EditContext`, and composition events may not
+  reach the editor, so text typed right under a table can still stick to it.
 - `/api/health` reports the process only, not the database.
 
 **Not verified**
