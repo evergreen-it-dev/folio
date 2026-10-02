@@ -17,8 +17,6 @@ import { ensureAssistantCursorPermissions } from './cursorCliConfig.js';
 import { filterAssistantModels } from './models.js';
 
 export interface RunAssistantInput {
-  /** The ai_runs row of this turn — the built-in tool report_unanswered_question writes against it. */
-  runId: string;
   apiKey: string;
   user: User;
   conversation: AssistantConversationRow;
@@ -125,12 +123,7 @@ export async function runCursorAssistant(input: RunAssistantInput): Promise<stri
     space: input.space,
     pageId: input.pageId,
   });
-  const toolsHandle = await buildAssistantTools(input.user, input.runMode, {
-    runId: input.runId,
-    conversationId: input.conversation.id,
-    space: input.space,
-    pageId: input.pageId,
-  });
+  const toolsHandle = await buildAssistantTools(input.user, input.runMode);
   ensureAssistantCursorPermissions();
   const sdk = await configureSdk();
   const agentOptions = {

@@ -210,20 +210,6 @@ like any other page. About 60,000 characters of instructions are used; if
 there is more, whole pages at the end are left out and the assistant is told
 so.
 
-**Answer quality and analytics.** Every saved assistant answer can be rated
-👍 or 👎 (one rating per answer, changeable). After every third answer in a
-conversation the panel asks "Did the assistant solve your question?" (Yes,
-Partly, No, Not now, with an optional comment). The assistant also records
-questions it could not answer or was unsure about, with the reason ("No
-answer" or "Not sure") and what was missing; it does this through a built-in
-tool that never changes any data, in Ask and Agent modes alike. Instance
-administrators see the results at `/admin/assistant` ("Assistant analytics" in
-the account menu): a **Conversations** tab with ratings and survey counts per
-conversation, and a **Questions without an answer** tab, both filtered by
-space, user and date. An administrator can open a conversation; opening one is
-recorded in the audit log. Everyone else does not see the page, and a personal
-access token is refused there.
-
 **Bring your own subscription.** The assistant runs on a subscription you
 already have. Cursor is supported today; other providers are coming soon.
 

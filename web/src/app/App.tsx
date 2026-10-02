@@ -13,7 +13,6 @@ import { SpaceHome } from './routes/SpaceHome';
 import { PageView } from './routes/PageView';
 import { FolderView } from './routes/FolderView';
 import { AccessAdmin } from './admin/access/AccessAdmin';
-import { AssistantAnalytics } from './admin/assistant/AssistantAnalytics';
 import { TrashPage } from './trash/TrashPage';
 import { NotFound } from './routes/NotFound';
 import { SharedPageView } from './share/SharedPageView';
@@ -117,7 +116,6 @@ function AppRoutes() {
           <Route path="d/*" element={<FolderView />} />
         </Route>
         <Route path="/admin/access" element={<AccessAdmin />} />
-        <Route path="/admin/assistant" element={<AssistantAnalytics />} />
         {/* Trash round: the trash list — server-scoped (space admins see their spaces, instance admin everything), so no client role guard here. */}
         <Route path="/trash" element={<TrashPage />} />
         {/* QA-3: `/login` is not a route — AuthProvider swaps the login screen in

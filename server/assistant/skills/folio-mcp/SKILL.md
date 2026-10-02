@@ -39,12 +39,6 @@ audit of the current user of the session, without a separate token.
 | `folio_table_schema` | The real columns, their types/options, the views, the number of rows |
 | `folio_table_query` | The rows of a table with a filter/sort/search/limit |
 
-## Built-in assistant tool (not an MCP tool; ASK and AGENT)
-
-| Tool | Purpose |
-|---|---|
-| `report_unanswered_question` | Report a question the pages could not answer or that you answered without confidence: `question` (restated), `reason` (`no_answer` / `low_confidence`), optional `missing`. Once per question, at most 3 per run; then still answer the user. It is for the documentation owners — do not mention it to the user |
-
 ## MCP tools for writing (AGENT mode only)
 
 | Tool | Purpose |

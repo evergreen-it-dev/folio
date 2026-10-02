@@ -1100,8 +1100,6 @@ export interface AssistantMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
-  /** The owner's 👍/👎 on an assistant message (GET /api/assistant/chat only); absent/null — not rated. */
-  feedback?: AssistantFeedbackRating | null;
 }
 
 /** GET /api/assistant/chat?conversationId= (without an id — the user's latest conversation). */
@@ -1110,8 +1108,6 @@ export interface AssistantConversation {
   title: string | null;
   model: string | null;
   messages: AssistantMessage[];
-  /** Set when the "did it solve your question?" survey should be shown after `afterMessageId`. */
-  surveyDue?: AssistantSurveyDue | null;
   /** The run in progress in this conversation (05.09.2026) — the UI subscribes to it instead of starting a new one. */
   activeRun?: AssistantRunInfo | null;
 }
@@ -1210,148 +1206,6 @@ export interface ActiveAssistantRunResponse {
 }
 
 /** POST /api/assistant/runs/:runId/stop → 202 `{ stopped: true }` — the only way to cancel a run. */
-
-// ---------- AI assistant: feedback, unanswered questions, admin analytics ----------
-// Three signals about answer quality, all visible to instance admins only:
-// 1. 👍/👎 on any saved assistant answer (one rating per message, changeable).
-// 2. A periodic "Did the assistant solve your question?" survey: due after every
-//    ASSISTANT_SURVEY_EVERY assistant answers since the previous survey (answered
-//    or skipped), so it comes back while the person keeps talking.
-// 3. Questions the assistant could not answer or was unsure about, reported by
-//    the assistant itself through the built-in `report_unanswered_question` tool
-//    (always available, in Ask and Agent mode; instructions in prompts/system.md).
-// Every run also records the space and page it was started from, so analytics
-// can be filtered by space. Admin endpoints: cookie session + instance admin.
-
-/** Assistant answers between two survey prompts. */
-export const ASSISTANT_SURVEY_EVERY = 3;
-
-export type AssistantFeedbackRating = 'up' | 'down';
-
-/** PUT /api/assistant/messages/:messageId/feedback → `AssistantFeedbackResponse`. `null` removes the rating. Only the owner of the conversation; only assistant messages. */
-export const assistantFeedbackBodySchema = z.object({
-  rating: z.enum(['up', 'down']).nullable(),
-});
-export type AssistantFeedbackBody = z.infer<typeof assistantFeedbackBodySchema>;
-export interface AssistantFeedbackResponse {
-  messageId: string;
-  rating: AssistantFeedbackRating | null;
-}
-
-export type AssistantSurveyAnswer = 'solved' | 'partly' | 'not_solved' | 'skipped';
-
-/** POST /api/assistant/conversations/:conversationId/survey → 201 `{ ok: true }`. `afterMessageId` is the assistant message the survey was shown after (from `AssistantConversation.surveyDue`). */
-export const assistantSurveyBodySchema = z.object({
-  afterMessageId: z.string().uuid(),
-  answer: z.enum(['solved', 'partly', 'not_solved', 'skipped']),
-  comment: z.string().trim().max(2000).nullable().optional(),
-});
-export type AssistantSurveyBody = z.infer<typeof assistantSurveyBodySchema>;
-
-/** Set on `AssistantConversation` (GET /api/assistant/chat) when the survey should be shown now. */
-export interface AssistantSurveyDue {
-  afterMessageId: string;
-}
-
-export type AssistantUnansweredReason = 'no_answer' | 'low_confidence';
-
-/** The input of the assistant's built-in tool `report_unanswered_question`. */
-export const reportUnansweredQuestionInputSchema = z.object({
-  /** The user's question, restated so it reads on its own. */
-  question: z.string().trim().min(1).max(2000),
-  reason: z.enum(['no_answer', 'low_confidence']),
-  /** What is missing or unclear in the documentation, if the assistant can tell. */
-  missing: z.string().trim().max(2000).nullable().optional(),
-});
-export type ReportUnansweredQuestionInput = z.infer<typeof reportUnansweredQuestionInputSchema>;
-
-export interface AdminAssistantUserRef {
-  id: string;
-  name: string;
-  email: string;
-}
-
-/** A filter option list shared by the admin analytics responses. */
-export interface AdminAssistantFilterOptions {
-  /** Space slugs that occur in the data (runs started outside a space are left out). */
-  spaces: string[];
-  users: AdminAssistantUserRef[];
-}
-
-export interface AdminAssistantConversationRow {
-  conversationId: string;
-  user: AdminAssistantUserRef;
-  /** The space of the first run of the conversation; null when it was started outside a space. */
-  space: string | null;
-  /** The first user message of the conversation, in full. */
-  firstQuestion: string;
-  createdAt: string;
-  updatedAt: string;
-  /** Number of user messages. */
-  questions: number;
-  likes: number;
-  dislikes: number;
-  surveys: { solved: number; partly: number; notSolved: number };
-  unanswered: number;
-}
-
-/**
- * GET /api/admin/assistant/conversations?space=&userId=&from=&to=&limit=&offset=
- * Newest activity first. `space` matches a conversation that has ANY run in that
- * space. `from`/`to` are ISO dates (inclusive days) on `updatedAt`. limit ≤ 200, default 50.
- */
-export interface AdminAssistantConversationsResponse extends AdminAssistantFilterOptions {
-  items: AdminAssistantConversationRow[];
-  total: number;
-}
-
-export interface AdminAssistantMessage extends AssistantMessage {
-  /** The owner's rating of an assistant message. */
-  feedback: AssistantFeedbackRating | null;
-  /** The space the run producing/answering this message was started from (user and assistant messages of one run share it). */
-  space: string | null;
-}
-
-export interface AdminAssistantSurveyEntry {
-  afterMessageId: string;
-  answer: AssistantSurveyAnswer;
-  comment: string | null;
-  createdAt: string;
-}
-
-export interface AdminAssistantUnansweredItem {
-  id: string;
-  conversationId: string;
-  user: AdminAssistantUserRef;
-  space: string | null;
-  pageId: string | null;
-  question: string;
-  reason: AssistantUnansweredReason;
-  missing: string | null;
-  createdAt: string;
-}
-
-/** GET /api/admin/assistant/conversations/:conversationId — the whole dialog, read-only. 404 when it does not exist. */
-export interface AdminAssistantConversationDetail {
-  conversationId: string;
-  user: AdminAssistantUserRef;
-  title: string | null;
-  model: string | null;
-  createdAt: string;
-  updatedAt: string;
-  messages: AdminAssistantMessage[];
-  surveys: AdminAssistantSurveyEntry[];
-  unanswered: AdminAssistantUnansweredItem[];
-}
-
-/**
- * GET /api/admin/assistant/unanswered?space=&userId=&reason=&from=&to=&limit=&offset=
- * Newest first. limit ≤ 200, default 50.
- */
-export interface AdminAssistantUnansweredResponse extends AdminAssistantFilterOptions {
-  items: AdminAssistantUnansweredItem[];
-  total: number;
-}
 
 // ---------- Notifications and access requests (round 31) ----------
 

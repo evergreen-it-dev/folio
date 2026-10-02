@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useLocation, useNavigate, matchPath } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { Bot, ChevronUp, History, Loader2, MessageCircle, Minus, Plus, Send, Settings, Shield, Square, X } from 'lucide-react';
-import type { AssistantFeedbackRating, AssistantMessage, AssistantRunMode } from '@shared/contracts';
+import type { AssistantMessage, AssistantRunMode } from '@shared/contracts';
 import { api } from '../api';
 import { useAssistantRun } from './runState';
 import { useApiErrorText } from '../errorText';
@@ -11,10 +11,33 @@ import { useActivePageId, useLocalStorage } from '../hooks';
 import { useToast } from '../ui/Toast';
 import { Menu } from '../ui/Menu';
 import { AssistantSettingsModal } from './AssistantSettingsModal';
-import { AssistantMessageContent } from './AssistantMessageContent';
-import { AssistantFeedbackButtons, useAssistantFeedback } from './AssistantFeedback';
-import { AssistantSurveyCard } from './AssistantSurvey';
+import { renderChatMarkdown } from './chatMarkdown';
 import '../i18n/register';
+
+/**
+ * Tailwind arbitrary-variant rules compacting rehype's default block/inline
+ * elements to read well in this panel's ~440px width — see chatMarkdown.ts
+ * for the sanitize-then-stringify pipeline that produces the HTML this
+ * wraps. Kept as one shared class string rather than duplicated per call
+ * site (there's only the one, but it's a mouthful).
+ */
+const CHAT_MARKDOWN_CLASS =
+  'folio-chat-md text-sm [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 ' +
+  '[&_li]:my-0.5 [&_h1]:mt-2 [&_h2]:mt-2 [&_h3]:mt-2 [&_h1]:mb-1 [&_h2]:mb-1 [&_h3]:mb-1 [&_h1]:text-base [&_h2]:text-base ' +
+  '[&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_p:first-child]:mt-0 [&_h1:first-child]:mt-0 ' +
+  '[&_h2:first-child]:mt-0 [&_h3:first-child]:mt-0 [&_p:last-child]:mb-0 [&_blockquote]:my-1 [&_blockquote]:border-l-2 ' +
+  '[&_blockquote]:border-neutral-300 [&_blockquote]:pl-2 [&_blockquote]:text-neutral-600 dark:[&_blockquote]:border-neutral-600 ' +
+  'dark:[&_blockquote]:text-neutral-400 [&_code]:rounded [&_code]:bg-neutral-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[13px] ' +
+  'dark:[&_code]:bg-neutral-800 [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-neutral-100 [&_pre]:p-2 ' +
+  'dark:[&_pre]:bg-neutral-800 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:my-1 [&_table]:text-xs [&_th]:border ' +
+  '[&_td]:border [&_th]:border-neutral-300 [&_td]:border-neutral-300 dark:[&_th]:border-neutral-700 dark:[&_td]:border-neutral-700 ' +
+  '[&_th]:px-1 [&_td]:px-1 [&_a]:underline [&_hr]:my-2 [&_hr]:border-neutral-300 dark:[&_hr]:border-neutral-700';
+
+/** Assistant reply body: rendered markdown (sanitized), memoized per text — see chatMarkdown.ts. */
+function AssistantMessageContent({ text }: { text: string }) {
+  const html = useMemo(() => renderChatMarkdown(text), [text]);
+  return <div className={CHAT_MARKDOWN_CLASS} dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 export interface AssistantPanelProps {
   /**
@@ -130,7 +153,6 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   const errorText = useApiErrorText();
   const showToast = useToast();
   const run = useAssistantRun();
-  const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
   const pageId = useActivePageId();
@@ -164,12 +186,6 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   // setIsRunning(true) before its network call.
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Survey card: `engagedSurveyId` keeps it on screen after the first answer
-  // (the server stops reporting the survey as due at once, but the optional
-  // comment step and the "Thanks!" line still follow); `finishedSurveyIds`
-  // stops it coming back from a stale cached `surveyDue` in the meantime.
-  const [engagedSurveyId, setEngagedSurveyId] = useState<string | null>(null);
-  const [finishedSurveyIds, setFinishedSurveyIds] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const busy = run.isRunning || isSubmitting;
 
@@ -241,20 +257,6 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   const storedMessages = startNew ? [] : (conversation.data?.messages ?? []);
   const messages = useMemo(() => [...storedMessages, ...pendingMessages], [storedMessages, pendingMessages]);
   const activeConversationId = conversationId ?? conversation.data?.conversationId ?? null;
-  const dueSurveyId = conversation.data?.surveyDue?.afterMessageId ?? null;
-  // Only for the latest answer: a cached `surveyDue` from before a newer message must not resurface.
-  const surveyId =
-    engagedSurveyId ?? (dueSurveyId && !finishedSurveyIds.includes(dueSurveyId) && messages[messages.length - 1]?.id === dueSurveyId ? dueSurveyId : null);
-  const surveyConversationId = startNew ? null : activeConversationId;
-  const showSurvey = Boolean(surveyId && surveyConversationId && !busy);
-  // Ratings of messages kept in local state (a just-finished run's answer, shown until the refetch lands).
-  const feedback = useAssistantFeedback((messageId, rating) =>
-    setPendingMessages((current) => current.map((m) => (m.id === messageId ? { ...m, feedback: rating } : m))),
-  );
-
-  function rate(message: AssistantMessage, rating: AssistantFeedbackRating | null) {
-    feedback.mutate({ messageId: message.id, rating, previous: message.feedback ?? null });
-  }
   const step = run.step;
   const statusText = step
     ? step.status === 'tool' && step.label
@@ -268,7 +270,6 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
     setConversationId(null);
     storeConversationId(null);
     setPendingMessages([]);
-    setEngagedSurveyId(null);
     setDraft('');
   }
 
@@ -278,7 +279,6 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
     setConversationId(id);
     storeConversationId(id);
     setPendingMessages([]);
-    setEngagedSurveyId(null);
   }
 
   async function stop() {
@@ -426,34 +426,18 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
                   <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{t('assistant.chat.emptyTitle')}</p>
                 </div>
               )}
-              {messages.map((message, index) => {
-                if (message.role === 'user') {
-                  return (
-                    <div
-                      key={message.id}
-                      className="ml-auto max-w-[88%] whitespace-pre-wrap rounded-xl bg-neutral-900 px-3 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
-                    >
-                      {message.content}
-                    </div>
-                  );
-                }
-                // An optimistic bubble (a stopped run's partial text) has no server id yet — nothing to rate.
-                const rateable = !message.id.startsWith('optimistic-');
-                return (
-                  <div key={message.id} className="group/msg mr-auto flex max-w-[88%] flex-col items-start gap-0.5">
-                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-100">
-                      <AssistantMessageContent text={message.content} />
-                    </div>
-                    {rateable && !run.isRunning && (
-                      <AssistantFeedbackButtons
-                        rating={message.feedback ?? null}
-                        onRate={(rating) => rate(message, rating)}
-                        alwaysVisible={index === messages.length - 1}
-                      />
-                    )}
-                  </div>
-                );
-              })}
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`max-w-[88%] rounded-xl px-3 py-2 text-sm ${
+                    message.role === 'user'
+                      ? 'ml-auto whitespace-pre-wrap bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                      : 'mr-auto border border-neutral-200 bg-neutral-50 text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-100'
+                  }`}
+                >
+                  {message.role === 'user' ? message.content : <AssistantMessageContent text={message.content} />}
+                </div>
+              ))}
               {run.isRunning && (
                 <div className="mr-auto max-w-[88%] rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800/60">
                   {run.streamText && <p className="whitespace-pre-wrap text-neutral-800 dark:text-neutral-100">{run.streamText}</p>}
@@ -474,21 +458,6 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
                     </button>
                   </div>
                 </div>
-              )}
-              {showSurvey && surveyId && surveyConversationId && (
-                <AssistantSurveyCard
-                  key={surveyId}
-                  conversationId={surveyConversationId}
-                  afterMessageId={surveyId}
-                  onEngaged={() => {
-                    setEngagedSurveyId(surveyId);
-                    void queryClient.invalidateQueries({ queryKey: ['assistant', 'chat'] });
-                  }}
-                  onFinished={() => {
-                    setEngagedSurveyId(null);
-                    setFinishedSurveyIds((ids) => [...ids, surveyId]);
-                  }}
-                />
               )}
               <div ref={bottomRef} />
             </div>
@@ -583,7 +552,6 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
                 <Send size={15} />
               </button>
             </div>
-            <p className="mt-1.5 text-[11px] leading-tight text-neutral-400 dark:text-neutral-500">{t('assistant.chat.privacyNote')}</p>
           </form>
         </>
       )}

@@ -15,7 +15,6 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type {
   ActiveAssistantRunResponse,
-  AssistantFeedbackResponse,
   AssistantConnectionCheck,
   AssistantConversation,
   AssistantConversationsResponse,
@@ -28,13 +27,7 @@ import type {
   SendAssistantMessageBody,
   StartAssistantRunResponse,
 } from '../../shared/contracts.js';
-import {
-  assistantFeedbackBodySchema,
-  assistantSurveyBodySchema,
-  saveAssistantKeyBodySchema,
-  sendAssistantMessageBodySchema,
-  updateAssistantModelBodySchema,
-} from '../../shared/contracts.js';
+import { saveAssistantKeyBodySchema, sendAssistantMessageBodySchema, updateAssistantModelBodySchema } from '../../shared/contracts.js';
 import * as session from '../auth/session.js';
 import { badRequest, conflict, notFound, HttpError } from '../errors.js';
 import { parseBody, queryString } from '../validate.js';
@@ -43,11 +36,8 @@ import { recordAudit } from '../audit.js';
 import * as assistantStore from './store.js';
 import type { AssistantConversationRow, AssistantMessageRow } from './store.js';
 import * as runs from './runs.js';
-import * as analytics from './analytics.js';
 import { authorizeAssistantNavigation } from './access.js';
 import { cursorRuntimeAvailable, listCursorModels, verifyCursorApiKey } from './cursorRuntime.js';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ndjsonHeaders = {
   'content-type': 'application/x-ndjson; charset=utf-8',
@@ -226,51 +216,13 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
       : await assistantStore.findLatestConversation(user.id);
     if (conversationId && !conversation) throw notFound('assistant conversation');
     const messages = conversation ? await assistantStore.listMessages(conversation.id) : [];
-    const ratings = await analytics.listFeedback(
-      messages.filter((m) => m.role === 'assistant').map((m) => m.id),
-      user.id,
-    );
-    const surveyDue = conversation ? await analytics.computeSurveyDue(conversation.id) : null;
     return {
       conversationId: conversation?.id ?? null,
       title: conversation?.title ?? null,
       model: conversation?.model ?? null,
-      messages: messages.map((m) => (m.role === 'assistant' ? { ...serializeMessage(m), feedback: ratings.get(m.id) ?? null } : serializeMessage(m))),
-      surveyDue,
+      messages: messages.map(serializeMessage),
       activeRun: conversation ? runs.getActiveRunForConversation(conversation.id) : null,
     } satisfies AssistantConversation;
-  });
-
-  app.put('/api/assistant/messages/:messageId/feedback', async (request) => {
-    session.requireCookieAuth(request);
-    const user = request.authUser!;
-    const { messageId } = request.params as { messageId: string };
-    const body = parseBody(assistantFeedbackBodySchema, request.body);
-    // A malformed id can never match a message; answering 404 avoids a uuid cast error.
-    if (!UUID_RE.test(messageId) || !(await analytics.findOwnedAssistantMessage(messageId, user.id))) throw notFound('assistant message');
-    await analytics.setFeedback(messageId, user.id, body.rating);
-    return { messageId, rating: body.rating } satisfies AssistantFeedbackResponse;
-  });
-
-  app.post('/api/assistant/conversations/:conversationId/survey', async (request, reply) => {
-    session.requireCookieAuth(request);
-    const user = request.authUser!;
-    const { conversationId } = request.params as { conversationId: string };
-    const body = parseBody(assistantSurveyBodySchema, request.body);
-    const conversation = UUID_RE.test(conversationId) ? await assistantStore.findConversation(conversationId, user.id) : null;
-    if (!conversation) throw notFound('assistant conversation');
-    if (!(await analytics.isAssistantMessageOf(body.afterMessageId, conversation.id))) {
-      throw badRequest('afterMessageId must be an assistant message of this conversation');
-    }
-    await analytics.upsertSurvey({
-      conversationId: conversation.id,
-      userId: user.id,
-      afterMessageId: body.afterMessageId,
-      answer: body.answer,
-      comment: body.comment?.trim() || null,
-    });
-    reply.status(201);
-    return { ok: true };
   });
 
   app.get('/api/assistant/conversations', async (request) => {

@@ -3,6 +3,20 @@
 Thank you for your interest. Bug reports, fixes and documentation
 improvements are all welcome.
 
+## Build it with agents
+
+Folio is vibe-coded: almost every line here was written by AI coding agents
+under human direction. That is also how we expect you to contribute. Do not
+hand-craft a feature for a week — point your agent (Claude Code, Cursor,
+Codex or any other) at this repository, describe the scenario, let it read
+[AGENTS.md](AGENTS.md) and [docs/HANDOFF.md](docs/HANDOFF.md), review what
+it produces, check it in the browser and send the pull request. You stay
+responsible for the result: you read the diff, you run the checks below, and
+you can explain what changed.
+
+Never worked this way? Watch our webinars on agentic development at
+<https://evergreen.team/events/webinars>, then pick an issue and go for it.
+
 ## Before you start
 
 - **A bug** — open an issue with the steps to reproduce it.

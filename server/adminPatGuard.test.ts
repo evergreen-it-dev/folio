@@ -36,7 +36,6 @@ import { registerRoutes } from './routes.js';
 import { registerProtectedAuthRoutes } from './auth/routes.js';
 import { registerAccessRoutes } from './access/routes.js';
 import { registerTrashRoutes } from './trash/routes.js';
-import { registerAssistantAdminRoutes } from './assistant/adminRoutes.js';
 import { __setTrashRootForTests } from './trash/paths.js';
 
 interface Case {
@@ -115,7 +114,6 @@ describe('QA-3 P1: admin endpoints are unreachable via a PAT, whatever its scope
       registerRoutes(protectedScope);
       registerAccessRoutes(protectedScope);
       registerTrashRoutes(protectedScope);
-      registerAssistantAdminRoutes(protectedScope);
     });
     await app_.ready();
     app = app_;
@@ -173,12 +171,6 @@ describe('QA-3 P1: admin endpoints are unreachable via a PAT, whatever its scope
     // --- server/auth/routes.ts (already guarded — regression cover) --------
     { name: 'GET /api/users', method: 'GET', url: () => '/api/users', cookieStatus: 200 },
     { name: 'GET /api/spaces/:space/members', method: 'GET', url: () => `/api/spaces/${space}/members`, cookieStatus: 200 },
-
-    // --- server/assistant/adminRoutes.ts (analytics over other people's dialogs) ---
-    { name: 'GET /api/admin/assistant/conversations', method: 'GET', url: () => '/api/admin/assistant/conversations', cookieStatus: 200 },
-    { name: 'GET /api/admin/assistant/unanswered', method: 'GET', url: () => '/api/admin/assistant/unanswered', cookieStatus: 200 },
-    // a missing conversation is a 404 for the admin — but a PAT is refused before the lookup (403)
-    { name: 'GET /api/admin/assistant/conversations/:id', method: 'GET', url: () => '/api/admin/assistant/conversations/00000000-0000-4000-8000-000000000000', cookieStatus: 404 },
 
     // --- server/trash/routes.ts (instance-admin setting) ------------------
     { name: 'PUT /api/trash/settings', method: 'PUT', url: () => '/api/trash/settings', payload: () => ({ retentionDays: 30 }), cookieStatus: 200 },
