@@ -147,6 +147,12 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Security
 
+- Dependency updates close four high-severity advisories. `puppeteer-core` is
+  now 25.x (used only to render PDFs with the system Chromium); its browser
+  downloader no longer pulls in `extract-zip` (symlink path traversal, no fixed
+  version) or `basic-ftp`. The `nanoid` copy bundled through the Mermaid import
+  of whiteboards is raised to 5.1.11 or later. `npm audit` reports no known
+  vulnerabilities. Running outside Docker now needs Node.js 22.12 or newer.
 - "Copy to…" and "Duplicate" no longer carry over what the person copying
   cannot open. Before, an editor (or a viewer who could edit another space)
   could copy a page together with its children and read, in the copy, a child

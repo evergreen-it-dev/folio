@@ -476,7 +476,7 @@ npm install
 npm run dev                                      # http://localhost:4871
 ```
 
-Node.js 22 or newer (22.13 or newer for the assistant). See
+Node.js 22.12 or newer (22.13 or newer for the assistant). See
 [CONTRIBUTING.md](CONTRIBUTING.md) — and [AGENTS.md](AGENTS.md) if your
 contributor is an agent.
 
