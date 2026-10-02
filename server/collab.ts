@@ -40,6 +40,7 @@ import { tableColumnSchema, tableViewSchema } from '../shared/contracts.js';
 import type { PageKind, PageMeta, TableCellValue, TableColumn, TableDoc, TableRow, TableView } from '../shared/contracts.js';
 import { isOverHardRowLimit, isTableParseError, parseTableFile, serializeTableFile } from '../shared/tables/index.js';
 import { decodeScenePayload, extractScenePayload, renderSceneSvg } from './confluenceWhiteboard.js';
+import { orderBoardElements, placeBoundTexts, withBoardIndexes } from './boardOrder.js';
 import type { ExcalidrawElement, ExcalidrawScene } from './confluenceWhiteboard.js';
 
 interface PersistenceHooks {
@@ -1690,9 +1691,16 @@ function boardHasLiveElements(roots: BoardRoots): boolean {
   return false;
 }
 
-/** Wholesale population of a blank room from a parsed file/payload. Only ever runs when the room is genuinely empty. */
+/**
+ * Wholesale population of a blank room from a parsed file/payload. Only ever runs when the room is genuinely empty.
+ *
+ * The room is a Y.Map and has no order of its own, so elements the file carries
+ * without an `index` are given one here, from the array order of the file
+ * (withBoardIndexes) — otherwise their z-order would be lost the moment they
+ * are put in the room, and every reader would fall back to id order.
+ */
 function seedBoardYDoc(roots: BoardRoots, scene: ExcalidrawScene): void {
-  for (const el of scene.elements) roots.elements.set(el.id, el);
+  for (const el of withBoardIndexes(scene.elements)) roots.elements.set(el.id, el);
   for (const [k, v] of boardAppStateEntries(scene.appState)) roots.board.set(k, v);
   for (const [fid, f] of Object.entries(scene.files ?? {})) roots.files.set(fid, f);
 }
@@ -1709,7 +1717,7 @@ function seedBoardYDoc(roots: BoardRoots, scene: ExcalidrawScene): void {
  * there is nothing to "reconcile" about one, only to add).
  */
 function reconcileBoardYDoc(roots: BoardRoots, file: ExcalidrawScene): void {
-  for (const el of file.elements) {
+  for (const el of withBoardIndexes(file.elements)) {
     const cur = roots.elements.get(el.id);
     if (!cur) {
       roots.elements.set(el.id, el);
@@ -1747,12 +1755,35 @@ let boardTombstoneNonce = 1;
  * the new scene DOESN'T mention — spec: "mark with isDeleted: true those that
  * are not in the new scene". Deliberately NOT version-gated — see the section
  * comment for why a full-scene write always wins.
+ *
+ * Z-order: the room keeps it in each element's `index`, and a scene built on the
+ * server (a sketch, a Confluence import, board_ops adding a shape) carries none
+ * on some or all of its elements — so the missing ones are given keys from the
+ * array order of the scene (withBoardIndexes), new elements landing on top.
+ * An element that only changes because it got a key is written with a version
+ * above the room's: with equal versions a peer may keep the element it holds
+ * (the nonce decides), so a key written without raising the version might
+ * never reach an open tab. It is compared WITHOUT the change counters, so
+ * handing over the same scene again changes nothing in the room.
  */
 function applyAgentBoardScene(roots: BoardRoots, scene: ExcalidrawScene): void {
-  const nextIds = new Set(scene.elements.map((e) => e.id));
-  for (const el of scene.elements) {
+  const given = new Map(scene.elements.map((e) => [e.id, e]));
+  const elements = withBoardIndexes(scene.elements);
+  const nextIds = new Set(elements.map((e) => e.id));
+  for (const el of elements) {
     const cur = roots.elements.get(el.id);
-    if (!cur || !deepEquals(cur, el)) roots.elements.set(el.id, el);
+    if (!cur) {
+      roots.elements.set(el.id, el);
+      continue;
+    }
+    const gotKey = given.get(el.id) !== el;
+    if (!gotKey) {
+      if (!deepEquals(cur, el)) roots.elements.set(el.id, el);
+      continue;
+    }
+    if (deepEquals(elementContent(cur), elementContent(el))) continue;
+    const version = Math.max(cur.version ?? 0, el.version ?? 0) + 1;
+    roots.elements.set(el.id, { ...el, version, versionNonce: boardTombstoneNonce++ });
   }
   for (const key of [...roots.elements.keys()]) {
     if (nextIds.has(key)) continue;
@@ -1784,11 +1815,14 @@ function applyAgentBoardScene(roots: BoardRoots, scene: ExcalidrawScene): void {
  *
  * The file is not touched: persistBoardDoc keeps it as it is for as long as
  * the room's scene is the file's scene, so these version counters reach Git
- * only together with the next real edit.
+ * only together with the next real edit. Elements the file carries without an
+ * `index` get one from the array order of the file (withBoardIndexes), like on
+ * seeding; the file does not need them to be "the same scene" (see
+ * boardSceneHasFileContent).
  */
 function resetBoardYDoc(roots: BoardRoots, file: ExcalidrawScene): void {
   const inFile = new Set<string>();
-  for (const el of file.elements) {
+  for (const el of withBoardIndexes(file.elements)) {
     inFile.add(el.id);
     const cur = roots.elements.get(el.id);
     if (!cur) {
@@ -1817,17 +1851,22 @@ function resetBoardYDoc(roots: BoardRoots, file: ExcalidrawScene): void {
   }
 }
 
-/** Element order = sort by `index` (fractional, z-order), tie-break by `id` — normative, section comment above. */
+/**
+ * Element order of the room = z-order (server/boardOrder.ts): by `index`
+ * (fractional), a bound text right after its container, ties by `id`.
+ *
+ * The room's Y.Map has no order of its own, so the elements are first put in id
+ * order — the one deterministic order available — and orderBoardElements keeps
+ * that order wherever indexes are missing or equal. A room whose elements all
+ * carry an `index` (every scene put in a room since elements are given keys on
+ * the way in) comes out as it always did, except that a bound text now follows
+ * its container.
+ */
 function sortBoardElements(elements: ExcalidrawElement[]): ExcalidrawElement[] {
-  return [...elements].sort((a, b) => {
-    const ai = a.index ?? '';
-    const bi = b.index ?? '';
-    if (ai !== bi) return ai < bi ? -1 : 1;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
+  return orderBoardElements([...elements].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
 }
 
-/** The live room as an ExcalidrawScene — includes tombstones, in `index` order. Used by persistBoardDoc and by getLiveBoardScene. */
+/** The live room as an ExcalidrawScene — includes tombstones, in z-order. Used by persistBoardDoc and by getLiveBoardScene. */
 function boardSceneFromYDoc(ydoc: Y.Doc): ExcalidrawScene {
   const roots = boardRoots(ydoc);
   const elements = sortBoardElements([...roots.elements.values()]);
@@ -1903,7 +1942,16 @@ async function boardLiveElementCountOnDisk(docName: string): Promise<number | nu
  * embedded images — a room that only differs in those has nothing the file
  * lacks. False for a file it cannot read as a scene (a new board's bare
  * skeleton included), and for one whose elements merely sit in another order:
- * that is still rewritten, which puts them back in `index` order.
+ * that is still rewritten, which puts them back in z-order.
+ *
+ * Two things are deliberately NOT a difference: the `index` strings (what
+ * counts is which element sits above which, not what the keys are called), and
+ * where a bound text sits (the file's list is compared with every bound text
+ * moved to its container, as the room's list already has). That is what keeps a
+ * board written before elements got keys (no `index`, a label under its box)
+ * from being rewritten just because it was opened or "taken from Git": it
+ * differs from its room only in those two ways, and the next real edit puts
+ * them right. The order of everything else is still compared as the file has it.
  */
 function boardSceneHasFileContent(scene: ExcalidrawScene, svg: string): boolean {
   let file: ExcalidrawScene;
@@ -1914,14 +1962,19 @@ function boardSceneHasFileContent(scene: ExcalidrawScene, svg: string): boolean 
   } catch {
     return false;
   }
-  const live = (elements: ExcalidrawElement[]): Record<string, unknown>[] => elements.filter((e) => !e.isDeleted).map(elementContent);
+  const live = (elements: ExcalidrawElement[]): Record<string, unknown>[] =>
+    placeBoundTexts(elements.filter((e) => !e.isDeleted)).map((el) => {
+      const content = elementContent(el);
+      delete content.index;
+      return content;
+    });
   if (!deepEquals(live(scene.elements), live(file.elements))) return false;
   return deepEquals({ viewBackgroundColor: '#ffffff', ...Object.fromEntries(boardAppStateEntries(file.appState)) }, scene.appState);
 }
 
 /**
  * Board-kind branch of persistDoc: collect the scene from the room (including
- * tombstones, in `index` order) -> renderSceneSvg -> storage.writeBoardSvg
+ * tombstones, in z-order: boardOrder.ts) -> renderSceneSvg -> storage.writeBoardSvg
  * (its blank-overwrite guard stays fully active — never `force`) ->
  * storeSnapshot -> gitSync.noteActivity.
  *

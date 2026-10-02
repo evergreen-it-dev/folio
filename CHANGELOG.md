@@ -26,6 +26,15 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- A whiteboard box no longer looks empty in the picture of a board. When a
+  board was created or updated by the assistant, or imported, the label of a
+  box could be drawn underneath the box in the preview used by a document that
+  embeds the board, by the version history and by the `.excalidraw.svg` file
+  in Git, while the canvas itself was fine. The label is now always drawn
+  directly above its box, and the stacking order the board was built in is
+  kept once the board has been opened and saved. A board that already has the
+  problem is corrected by its next save; the server does not rewrite a board's
+  file just because the board was opened.
 - The AI assistant starts again in the Docker image. After the Cursor SDK
   update, its native parts (built for glibc) could not be loaded by the
   Alpine-based image, so the first question failed with "Error loading shared

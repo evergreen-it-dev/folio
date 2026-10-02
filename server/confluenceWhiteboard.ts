@@ -29,6 +29,7 @@
  */
 import * as zlib from 'node:zlib';
 import { badRequest } from './errors.js';
+import { boardDrawOrder } from './boardOrder.js';
 import { ADV_TABLE } from './confluenceWhiteboardMetrics.js';
 
 // ---------------------------------------------------------------------------
@@ -1409,9 +1410,16 @@ export function extractScenePayload(svg: string): string | null {
   return m ? m[1] : null;
 }
 
-/** Renders the scene as a self-contained .excalidraw.svg (preview + payload). */
+/**
+ * Renders the scene as a self-contained .excalidraw.svg (preview + payload).
+ *
+ * The picture is drawn in the z-order of the scene (server/boardOrder.ts: by
+ * `index`, the array order for elements without one, a bound text right after
+ * its container — what the canvas does). The payload keeps the scene exactly as
+ * it was handed in.
+ */
 export function renderSceneSvg(scene: ExcalidrawScene): string {
-  const els = scene.elements.filter((e) => !e.isDeleted);
+  const els = boardDrawOrder(scene.elements.filter((e) => !e.isDeleted));
   const byId = new Map(els.map((e) => [e.id, e]));
   const bg = (scene.appState?.viewBackgroundColor as string) || '#ffffff';
   const FRAME_NAME_GAP = 24; // a frame's label is drawn ABOVE its box

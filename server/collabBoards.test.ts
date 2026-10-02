@@ -23,7 +23,8 @@ import * as collab from './collab.js';
 import * as authStore from './auth/store.js';
 import * as shares from './shares.js';
 import { query } from './db/pool.js';
-import { decodeScenePayload, extractScenePayload, renderSceneSvg } from './confluenceWhiteboard.js';
+import { decodeScenePayload, extractScenePayload, renderSceneSvg, textEl } from './confluenceWhiteboard.js';
+import { buildSceneFromSketch, type BoardSketch } from './boardSketch.js';
 import type { ExcalidrawElement, ExcalidrawScene } from './confluenceWhiteboard.js';
 
 // ---------------------------------------------------------------------------
@@ -91,6 +92,47 @@ function liveElementCount(scene: ExcalidrawScene): number {
   return scene.elements.filter((e) => !e.isDeleted).length;
 }
 
+/** A text bound to `containerId`, without an index (the way create_board writes it). */
+function makeLabel(id: string, containerId: string, text: string): ExcalidrawElement {
+  return { ...textEl(() => 1, id, text, 0, 0, 80, 20, 16, '#1e1e1e', { container: containerId, align: 'center', valign: 'middle' }), index: null };
+}
+
+/** What create_board / update_board hand over: no `index` anywhere, the array is the z-order. 'zz-zone' is the bottom layer although its id sorts last; 'web' sorts after 't-web'. */
+function layeredScene(): ExcalidrawScene {
+  return makeScene([
+    makeElement('zz-zone', { index: null, backgroundColor: '#ffe3e3', x: 0, y: 0, width: 600, height: 300 }),
+    makeElement('web', { index: null, backgroundColor: '#a5d8ff', x: 40, y: 40, width: 180, height: 70, boundElements: [{ id: 't-web', type: 'text' }] }),
+    makeLabel('t-web', 'web', 'Web shop'),
+    makeElement('api', { index: null, backgroundColor: '#d0bfff', x: 300, y: 40, width: 180, height: 70, boundElements: [{ id: 't-api', type: 'text' }] }),
+    makeLabel('t-api', 'api', 'API gateway'),
+  ]);
+}
+
+const LAYERED_Z_ORDER = ['zz-zone', 'web', 't-web', 'api', 't-api'];
+
+const liveIds = (scene: ExcalidrawScene): string[] => scene.elements.filter((e) => !e.isDeleted).map((e) => e.id);
+
+/** True when the box with this fill is drawn before the text with this label in the markup. */
+function labelAboveBox(svg: string, fill: string, text: string): boolean {
+  const rect = svg.indexOf(`fill="${fill}"`);
+  const label = svg.indexOf(`>${text}</tspan>`);
+  return rect > -1 && label > rect;
+}
+
+/**
+ * The file the OLD server wrote for a scene: the payload in id order and, in the picture, a box's label drawn BEFORE
+ * the box (the fixed renderer no longer produces that, so the markup is rearranged here).
+ */
+function oldServerSvg(scene: ExcalidrawScene): string {
+  const byId = makeScene([...scene.elements].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)), scene.appState);
+  const svg = renderSceneSvg(byId);
+  const text = /<text [^>]*><tspan [^>]*>Web shop<\/tspan><\/text>/.exec(svg)![0];
+  const rect = /<rect [^>]*fill="#a5d8ff"[^>]*\/>/.exec(svg)![0];
+  const old = svg.replace(text, '').replace(rect, text + rect);
+  if (labelAboveBox(old, '#a5d8ff', 'Web shop')) throw new Error('the fixture did not reproduce the old picture');
+  return old;
+}
+
 describe('board bindState / persistDoc / editBoardScene (real PG + real files)', () => {
   let teardownSchema: () => Promise<void>;
   let liveDocs: Map<string, Y.Doc>;
@@ -119,6 +161,16 @@ describe('board bindState / persistDoc / editBoardScene (real PG + real files)',
   /** bindState + register into y-websocket's own `docs` map, exactly collabTables.test.ts's makeLiveTable pattern — the only way isLiveBoard/getLiveBoardScene/editBoardScene's live branch can be exercised without a real WS server. */
   async function makeLiveBoard(label: string, scene?: ExcalidrawScene): Promise<{ space: string; id: string; ydoc: Y.Doc; absPath: string }> {
     const { space, id, absPath } = await makeBoardPage(label, scene);
+    const ydoc = new Y.Doc();
+    await collab.bindState(id, ydoc);
+    liveDocs.set(id, ydoc);
+    return { space, id, ydoc, absPath };
+  }
+
+  /** Like makeLiveBoard, but the file is exactly `svg` (a file some other version of the server wrote). */
+  async function makeLiveBoardFromSvg(label: string, svg: string): Promise<{ space: string; id: string; ydoc: Y.Doc; absPath: string }> {
+    const { space, id, absPath } = await makeBoardPage(label);
+    await storage.writeBoardSvg(id, svg, true);
     const ydoc = new Y.Doc();
     await collab.bindState(id, ydoc);
     liveDocs.set(id, ydoc);
@@ -392,6 +444,214 @@ describe('board bindState / persistDoc / editBoardScene (real PG + real files)',
       await deleteTestSpace(space);
     }
   });
+
+  // -------------------------------------------------------------------------
+  // Z-ORDER: the order of the scene (not id order) reaches the room, the file
+  // and the picture. A box whose id sorts after its label's id used to be drawn
+  // OVER its label ("Web shop" box with no text) in the SVG of the file.
+  // -------------------------------------------------------------------------
+
+  it('Z-ORDER: an index-less scene written into a live room is saved in the order of the scene, with every label drawn above its box', async () => {
+    const { space, id, ydoc, absPath } = await makeLiveBoard('Board ZOrder Edit', fixtureScene());
+    try {
+      await collab.editBoardScene(id, layeredScene());
+      await collab.persistDoc(id, ydoc);
+
+      const saved = await readFileScene(absPath);
+      expect(liveIds(saved)).toEqual(LAYERED_Z_ORDER);
+
+      const svg = await fs.readFile(absPath, 'utf8');
+      expect(labelAboveBox(svg, '#a5d8ff', 'Web shop')).toBe(true);
+      expect(labelAboveBox(svg, '#d0bfff', 'API gateway')).toBe(true);
+      // the bottom layer is drawn first, although its id sorts last
+      expect(svg.indexOf('fill="#ffe3e3"')).toBeLessThan(svg.indexOf('fill="#a5d8ff"'));
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
+
+  it('Z-ORDER: a room seeded from a file whose elements have no index follows the array order of the file', async () => {
+    const { space, id } = await makeLiveBoard('Board ZOrder Seed', layeredScene());
+    try {
+      expect(liveIds(collab.getLiveBoardScene(id)!)).toEqual(LAYERED_Z_ORDER);
+      // the room carries real z-order keys now, so every client reads the same order
+      const keys = collab.getLiveBoardScene(id)!.elements.map((e) => e.index);
+      expect(keys.every((k) => typeof k === 'string' && k.length > 0)).toBe(true);
+      expect(new Set(keys).size).toBe(keys.length);
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
+
+  it('Z-ORDER: elements an agent adds without an index land on top of the board', async () => {
+    const { space, id, ydoc } = await makeLiveBoard('Board ZOrder Added', fixtureScene());
+    try {
+      const live = collab.getLiveBoardScene(id)!;
+      expect(liveIds(live)).toEqual(['el-a', 'el-c', 'el-b']);
+      await collab.editBoardScene(id, makeScene([...live.elements, makeElement('added', { index: null, x: 500 })]));
+      const after = collab.getLiveBoardScene(id)!;
+      expect(liveIds(after)).toEqual(['el-a', 'el-c', 'el-b', 'added']);
+      // the elements the user already had keep their keys
+      expect(collab.boardRoots(ydoc).elements.get('el-b')!.index).toBe('a2');
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
+
+  it('Z-ORDER: a board saved by the old server (id order, label under the box) is not rewritten just because it was opened or persisted', async () => {
+    const { space, id, ydoc, absPath } = await makeLiveBoardFromSvg('Board ZOrder Legacy NoChurn', oldServerSvg(layeredScene()));
+    try {
+      const before = await fs.readFile(absPath, 'utf8');
+      await collab.persistDoc(id, ydoc);
+      expect(await fs.readFile(absPath, 'utf8')).toBe(before);
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
+
+  it('Z-ORDER: that same legacy board is fixed by the next real edit: the label is drawn above its box again', async () => {
+    const { space, id, ydoc, absPath } = await makeLiveBoardFromSvg('Board ZOrder Legacy Fix', oldServerSvg(layeredScene()));
+    try {
+      expect(labelAboveBox(await fs.readFile(absPath, 'utf8'), '#a5d8ff', 'Web shop')).toBe(false); // the bug, as written by the old server
+
+      const roots = collab.boardRoots(ydoc);
+      const cur = roots.elements.get('api')!;
+      ydoc.transact(() => roots.elements.set('api', { ...cur, backgroundColor: '#00ff00', version: cur.version + 1, versionNonce: cur.versionNonce + 1 }));
+      await collab.persistDoc(id, ydoc);
+
+      const svg = await fs.readFile(absPath, 'utf8');
+      expect(labelAboveBox(svg, '#a5d8ff', 'Web shop')).toBe(true);
+      const ids = liveIds(await readFileScene(absPath));
+      expect(ids.indexOf('web')).toBeLessThan(ids.indexOf('t-web'));
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
+
+  it('Z-ORDER: a sketch whose node ids sort after their labels\' ids (a demo starting board) is saved with every label above its box after a first live edit', async () => {
+    // A small architecture sketch as the assistant's create_board takes it. Ids like 'web' sort after their label's id
+    // ('t-web'); every node gets a distinct fill so that its box can be found in the markup.
+    const fill = (i: number): string => `#${(0x100000 + i * 0x1111).toString(16)}`;
+    const nodes: BoardSketch['nodes'] = [
+      { id: 'web', type: 'rectangle', label: 'Web shop', x: 0, y: 30, w: 180, h: 70 },
+      { id: 'mobile', type: 'rectangle', label: 'Mobile app', x: 0, y: 180, w: 180, h: 70 },
+      { id: 'gateway', type: 'rectangle', label: 'API gateway', x: 300, y: 105, w: 180, h: 70 },
+      { id: 'orders', type: 'rectangle', label: 'Orders', x: 600, y: 105, w: 180, h: 70 },
+      { id: 'payments', type: 'rectangle', label: 'Payments', x: 900, y: 30, w: 180, h: 70 },
+      { id: 'inventory', type: 'rectangle', label: 'Inventory', x: 900, y: 180, w: 180, h: 70 },
+      { id: 'db', type: 'ellipse', label: 'Postgres', x: 900, y: 330, w: 180, h: 90 },
+    ].map((n, i) => ({ ...n, background: fill(i) })) as BoardSketch['nodes'];
+    const sketch: BoardSketch = {
+      nodes,
+      edges: [
+        { from: 'web', to: 'gateway', label: 'HTTPS', elbowed: false },
+        { from: 'mobile', to: 'gateway', label: 'HTTPS', elbowed: false },
+        { from: 'gateway', to: 'orders', label: 'REST', elbowed: false },
+        { from: 'orders', to: 'payments', label: 'charge', elbowed: false },
+        { from: 'orders', to: 'inventory', label: 'reserve', elbowed: false },
+        { from: 'inventory', to: 'db', label: 'stock', elbowed: false },
+      ],
+    };
+    const built = buildSceneFromSketch(sketch);
+
+    // create_board: no room yet, straight to the file; then the board is opened and somebody draws a box.
+    const { space, id, absPath } = await makeBoardPage('Board ZOrder Video5', makeScene([makeElement('seed')]));
+    try {
+      await collab.editBoardScene(id, built);
+      const ydoc = new Y.Doc();
+      await collab.bindState(id, ydoc);
+      liveDocs.set(id, ydoc);
+      const roots = collab.boardRoots(ydoc);
+      ydoc.transact(() => roots.elements.set('drawn', makeElement('drawn', { index: 'b00', x: 1200, backgroundColor: '#b2f2bb' })));
+      await collab.persistDoc(id, ydoc);
+
+      // the file keeps the order the scene was built in, the new box on top
+      const saved = await readFileScene(absPath);
+      expect(liveIds(saved)).toEqual([...built.elements.map((e) => e.id), 'drawn']);
+
+      // and the picture is drawn in that order: shape, then its label — never a label before its box
+      const svg = await fs.readFile(absPath, 'utf8');
+      const body = svg.slice(svg.indexOf('</defs>'));
+      const drawn = [...body.matchAll(/<(rect|ellipse|polygon|polyline|text)\b/g)].map((m) => m[1]).slice(1); // [0] is the page background
+      const arrowIds = new Set(built.elements.filter((e) => e.type === 'arrow').map((e) => e.id));
+      const expected = built.elements.flatMap((e) => {
+        if (e.type === 'rectangle') return ['rect'];
+        if (e.type === 'ellipse') return ['ellipse'];
+        if (e.type === 'arrow') return ['polyline'];
+        return e.containerId && arrowIds.has(e.containerId) ? ['rect', 'text'] : ['text'];
+      });
+      expect(drawn).toEqual([...expected, 'rect']);
+      for (let i = 0; i < nodes.length; i++) {
+        expect(labelAboveBox(svg, fill(i), nodes[i].label!)).toBe(true);
+      }
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
+
+  it('Z-ORDER: a board that is already in order is never rewritten by a persist that has nothing new to say', async () => {
+    const indexed = makeScene([
+      makeElement('zz-zone', { index: 'a0', backgroundColor: '#ffe3e3', width: 600, height: 300 }),
+      makeElement('web', { index: 'a1', backgroundColor: '#a5d8ff', boundElements: [{ id: 't-web', type: 'text' }] }),
+      { ...makeLabel('t-web', 'web', 'Web shop'), index: 'a2' },
+    ]);
+    const { space, id, ydoc, absPath } = await makeLiveBoard('Board ZOrder InOrder NoChurn', indexed);
+    try {
+      const before = await fs.readFile(absPath, 'utf8');
+      await collab.persistDoc(id, ydoc);
+      await collab.persistDoc(id, ydoc);
+      expect(await fs.readFile(absPath, 'utf8')).toBe(before);
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
+
+  it('Z-ORDER: handing over the same index-less scene again changes nothing in the room (no Yjs update, no churn in Git)', async () => {
+    const { space, id, ydoc, absPath } = await makeLiveBoard('Board ZOrder Repeat', fixtureScene());
+    try {
+      await collab.editBoardScene(id, layeredScene());
+      await collab.persistDoc(id, ydoc);
+      const before = await fs.readFile(absPath, 'utf8');
+
+      let updates = 0;
+      ydoc.on('update', () => {
+        updates += 1;
+      });
+      await collab.editBoardScene(id, layeredScene());
+      await collab.persistDoc(id, ydoc);
+
+      expect(updates).toBe(0);
+      expect(await fs.readFile(absPath, 'utf8')).toBe(before);
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
+
+  it('Z-ORDER: "take the version from Git" on an open room puts the room in the order of the file and leaves the file byte for byte as it was', async () => {
+    const { space, id, ydoc, absPath } = await makeLiveBoard('Board ZOrder Reset', fixtureScene());
+    try {
+      // The file moves on under the open room (a reset to the remote writes straight to disk).
+      await fs.writeFile(absPath, renderSceneSvg(layeredScene()), 'utf8');
+      const written = await fs.readFile(absPath, 'utf8');
+
+      await collab.reconcileLiveRoomsAfterReset([id]);
+      expect(liveIds(collab.getLiveBoardScene(id)!)).toEqual(LAYERED_Z_ORDER);
+
+      await collab.persistDoc(id, ydoc);
+      expect(await fs.readFile(absPath, 'utf8')).toBe(written);
+    } finally {
+      liveDocs.delete(id);
+      await deleteTestSpace(space);
+    }
+  }, 20_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -497,6 +757,46 @@ describe('LIVE board editing over real websockets (round 29)', () => {
       });
       const finalScene = await readFileScene(entry.absPath);
       expect(liveElementCount(finalScene)).toBe(2);
+    } finally {
+      provider.destroy();
+      await query('DELETE FROM ydoc_state WHERE page_id = $1', [page.id]).catch(() => undefined);
+      await deleteTestSpace(space.slug);
+    }
+  }, 20_000);
+
+  it("Z-ORDER: an agent's index-less scene reaches an open tab as z-order keys and lands in the file with every label above its box", async () => {
+    const owner = await authStore.createUser({ email: `b-zorder-${Date.now()}@collab-test.local`, name: 'Owner', passwordHash: 'x', isAdmin: false });
+    const space = await storage.createSpace(`ZOrder Board ${Date.now()}`, owner.id);
+    await authStore.setMembership(space.slug, owner.id, 'editor');
+    const page = await storage.createPage({ space: space.slug, parentPath: '', title: 'Board', kind: 'board' });
+    await storage.writeBoardSvg(page.id, renderSceneSvg(fixtureScene()), true);
+    const session = await authStore.createSession(owner.id);
+
+    const clientDoc = new Y.Doc();
+    const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, page.id, clientDoc, {
+      WebSocketPolyfill: cookieWs(session.token),
+      connect: true,
+      disableBc: true,
+    });
+    try {
+      await waitSynced(provider);
+      await pollUntil(() => collab.boardRoots(clientDoc).elements.size === 3);
+
+      await collab.editBoardScene(page.id, layeredScene());
+
+      // The open tab reads the z-order from the elements themselves: a key on each.
+      await pollUntil(() => collab.boardRoots(clientDoc).elements.get('t-api') !== undefined);
+      const clientEls = [...collab.boardRoots(clientDoc).elements.values()].filter((e) => !e.isDeleted);
+      const byKey = [...clientEls].sort((a, b) => ((a.index ?? '') < (b.index ?? '') ? -1 : 1));
+      expect(byKey.map((e) => e.id)).toEqual(LAYERED_Z_ORDER);
+
+      // And the file: the order of the scene, the label above its box in the picture.
+      const entry = await storage.requireEntry(page.id);
+      await pollUntil(async () => (await fs.readFile(entry.absPath, 'utf8')).includes('API gateway'));
+      const svg = await fs.readFile(entry.absPath, 'utf8');
+      expect(liveIds(await readFileScene(entry.absPath))).toEqual(LAYERED_Z_ORDER);
+      expect(labelAboveBox(svg, '#a5d8ff', 'Web shop')).toBe(true);
+      expect(labelAboveBox(svg, '#d0bfff', 'API gateway')).toBe(true);
     } finally {
       provider.destroy();
       await query('DELETE FROM ydoc_state WHERE page_id = $1', [page.id]).catch(() => undefined);
