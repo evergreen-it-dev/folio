@@ -1,6 +1,6 @@
 # Folio
 
-**The vibe-coded, open-source alternative to Notion and Confluence.**
+**The vibe-coded and AI SDLC friendly, open-source alternative to Notion and Confluence.**
 Your team's wiki lives in Git. People write in the browser, together, in real
 time. AI agents read and write the same pages. One command to run it yourself.
 
