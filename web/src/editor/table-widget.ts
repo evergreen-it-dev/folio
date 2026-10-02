@@ -2314,17 +2314,33 @@ function createCellInput(raw: string, row: number, col: number): HTMLTextAreaEle
   // Native contenteditable input has already changed the semantic DOM. Read it
   // back without re-rendering, so the browser's caret remains exactly where it
   // landed; every programmatic edit above still goes through `render()`.
+  const readBack = () => {
+    adoptStrayNodes(rich);
+    reclaimPlaceholders();
+    value = editableCellText(rich);
+    readSelection();
+  };
   rich.addEventListener('input', (event) => {
     if (!event.isTrusted && ignoreSyntheticInput) {
       ignoreSyntheticInput = false;
       return;
     }
     ignoreSyntheticInput = false;
-    adoptStrayNodes(rich);
-    reclaimPlaceholders();
-    value = editableCellText(rich);
-    readSelection();
+    // An IME composition (the OS emoji panel, a dead key, a phone keyboard's
+    // word under construction) owns the text node it is writing into: the
+    // read-back above rewrites nodes (`reclaimPlaceholders` strips the
+    // placeholder space out of the very node being composed), which cancels the
+    // composition — the next update then starts a new one and the text lands
+    // twice, an emoji in an empty cell as `😀😀`, "ab" as "aab". Until the
+    // composition ends the model only READS the DOM; `compositionend` does the tidy-up.
+    if ((event as InputEvent).isComposing) {
+      value = editableCellText(rich);
+      readSelection();
+      return;
+    }
+    readBack();
   });
+  rich.addEventListener('compositionend', readBack);
   render();
   return field;
 }
@@ -2685,6 +2701,12 @@ function beginEdit(
   });
 
   field.addEventListener('keydown', (event) => {
+    // While an IME composition is open, Enter/Tab/Escape/the arrows belong to
+    // the IME (they pick, confirm or cancel a candidate): `isComposing` for
+    // most browsers, keyCode 229 for the one key Safari delivers after
+    // `compositionend`. Reading them as cell navigation split the cell, moved
+    // on to the next one or closed it from under the composition.
+    if (event.isComposing || event.keyCode === 229) return;
     const { rows, cols } = gridSize(wrap);
     // The formatting hotkeys are handled by `attachFieldFormatting`; nothing
     // below may treat them as navigation.

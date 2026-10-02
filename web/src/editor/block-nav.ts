@@ -54,8 +54,8 @@
  */
 import { syntaxTree } from '@codemirror/language';
 import type { SyntaxNode } from '@lezer/common';
-import { EditorSelection, EditorState, Prec, type Extension, type Text } from '@codemirror/state';
-import { keymap, type Command, type EditorView } from '@codemirror/view';
+import { EditorSelection, EditorState, Prec, type Extension, type Line, type Text } from '@codemirror/state';
+import { EditorView, keymap, type Command } from '@codemirror/view';
 import { HEADER_ROW, parseGfmTable } from './gfm-table';
 import { computeBlockSpecs, computeInlineSpecs, type BlockSpec } from './live-decorations';
 import { liveModeFacet } from './live-preview';
@@ -337,8 +337,9 @@ const tablePointerGuard = EditorState.transactionFilter.of((tr) => {
  * its own below it — the same document the author would have written with a
  * second Enter. Only the author's own input (`input…`): a peer's change comes
  * through Yjs and is written back to the shared text as it is, and a
- * composition is not moved from under the IME (as `edgeSpaceGuard` does).
- * Source mode is plain text and keeps GFM's rule.
+ * composition is not moved from under the IME (`tableCompositionGuard` below
+ * makes the room BEFORE one starts). Source mode is plain text and keeps GFM's
+ * rule.
  */
 const tableTypingGuard = EditorState.transactionFilter.of((tr) => {
   if (!tr.docChanged || !tr.isUserEvent('input') || tr.isUserEvent('input.type.compose')) return tr;
@@ -350,22 +351,15 @@ const tableTypingGuard = EditorState.transactionFilter.of((tr) => {
   const glued: { from: number; tableEnd: number }[] = [];
   tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
     const line = state.doc.lineAt(fromA);
-    if (line.number === 1 || toA > line.to || line.text.trim() !== '') return;
+    if (toA > line.to || line.text.trim() !== '') return;
     // The line stays blank for a space, or for Enter: nothing is glued then.
     if (inserted.line(1).text.trim() === '') return;
-    const above = state.doc.line(line.number - 1);
-    if (above.text.trim() === '' || !tableEndsAt(state, above.to)) return;
-    glued.push({ from: line.from, tableEnd: above.to });
+    const tableEnd = tableEndAbove(state, line);
+    if (tableEnd !== null) glued.push({ from: line.from, tableEnd });
   });
   if (glued.length === 0) return tr;
 
-  const folded = computeBlockSpecs({
-    doc: state.doc,
-    tree: syntaxTree(state),
-    selection: state.selection.ranges,
-    ranges: [{ from: 0, to: state.doc.length }],
-    live: true,
-  }).filter((spec) => spec.kind === 'table');
+  const folded = foldedTables(state);
   const lines = glued.filter(({ tableEnd }) => folded.some((spec) => spec.to === tableEnd));
   if (lines.length === 0) return tr;
   return [
@@ -376,6 +370,59 @@ const tableTypingGuard = EditorState.transactionFilter.of((tr) => {
     },
   ];
 });
+
+/**
+ * The same, for text that arrives through an IME composition — the OS emoji
+ * panel, a dead key, a phone keyboard's word under construction. The first
+ * character of one is written by the browser into the line the caret is on,
+ * and the text cannot be moved afterwards: replacing the DOM node the IME is
+ * editing cancels the composition, so the next update starts a new one and the
+ * text appears twice ("ab" became "aab" with the guard above applied to
+ * compositions too). So the room is made BEFORE the composition starts: on the
+ * blank line under a folded table, `compositionstart` adds the line break and
+ * moves the caret down, which is the document a second Enter would have written
+ * and leaves the composition an ordinary blank line to type on.
+ */
+const tableCompositionGuard = EditorView.domEventHandlers({
+  compositionstart(_event, view) {
+    const { state } = view;
+    if (state.readOnly || !state.facet(liveModeFacet) || state.selection.ranges.length !== 1) return false;
+    const { main } = state.selection;
+    if (!main.empty) return false;
+    const line = state.doc.lineAt(main.head);
+    const tableEnd = tableEndAbove(state, line);
+    if (tableEnd === null || !foldedTables(state).some((spec) => spec.to === tableEnd)) return false;
+    view.dispatch({
+      changes: { from: line.to, insert: '\n' },
+      selection: EditorSelection.cursor(line.to + 1),
+      userEvent: 'input',
+    });
+    return false;
+  },
+});
+
+/** The tables folded into widgets in this state, whole document. */
+function foldedTables(state: EditorState): BlockSpec[] {
+  return computeBlockSpecs({
+    doc: state.doc,
+    tree: syntaxTree(state),
+    selection: state.selection.ranges,
+    ranges: [{ from: 0, to: state.doc.length }],
+    live: true,
+  }).filter((spec) => spec.kind === 'table');
+}
+
+/**
+ * Where the table above ends (the end of its last row), when `line` is a blank
+ * line directly under a table's last row — the line a typed character would
+ * glue to the table on. Null for any other line, and for a table that is not
+ * the whole story: whether it is FOLDED is `foldedTables`' to say.
+ */
+function tableEndAbove(state: EditorState, line: Line): number | null {
+  if (line.number === 1 || line.text.trim() !== '') return null;
+  const above = state.doc.line(line.number - 1);
+  return above.text.trim() !== '' && tableEndsAt(state, above.to) ? above.to : null;
+}
 
 /** True when a top-level table's last row ends at `pos` — the end of a line. */
 function tableEndsAt(state: EditorState, pos: number): boolean {
@@ -397,4 +444,5 @@ export const blockWidgetNav: Extension = [
   ),
   tablePointerGuard,
   tableTypingGuard,
+  tableCompositionGuard,
 ];

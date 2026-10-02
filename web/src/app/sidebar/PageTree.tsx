@@ -41,9 +41,16 @@ export function PageTree({ space, activeId, activeFolderPath, canEdit }: PageTre
     // refetchOnWindowFocus:false at the QueryClient level (App.tsx) killed
     // the one thing that would have caught them. Point fix here rather than
     // globally: the tree is cheap and this is exactly the query that needs
-    // to notice a restore-from-trash or a move done elsewhere. The 30s poll
-    // is a stopgap for "another tab, still focused, no explicit signal" —
-    // a real event channel is a separate round.
+    // to notice a restore-from-trash or a move done elsewhere.
+    //
+    // The real signal (02.10.2026) is the `{ type: 'tree', space }` frame on
+    // the /events socket (notifications/NotificationsHost.tsx →
+    // sidebar/treeLive.ts): a change made by another user, an API/MCP client,
+    // the assistant, an import or a git sync refetches this query within a
+    // second or two while the tab stays focused. What is left here is the
+    // FALLBACK for when that socket is silent or down (a sleeping laptop, a
+    // proxy that cut it, a server without the listener): the refetch on focus
+    // and the 30 s poll. Do not remove them.
     refetchOnWindowFocus: true,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,

@@ -26,7 +26,18 @@ const PING_INTERVAL_MS = 25_000;
 /** user_id -> all of their open tabs. */
 const connectionsByUser = new Map<string, Set<WS.WebSocket>>();
 
-function register(userId: string, conn: WS.WebSocket): void {
+/**
+ * Which session cookie each open connection was authorized with. The socket is
+ * authenticated once, at upgrade; a feature that fans out something about a
+ * SPACE (the "tree changed" signal) must be able to ask again, at send time,
+ * whether that session still exists and may still read the space — so the
+ * token stays with the connection (in memory only, the same string the
+ * upgrade request carried).
+ */
+const sessionTokenOf = new WeakMap<WS.WebSocket, string>();
+
+function register(userId: string, token: string, conn: WS.WebSocket): void {
+  sessionTokenOf.set(conn, token);
   let set = connectionsByUser.get(userId);
   if (!set) {
     set = new Set();
@@ -73,6 +84,35 @@ export function sendToUser(userId: string, event: NotificationSocketEvent): void
   }
 }
 
+/** The distinct session tokens of every open connection — the input of the "who may hear about this space" question. */
+export function openSessionTokens(): string[] {
+  const tokens = new Set<string>();
+  for (const set of connectionsByUser.values()) {
+    for (const conn of set) {
+      const token = sessionTokenOf.get(conn);
+      if (token !== undefined && conn.readyState === conn.OPEN) tokens.add(token);
+    }
+  }
+  return [...tokens];
+}
+
+/** Send an event to every open connection authorized with one of these session tokens. Not being online is not an error. */
+export function sendToSessions(tokens: ReadonlySet<string>, event: NotificationSocketEvent): void {
+  if (tokens.size === 0) return;
+  const payload = JSON.stringify(event);
+  for (const set of connectionsByUser.values()) {
+    for (const conn of set) {
+      const token = sessionTokenOf.get(conn);
+      if (token === undefined || !tokens.has(token) || conn.readyState !== conn.OPEN) continue;
+      try {
+        conn.send(payload);
+      } catch {
+        // A break during the write — the connection will reach 'close' by itself and be cleaned up.
+      }
+    }
+  }
+}
+
 /** How many tabs a user holds now — for diagnostics and tests. */
 export function connectionCountForUser(userId: string): number {
   return connectionsByUser.get(userId)?.size ?? 0;
@@ -93,14 +133,15 @@ export function attachToServer(httpServer: HttpServer): void {
       if (url.pathname !== '/events') return;
 
       const cookies = session.parseCookieHeader(req.headers.cookie);
-      const user = await session.userForToken(cookies[session.SESSION_COOKIE_NAME]);
-      if (!user || user.disabled) {
+      const token = cookies[session.SESSION_COOKIE_NAME];
+      const user = await session.userForToken(token);
+      if (!user || user.disabled || !token) {
         rejectUpgrade(socket, 401, 'Unauthorized');
         return;
       }
 
       wss.handleUpgrade(req, socket, head, (conn) => {
-        register(user.id, conn);
+        register(user.id, token, conn);
       });
     })().catch(() => {
       rejectUpgrade(socket, 500, 'Internal Server Error');

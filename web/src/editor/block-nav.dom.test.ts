@@ -219,6 +219,65 @@ describe('text typed on the line right under a folded table', () => {
     expect(view.dom.textContent).not.toContain('folio-table');
   });
 
+  describe('through an IME composition', () => {
+    // The OS emoji panel, a dead key, a phone keyboard. The browser writes the
+    // composed text into the caret's line and loses the composition if that
+    // text is moved afterwards, so the guard makes the room when it STARTS.
+    const compositionStart = (view: EditorView) =>
+      view.contentDOM.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+
+    it('makes the line to write on before the first character, so the table stays folded', () => {
+      const view = mount(DOC, gap);
+
+      compositionStart(view);
+
+      expect(view.state.doc.toString()).toBe(`# T\n\nabove\n\n${BLOCK}\n\n\nbelow`);
+      expect(view.state.selection.main.head).toBe(gap + 1);
+      expect(folded(view)).toBe(true);
+
+      // The browser then writes the composition (`input.type.compose`, never moved).
+      typeAt(view, gap + 1, '😀', 'input.type.compose');
+      expect(view.state.doc.toString()).toBe(`# T\n\nabove\n\n${BLOCK}\n\n😀\nbelow`);
+      expect(view.state.selection.main.head).toBe(gap + 1 + '😀'.length);
+      expect(folded(view)).toBe(true);
+      expect(view.dom.textContent).not.toContain('folio-table');
+    });
+
+    it('does the same for a table that ends the page', () => {
+      const doc = `# T\n\n${TABLE}`;
+      const view = mount(doc, 0);
+      view.dispatch({ selection: EditorSelection.cursor(doc.length), userEvent: 'select.pointer' });
+      expect(view.state.doc.toString()).toBe(`${doc}\n`);
+
+      compositionStart(view);
+
+      expect(view.state.doc.toString()).toBe(`${doc}\n\n`);
+      expect(view.state.selection.main.head).toBe(doc.length + 2);
+      expect(folded(view)).toBe(true);
+    });
+
+    it('leaves a composition anywhere else alone', () => {
+      const doc = `${DOC}\n\n\nmore`;
+      const spare = doc.indexOf('\n\n\nmore') + 2; // the blank line between two blank lines
+      for (const [name, view] of [
+        ['a paragraph', mount(DOC, DOC.indexOf('above'))],
+        ['a blank line with another blank line above', mount(doc, spare)],
+        ['source mode', mount(DOC, gap, false)],
+      ] as const) {
+        const before = view.state.doc.toString();
+        compositionStart(view);
+        expect(view.state.doc.toString(), name).toBe(before);
+      }
+    });
+
+    it('does not touch a selection that is a range', () => {
+      const view = mount(DOC, gap);
+      view.dispatch({ selection: EditorSelection.range(gap, gap + 1 + 'below'.length) });
+      compositionStart(view);
+      expect(view.state.doc.toString()).toBe(DOC);
+    });
+  });
+
   it('a pasted block is moved down as a whole', () => {
     const view = mount(DOC, gap);
     typeAt(view, gap, '😀 first\nsecond', 'input.paste');

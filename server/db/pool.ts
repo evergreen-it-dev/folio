@@ -6,7 +6,7 @@
  * per-run schema (CREATE SCHEMA test_xxx + this pool's search_path) without
  * this module needing to know anything about tests.
  */
-import { Pool, type PoolClient } from 'pg';
+import { Client, Pool, type PoolClient } from 'pg';
 import { loadEnv } from '../env.js';
 
 let pool: Pool | undefined;
@@ -24,6 +24,21 @@ export function getPool(): Pool {
     pool = new Pool({ connectionString, options: connectionOptions() });
   }
   return pool;
+}
+
+/**
+ * A connection of its own, OUTSIDE the pool, for LISTEN: a listener holds its
+ * connection for the life of the process, and a pooled connection that never
+ * comes back would silently shrink the pool by one. Same database, same
+ * search_path (the DB_SCHEMA override) as the pool, so `current_schema()` on it
+ * answers the same as on any query the app runs. The caller connects it and
+ * owns its errors.
+ */
+export function newListenClient(): Client {
+  loadEnv();
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error('DATABASE_URL is not set (check .env)');
+  return new Client({ connectionString, options: connectionOptions(), keepAlive: true, keepAliveInitialDelayMillis: 30_000, connectionTimeoutMillis: 10_000 });
 }
 
 export async function query<T extends object = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {

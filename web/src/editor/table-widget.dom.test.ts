@@ -282,6 +282,91 @@ describe('text the browser put outside the cell-text span', () => {
   });
 });
 
+/**
+ * The owner, 02.10.2026: "I insert an emoji into a table and it breaks". The OS
+ * emoji panel, a dead key and a phone keyboard write through an IME
+ * composition, and Chrome loses a composition whose text node is rewritten
+ * under it: the next update starts a new one, so an emoji in an empty cell came
+ * out as `😀😀` and "ab" as "aab" (reproduced in Chrome through CDP
+ * `Input.imeSetComposition`).
+ */
+describe('an IME composition in a cell', () => {
+  const compositionEvent = (type: string, data: string) =>
+    new CompositionEvent(type, { bubbles: true, data });
+
+  /** What the browser does for one composition update: text into the line's node, `input` with `isComposing`. */
+  function composeAtLineStart(field: HTMLTextAreaElement, text: string, line = 0): Text {
+    const span = field.querySelector<HTMLElement>(`.cm-md-cell-line[data-line="${line}"] .cm-md-cell-text`)!;
+    const node = span.firstChild as Text;
+    node.textContent = text + (node.textContent ?? '');
+    const range = document.createRange();
+    range.setStart(node, text.length);
+    range.collapse(true);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    field.dispatchEvent(
+      new InputEvent('input', { bubbles: true, data: text, inputType: 'insertCompositionText', isComposing: true }),
+    );
+    return node;
+  }
+
+  const emptyCell = (): { h: Harness; field: HTMLTextAreaElement } => {
+    const h = mount(['| a | b |', '| --- | --- |', '|  | 2 |'].join('\n'));
+    const field = openCell(h, 0, 0);
+    // Absorbs the synthetic-input flag the assignment below arms, as `typeAtLineStart` does.
+    field.value = '';
+    field.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    return { h, field };
+  };
+
+  it('does not rewrite the node being composed, and tidies the placeholder space once it ends', () => {
+    const { field } = emptyCell();
+    field.dispatchEvent(compositionEvent('compositionstart', ''));
+    const node = composeAtLineStart(field, '😀');
+
+    // Mid-composition the placeholder space stays where it is: stripping it
+    // is a write to this very node, which is what cancelled the composition.
+    expect(node.textContent).toBe('😀 ');
+    expect(node.isConnected).toBe(true);
+
+    field.dispatchEvent(compositionEvent('compositionend', '😀'));
+    expect(node.textContent).toBe('😀');
+    expect(field.value).toBe('😀');
+    expect(field.selectionStart).toBe(2);
+  });
+
+  it('keeps reading the text while it is composed, so a commit mid-composition loses nothing', () => {
+    const { h, field } = emptyCell();
+    field.dispatchEvent(compositionEvent('compositionstart', ''));
+    composeAtLineStart(field, 'a');
+    expect(field.value.trim()).toBe('a');
+    commit(field);
+    expect(parseGfmTable(h.text())?.rows[0][0]).toBe('a');
+  });
+
+  it('ignores Enter, Tab, Escape and the arrows the IME is using', () => {
+    const { h, field } = emptyCell();
+    field.dispatchEvent(compositionEvent('compositionstart', ''));
+    composeAtLineStart(field, 'ni');
+    const before = h.text();
+    for (const [key, init] of [
+      ['Enter', { isComposing: true }],
+      ['Tab', { isComposing: true }],
+      ['Escape', { isComposing: true }],
+      ['ArrowDown', { isComposing: true }],
+      // Safari delivers the key that confirmed a composition after `compositionend`.
+      ['Enter', { keyCode: 229 }],
+    ] as const) {
+      press(field, key, init);
+    }
+
+    expect(field.isConnected).toBe(true);
+    expect(field.querySelectorAll('.cm-md-cell-line')).toHaveLength(1);
+    expect(h.text()).toBe(before);
+  });
+});
+
 describe('clicking another cell while one is open', () => {
   // The owner, 24.09.2026: after typing, a click on the neighbour cell used
   // to commit the text but leave the neighbour closed (its editor died in

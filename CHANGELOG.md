@@ -31,10 +31,27 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- **The sidebar page tree now updates by itself when someone else changes it.**
+  A page created, renamed, moved, deleted or restored by another user, an API or
+  MCP client, the assistant, an import or a Git sync used to stay invisible in an
+  already open sidebar until the page was reloaded. It now appears within about a
+  second. Only people who can read the space are told, and only that something
+  changed; the list itself is fetched through the usual access checks, so
+  restricted pages stay hidden. During a long import the tree refreshes at a
+  relaxed pace instead of after every page.
+- The personal "Undo" history of a deleted space no longer shows up in a new space
+  created with the same name.
+- Choosing "New space" in the Confluence import dialog now starts with an empty
+  name field instead of the address of the current space.
 - Text typed on the line right under a table no longer joins the table. The
   first character there — a letter or an emoji — used to become one more table
   row and turn the grid back into raw Markdown; a blank line now stays between
   the table and the new text.
+- Emoji from the system emoji panel, dead keys and phone keyboards (anything
+  typed through an input method) no longer break tables: in an empty cell the
+  text was entered twice, and on the line under a table it turned the grid
+  into raw Markdown. Enter, Tab, Escape and the arrow keys pressed while an
+  input method is composing stay with it instead of moving between cells.
 - A whiteboard box no longer looks empty in the picture of a board. When a
   board was created or updated by the assistant, or imported, the label of a
   box could be drawn underneath the box in the preview used by a document that

@@ -228,6 +228,34 @@ describe('ConfluenceImportDialog — current-space default, parent-page picker, 
     await waitFor(() => expect(select.value).toBe('my-space'));
   });
 
+  it('"New space" starts with an empty name, not the slug of the space the dialog was opened from (02.10.2026)', async () => {
+    const fetchMock = stubApi([], 200, { spaces: [{ slug: 'product', name: 'Product' }] });
+    renderDialog('product');
+
+    // Opened from a space: "Existing space" is preselected...
+    const select = (await screen.findByLabelText('Space')) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe('product'));
+
+    // ...and switching to "New space" must not carry that slug into the name field, where typing appended to it ("productAcme Handbook").
+    fireEvent.click(screen.getByRole('button', { name: 'New space' }));
+    const nameField = screen.getByLabelText('New space name') as HTMLInputElement;
+    expect(nameField.value).toBe('');
+    fireEvent.change(nameField, { target: { value: 'Acme Handbook' } });
+
+    // Going back and forth keeps each mode's own value: the existing-space choice survives, the typed name survives.
+    fireEvent.click(screen.getByRole('button', { name: 'Existing space' }));
+    await waitFor(() => expect((screen.getByLabelText('Space') as HTMLSelectElement).value).toBe('product'));
+    fireEvent.click(screen.getByRole('button', { name: 'New space' }));
+    expect((screen.getByLabelText('New space name') as HTMLInputElement).value).toBe('Acme Handbook');
+
+    fireEvent.change(screen.getByLabelText('Confluence page URL'), { target: { value: 'https://tracker.example.com/wiki/pages/123' } });
+    fireEvent.change(await screen.findByLabelText('Personal Access Token'), { target: { value: 'secret-token' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Start import' }));
+
+    await waitFor(() => expect(postBody(fetchMock)).toBeTruthy());
+    expect(postBody(fetchMock).targetSpace).toBe('Acme Handbook');
+  });
+
   it('defaults the import target to the space root, and picking a page sends its own directory as targetPath', async () => {
     const fetchMock = stubApi([], 200, {
       spaces: [{ slug: 'my-space', name: 'My space' }],

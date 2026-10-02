@@ -303,6 +303,42 @@ export async function destroyAllSessionsForUser(userId: string): Promise<void> {
   await query('DELETE FROM sessions WHERE user_id = $1', [userId]);
 }
 
+/**
+ * Of these raw session tokens, the ones that — RIGHT NOW — belong to an
+ * unexpired session of an active user who can read `space`. The batch twin of
+ * `session.effectiveRole(user, space) !== undefined`: the same rule (an
+ * explicit membership, or an `instance`-visible space; a disabled user gets
+ * nothing; no instance-admin bypass), answered for a whole set of live sockets
+ * in one query instead of three queries per socket. Used to decide who may be
+ * told "the tree of this space changed" (server/treeSignal.ts) — a socket is
+ * authenticated once, at upgrade, so the answer has to be re-checked at send
+ * time or a logged-out tab and a removed member would keep listening.
+ * server/treeSignal.test.ts asserts this stays equal to effectiveRole.
+ */
+export async function sessionsThatCanReadSpace(space: string, tokens: readonly string[]): Promise<Set<string>> {
+  if (tokens.length === 0) return new Set();
+  const byHash = new Map(tokens.map((token) => [hashToken(token), token]));
+  const rows = await query<{ token_hash: string }>(
+    `SELECT s.token_hash
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = ANY($2::text[])
+        AND s.expires_at > now()
+        AND NOT u.disabled
+        AND (
+          EXISTS (SELECT 1 FROM space_members m WHERE m.space_slug = $1 AND m.user_id = u.id)
+          OR EXISTS (SELECT 1 FROM spaces sp WHERE sp.slug = $1 AND sp.visibility = 'instance')
+        )`,
+    [space, [...byHash.keys()]],
+  );
+  const allowed = new Set<string>();
+  for (const row of rows) {
+    const token = byHash.get(row.token_hash);
+    if (token !== undefined) allowed.add(token);
+  }
+  return allowed;
+}
+
 // ---------------------------------------------------------------------------
 // API tokens (PAT, round 7)
 // ---------------------------------------------------------------------------

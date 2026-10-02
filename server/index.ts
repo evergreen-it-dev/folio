@@ -23,6 +23,7 @@ import { registerPageChangeRoutes } from './pageChangesRoutes.js';
 import { registerAssistantRoutes } from './assistant/routes.js';
 import { registerNotificationRoutes } from './notifications/routes.js';
 import * as notificationSocket from './notifications/socket.js';
+import { startTreeSignal, stopTreeSignal } from './treeSignal.js';
 import * as assistantRuns from './assistant/runs.js';
 import { buildFolioMcpServer } from './mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -307,6 +308,9 @@ async function main(): Promise<void> {
   // Round 31: a second 'upgrade' listener — the /events socket. Both return
   // early for a path that is not theirs, so the order here does not matter (see notifications/socket.ts).
   notificationSocket.attachToServer(app.server);
+  // The sidebar's live "tree changed" signal rides on that same socket — see server/treeSignal.ts.
+  // Not awaited past its first attempt and never fatal: without it the sidebar still refetches on focus and by the poll.
+  await startTreeSignal();
 
   // Deliberately not awaited: the server is up and serving while this catches up.
   void runBootScan(spacesToIndex);
@@ -341,6 +345,7 @@ async function shutdown(signal: string): Promise<void> {
   } catch (err) {
     app.log.error(err);
   }
+  await stopTreeSignal();
   await app.close();
   await closePool().catch(() => {});
   await closeRedis().catch(() => {});

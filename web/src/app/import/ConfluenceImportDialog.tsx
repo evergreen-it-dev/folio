@@ -93,7 +93,14 @@ export function ConfluenceImportDialog({ onClose, currentSpace }: ConfluenceImpo
   const [saveForNextTime, setSaveForNextTime] = useState(true);
   const [manualOverride, setManualOverride] = useState(false);
   const [target, setTarget] = useState<'new' | 'existing'>(currentSpace ? 'existing' : 'new');
-  const [targetSpace, setTargetSpace] = useState(currentSpace ?? '');
+  // Two different things used to share one `targetSpace` string: the SLUG of an existing
+  // space (a <select> value) and the NAME of a space to create (free text). Opened from a
+  // space, "New space" then showed that space's slug in the name field and typing appended
+  // to it ("productAcme Handbook"). Each mode keeps its own value; `targetSpace` is the one
+  // that applies right now.
+  const [existingSpace, setExistingSpace] = useState(currentSpace ?? '');
+  const [newSpaceName, setNewSpaceName] = useState('');
+  const targetSpace = target === 'new' ? newSpaceName : existingSpace;
   const [targetPath, setTargetPath] = useState('');
   const [includeChildren, setIncludeChildren] = useState(true);
 
@@ -294,15 +301,15 @@ export function ConfluenceImportDialog({ onClose, currentSpace }: ConfluenceImpo
           </div>
 
           {target === 'new' ? (
-            <LabeledInput label={t('import.newSpaceName')} value={targetSpace} onChange={(e) => setTargetSpace(e.target.value)} />
+            <LabeledInput label={t('import.newSpaceName')} value={newSpaceName} onChange={(e) => setNewSpaceName(e.target.value)} />
           ) : (
             <>
               <label className="flex flex-col gap-1 text-sm">
                 <span className="text-neutral-600 dark:text-neutral-400">{t('import.existingSpace')}</span>
                 <select
-                  value={targetSpace}
+                  value={existingSpace}
                   onChange={(e) => {
-                    setTargetSpace(e.target.value);
+                    setExistingSpace(e.target.value);
                     // A path picked in the PREVIOUS space's tree means nothing
                     // in a different one — back to that space's own root.
                     setTargetPath('');

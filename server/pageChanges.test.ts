@@ -4,6 +4,8 @@ import * as authStore from './auth/store.js';
 import * as storage from './storage.js';
 import * as gitSync from './gitSync.js';
 import { findTrashItemId, listPageChanges, recordPageChange, snapshotPageChange, undoPageChange } from './pageChanges.js';
+import { restoreTrashItem } from './trash/service.js';
+import { queryOne } from './db/pool.js';
 
 describe('the personal history of structural changes to pages', () => {
   let teardownSchema: (() => Promise<void>) | undefined;
@@ -102,5 +104,56 @@ describe('the personal history of structural changes to pages', () => {
       await gitSync.flushAllPendingSyncs();
       await deleteTestSpace(space.slug);
     }
+  });
+  describe('the history of a deleted space', () => {
+    async function spaceWithOneChange(label: string) {
+      const actor = await authStore.createUser({
+        email: `changes-${label}-${Date.now()}@test.local`,
+        name: 'Owner',
+        passwordHash: 'x',
+        isAdmin: true,
+      });
+      const space = await storage.createSpace(`Undo ${label} ${Date.now()}`, actor.id);
+      await authStore.setMembership(space.slug, actor.id, 'admin');
+      const page = await storage.createPage({ space: space.slug, parentPath: '', title: 'Old title', kind: 'doc' });
+      const before = snapshotPageChange(await storage.requireEntry(page.id));
+      await storage.renameDocDirect(page.id, 'New title');
+      const after = snapshotPageChange(await storage.requireEntry(page.id));
+      await recordPageChange(actor.id, 'page.rename', page.id, space.slug, before, after);
+      expect(await listPageChanges(actor.id, space.slug)).toHaveLength(1);
+      return { actor, space };
+    }
+
+    it('does not show up in a NEW space that takes the same slug', async () => {
+      const { actor, space } = await spaceWithOneChange('recreated');
+      await storage.deleteSpace(space.slug, actor.id);
+
+      const again = await storage.createSpace(space.name, actor.id);
+      try {
+        expect(again.slug).toBe(space.slug); // the same name gives the same slug: this is the situation that used to leak
+        await authStore.setMembership(again.slug, actor.id, 'admin');
+        expect(await listPageChanges(actor.id, again.slug)).toEqual([]);
+      } finally {
+        await gitSync.flushAllPendingSyncs();
+        await deleteTestSpace(again.slug);
+      }
+    });
+
+    it('is kept while the space sits in the trash, so restoring the space brings it back', async () => {
+      const { actor, space } = await spaceWithOneChange('restored');
+      await storage.deleteSpace(space.slug, actor.id);
+      expect(await listPageChanges(actor.id, space.slug)).toHaveLength(1); // nothing was destroyed by the deletion
+
+      const row = await queryOne<{ id: string }>(`SELECT id FROM trash_items WHERE kind = 'space' AND page_id = $1`, [space.slug]);
+      expect(row).toBeDefined();
+      const restored = await restoreTrashItem(actor, row!.id);
+      try {
+        expect(restored.space).toBe(space.slug);
+        expect(await listPageChanges(actor.id, restored.space)).toHaveLength(1);
+      } finally {
+        await gitSync.flushAllPendingSyncs();
+        await deleteTestSpace(restored.space);
+      }
+    });
   });
 });

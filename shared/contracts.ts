@@ -1289,10 +1289,19 @@ export type MarkNotificationsReadBody = z.infer<typeof markNotificationsReadBody
  * per user, not per page). `refresh` is "something in your feed has changed,
  * re-read it": when ANOTHER administrator closed the request, sending this
  * one somebody else's row makes no sense, but the list must be updated.
+ *
+ * `tree` is "the sidebar tree of this space changed — fetch it again through
+ * the normal API" (server/treeSignal.ts). It is deliberately a bare signal: the
+ * space slug and a per-process counter `v` (informational, only ever grows
+ * within one server process) — never a title, a path or a page id, so that a
+ * reader of the space learns nothing about a page they are not allowed to see.
+ * The refetch goes through GET /api/spaces/:space/tree, which does the page
+ * access filtering as it always did.
  */
 export type NotificationSocketEvent =
   | { type: 'notification'; item: NotificationItem }
   | { type: 'refresh' }
+  | { type: 'tree'; space: string; v: number }
   | { type: 'ping' };
 
 /**

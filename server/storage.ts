@@ -2078,6 +2078,16 @@ async function insertSpaceRow(slug: string, name: string, opts: { repoUrl?: stri
     throw err;
   }
   rootPathCache.set(slug, opts.rootPath ?? '');
+  // The personal "Undo" history (page_change_history) is keyed by slug and has no
+  // foreign key, on purpose. Deleting a space leaves its rows alone — the space sits
+  // in the trash and a restore puts it back under the same slug, where they are valid
+  // again — so the one moment they can be wrong is HERE: a brand-new space taking a
+  // slug that an older, deleted space used. Its first list of changes must be empty.
+  // (Also cleans rows that deletions made before this fix left behind.)
+  await query('DELETE FROM page_change_history WHERE space_slug = $1', [slug]).catch((error) => {
+    // eslint-disable-next-line no-console
+    console.error(`[changes] could not clear stale history for new space "${slug}":`, error);
+  });
 }
 
 async function uniqueSpaceSlug(name: string): Promise<string> {
