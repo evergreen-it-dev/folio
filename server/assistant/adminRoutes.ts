@@ -366,7 +366,9 @@ async function conversationVisible(access: AdminAssistantAccess, conversationId:
 export function registerAssistantAdminRoutes(app: FastifyInstance): void {
   app.get('/api/admin/assistant/access', async (request) => {
     const { scope, spaces } = await resolveAnalyticsScope(request);
-    return { scope, spaces } satisfies AdminAssistantAccess;
+    // Names for display only; the access decision stays with the slugs. A slug without a row cannot be an administered space (listAdminSpaceSlugs joins spaces), the fallback is just defensive.
+    const names = await loadSpaceNames(spaces);
+    return { scope, spaces, spaceRefs: spaces.map((slug) => ({ slug, name: names.get(slug) ?? slug })) } satisfies AdminAssistantAccess;
   });
 
   app.get('/api/admin/assistant/conversations', async (request) => {

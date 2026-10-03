@@ -87,7 +87,13 @@ function buildReportUnansweredTool(user: User, context: AssistantToolContext): S
           enum: ['no_answer', 'low_confidence'],
           description: 'no_answer: the pages do not contain the answer. low_confidence: you answered but are not sure.',
         },
-        missing: { type: 'string', description: 'What is missing or unclear in the documentation, if you can tell.' },
+        missing: {
+          type: 'string',
+          description:
+            'What is missing or unclear in the documentation, in one or two short sentences. It is rendered as Markdown for the documentation owners: ' +
+            'link each Folio page you actually opened in this run that is related to the gap, as [<title>](/s/<space>/p/<id>) ' +
+            '(the same relative links as in your answers; take space and id from the tool results). Never invent a link and never link a page you did not read in this run.',
+        },
       },
       required: ['question', 'reason'],
     },
@@ -96,7 +102,7 @@ function buildReportUnansweredTool(user: User, context: AssistantToolContext): S
       try {
         const parsed = reportUnansweredQuestionInputSchema.safeParse(args);
         if (!parsed.success) return fail(`Invalid arguments: ${parsed.error.issues[0]?.message ?? 'invalid input'}`);
-        const inserted = await insertUnanswered({
+        const outcome = await insertUnanswered({
           conversationId: context.conversationId,
           runId: context.runId,
           userId: user.id,
@@ -106,7 +112,7 @@ function buildReportUnansweredTool(user: User, context: AssistantToolContext): S
           reason: parsed.data.reason,
           missing: parsed.data.missing?.trim() || null,
         });
-        if (!inserted) return 'Already recorded.';
+        if (outcome !== 'inserted') return 'Already recorded.';
         return 'Recorded. Continue answering the user.';
       } catch (error) {
         return fail(error instanceof Error ? error.message : 'could not record the report');

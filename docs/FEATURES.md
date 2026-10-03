@@ -215,7 +215,8 @@ so.
 conversation the panel asks "Did the assistant solve your question?" (Yes,
 Partly, No, Not now, with an optional comment). The assistant also records
 questions it could not answer or was unsure about, with the reason ("No
-answer" or "Not sure") and what was missing; it does this through a built-in
+answer" or "Not sure") and what was missing, with links to the pages it read;
+it does this through a built-in
 tool that never changes any data, in Ask and Agent modes alike. Instance
 administrators see the results at `/admin/assistant` ("Assistant analytics" in
 the account menu): a **Conversations** tab with ratings and survey counts per

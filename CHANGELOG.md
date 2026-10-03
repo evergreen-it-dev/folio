@@ -49,7 +49,24 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   tables, forms and file pages; "Copy to…" remains for a copy in another
   place or another space.
 
+### Changed
+
+- **The assistant links the pages behind an unanswered question.** The "what
+  is missing" text of a question it could not answer now names the gap briefly
+  and links the pages the assistant actually read for it, so an administrator
+  can jump straight to the page that should have held the answer. Pages it did
+  not open are never linked.
+- **The space administrator's note shows space names.** The line saying which
+  conversations a space administrator sees now lists the names of their
+  spaces instead of their short addresses.
+
 ### Fixed
+
+- The "Ask" and "Agent" mode labels in the assistant panel and on the first-run
+  screen are now translated into Ukrainian instead of staying in English.
+- Asking the same unanswered question twice inside one assistant run no longer
+  creates a second report; the text of the first one is kept (or completed, if
+  it was empty). The limit of three reports per run is unchanged.
 
 - The "what is missing" text of an unanswered question in the assistant
   analytics is now rendered as Markdown (links open in a new tab; raw HTML and

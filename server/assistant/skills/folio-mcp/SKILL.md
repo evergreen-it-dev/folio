@@ -43,7 +43,7 @@ audit of the current user of the session, without a separate token.
 
 | Tool | Purpose |
 |---|---|
-| `report_unanswered_question` | Report a question the pages could not answer or that you answered without confidence: `question` (restated), `reason` (`no_answer` / `low_confidence`), optional `missing`. Once per question, at most 3 per run; then still answer the user. It is for the documentation owners — do not mention it to the user |
+| `report_unanswered_question` | Report a question the pages could not answer or that you answered without confidence: `question` (restated), `reason` (`no_answer` / `low_confidence`), optional `missing` (short; Markdown links `[title](/s/<space>/p/<id>)` to the related pages you read in this run, never invented). Once per question, at most 3 per run; then still answer the user. It is for the documentation owners — do not mention it to the user |
 
 ## MCP tools for writing (AGENT mode only)
 

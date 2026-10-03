@@ -1292,6 +1292,8 @@ export interface AdminAssistantAccess {
   scope: 'instance' | 'spaces';
   /** For `spaces`: the slugs the caller administers (sorted). Empty for `instance`. */
   spaces: string[];
+  /** The same spaces with their current names, in the same (slug) order. Empty for `instance`. Added after `spaces`; older servers omit it. */
+  spaceRefs?: Array<{ slug: string; name: string }>;
 }
 
 /** A space as the analytics shows it: the name people know, the slug as the key. */

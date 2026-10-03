@@ -226,6 +226,55 @@ describe('assistant analytics (real PG, fastify inject)', () => {
       }
     });
 
+    it('records the same question once per run, even when the model repeats it (sequentially or at once)', async () => {
+      const conv = await newConversation(alice);
+      const first = await addTurn(conv.id, alice, { space: 'docs' });
+      const second = await addTurn(conv.id, alice, { space: 'docs' });
+      const handleFor = (runId: string) => buildAssistantTools(alice, 'ask', { runId, conversationId: conv.id, space: 'docs', pageId: null });
+      const rowsOf = (runId: string) => query<{ question: string; reason: string; missing: string | null }>('SELECT question, reason, missing FROM ai_unanswered_questions WHERE run_id = $1', [runId]);
+
+      const h1 = await handleFor(first.runId);
+      const h2 = await handleFor(second.runId);
+      try {
+        const report = (h: typeof h1) => (args: Record<string, string>) => h.tools.report_unanswered_question!.execute(args, toolCallContext);
+        const r1 = report(h1);
+
+        expect(await r1({ question: 'Where is the SLA?', reason: 'no_answer' })).toBe('Recorded. Continue answering the user.');
+        // same question again: other case/spacing/punctuation, and now with "missing" — ignored, but fills the empty "missing"
+        expect(await r1({ question: '  where is  the SLA ', reason: 'low_confidence', missing: 'No SLA page' })).toBe('Already recorded.');
+        expect(await r1({ question: 'Where is the SLA?', reason: 'no_answer', missing: 'A later, different note' })).toBe('Already recorded.');
+        expect(await rowsOf(first.runId)).toEqual([{ question: 'Where is the SLA?', reason: 'no_answer', missing: 'No SLA page' }]);
+
+        // a different question of the same run is still recorded
+        expect(await r1({ question: 'Who is on call?', reason: 'no_answer' })).toBe('Recorded. Continue answering the user.');
+        expect(await rowsOf(first.runId)).toHaveLength(2);
+
+        // parallel duplicate calls (one step with two tool calls) do not both insert
+        const results = await Promise.all([1, 2, 3].map(() => report(h2)({ question: 'Parallel question', reason: 'no_answer' })));
+        expect(results.filter((r) => r === 'Recorded. Continue answering the user.')).toHaveLength(1);
+        expect(await rowsOf(second.runId)).toHaveLength(1);
+
+        // another run may report the same question
+        expect(await report(h2)({ question: 'Where is the SLA?', reason: 'no_answer' })).toBe('Recorded. Continue answering the user.');
+      } finally {
+        await h1.close();
+        await h2.close();
+      }
+    });
+
+    it('asks the model to link the pages it read in "missing" (Markdown relative links, never invented)', async () => {
+      const handle = await buildAssistantTools(alice, 'ask', { runId: randomUUID(), conversationId: randomUUID(), space: null, pageId: null });
+      try {
+        const schema = handle.tools.report_unanswered_question!.inputSchema as { properties: { missing: { description: string } } };
+        const description = schema.properties.missing.description;
+        expect(description).toContain('[<title>](/s/<space>/p/<id>)');
+        expect(description).toMatch(/Never invent a link/);
+        expect(description).toMatch(/read in this run/);
+      } finally {
+        await handle.close();
+      }
+    });
+
     it('returns an error result (does not throw) when the database write fails', async () => {
       const handle = await buildAssistantTools(alice, 'ask', { runId: randomUUID(), conversationId: randomUUID(), space: null, pageId: null });
       try {
@@ -495,9 +544,9 @@ describe('assistant analytics (real PG, fastify inject)', () => {
 
     it('/access returns the scope: spaces for a space admin (trashed space excluded), instance for an instance admin, 403 for the rest', async () => {
       const get = async (cookie: string) => getAs(cookie, '/api/admin/assistant/access');
-      expect((await get(spaceAdminCookie)).json() as AdminAssistantAccess).toEqual({ scope: 'spaces', spaces: [s1] });
-      expect((await get(s2AdminCookie)).json() as AdminAssistantAccess).toEqual({ scope: 'spaces', spaces: [s2] });
-      expect((await get(adminCookie)).json() as AdminAssistantAccess).toEqual({ scope: 'instance', spaces: [] });
+      expect((await get(spaceAdminCookie)).json() as AdminAssistantAccess).toEqual({ scope: 'spaces', spaces: [s1], spaceRefs: [{ slug: s1, name: `Name ${s1}` }] });
+      expect((await get(s2AdminCookie)).json() as AdminAssistantAccess).toEqual({ scope: 'spaces', spaces: [s2], spaceRefs: [{ slug: s2, name: `Name ${s2}` }] });
+      expect((await get(adminCookie)).json() as AdminAssistantAccess).toEqual({ scope: 'instance', spaces: [], spaceRefs: [] });
       for (const [name, cookie] of [['editor', editorCookie], ['viewer', viewerCookie], ['alice', aliceCookie]] as const) {
         expect((await get(cookie)).statusCode, name).toBe(403);
       }

@@ -186,11 +186,26 @@ describe('AssistantAnalytics', () => {
     expect(screen.queryByText(/You see conversations from the spaces/)).toBeNull();
   });
 
-  it('tells a space admin which spaces they see, under the title', async () => {
+  it('tells a space admin which spaces they see (by name), under the title', async () => {
+    stubApi({
+      access: {
+        scope: 'spaces',
+        spaces: ['eng', 'wiki'],
+        spaceRefs: [
+          { slug: 'eng', name: 'Engineering' },
+          { slug: 'wiki', name: 'Team Wiki' },
+        ],
+      },
+    });
+    renderPage();
+    expect(await screen.findByText('You see conversations from the spaces you administer: Engineering, Team Wiki.')).toBeTruthy();
+    expect(await screen.findByText('Where is the trash?')).toBeTruthy();
+  });
+
+  it('falls back to the slugs when an older server sends no space names', async () => {
     stubApi({ access: { scope: 'spaces', spaces: ['eng', 'wiki'] } });
     renderPage();
     expect(await screen.findByText('You see conversations from the spaces you administer: eng, wiki.')).toBeTruthy();
-    expect(await screen.findByText('Where is the trash?')).toBeTruthy();
   });
 
   it('tells a space admin how many messages of a dialog are hidden, and says nothing when none are', async () => {

@@ -290,13 +290,15 @@ fill in a form:
   with an optional comment.
 - **Questions without an answer.** When the pages do not contain the answer,
   or the assistant is not sure of it, it records the question and what was
-  missing, then still answers the person plainly.
+  missing — briefly, with links to the pages it did read — then still answers
+  the person plainly.
 
 Instance administrators see all of it on one page, **Assistant analytics**
 (`/admin/assistant`, from the account menu): the conversations with their
 ratings and survey results, and a second tab, "Questions without an answer",
 which is a ready list of what your documentation is missing — the person's own
-words first, the assistant's restatement below. Both tabs filter by space,
+words first, the assistant's restatement below, and links to the pages
+the assistant read. Both tabs filter by space,
 user and date. A space administrator sees the same page limited to the spaces
 they administer: only conversations that ran there, and only the messages of
 those runs. An administrator can open a conversation to read it; the

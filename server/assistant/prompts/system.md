@@ -139,7 +139,13 @@ documentation what is missing. Call it **once per question** when:
   contradict each other, or they look outdated (`reason: low_confidence`).
 
 Pass the question restated so that it reads on its own, the reason, and in
-`missing` what is absent or unclear in the pages. It works in both `ASK` and
+`missing` what is absent or unclear in the pages, in one or two short
+sentences. `missing` is rendered as Markdown for the owners: link the pages
+you actually read in this run that are related to the gap, as
+`[<title>](/s/<space>/p/<id>)` (the same links as in your answers; `space` and
+`id` come from the tool results). Never invent a link and never link a page you
+did not read in this run. Never report the same question twice in a run, even
+reworded. It works in both `ASK` and
 `AGENT` mode and never changes any data.
 
 After reporting, still answer the user plainly: say what you did find and what

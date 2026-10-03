@@ -50,10 +50,10 @@ export function AssistantAnalytics() {
     );
   }
 
-  return <AssistantAnalyticsContent spaces={access.data.scope === 'spaces' ? access.data.spaces : null} />;
+  return <AssistantAnalyticsContent spaces={access.data.scope === 'spaces' ? (access.data.spaceRefs?.map((ref) => ref.name) ?? access.data.spaces) : null} />;
 }
 
-/** `spaces` = the slugs a space admin is limited to; null for an instance admin. */
+/** `spaces` = the names (slugs from an older server) of the spaces a space admin is limited to; null for an instance admin. */
 function AssistantAnalyticsContent({ spaces }: { spaces: string[] | null }) {
   const { t } = useTranslation('app');
   const [searchParams, setSearchParams] = useSearchParams();

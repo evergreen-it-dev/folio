@@ -125,6 +125,15 @@ quick switcher, subtree, backlinks, collaboration, MCP, export.
   033, a partial index). Reading that list is not itself audited, and the page
   must not reload a conversation on window focus, since each load counts as an
   opening.
+  The `missing` argument of `report_unanswered_question` is described to the
+  model as a short statement of the gap plus Markdown links to pages read in
+  that run (`[title](/s/<space>/p/<id>)`), never invented ones; the description
+  is pinned in `analytics.test.ts`. `GET /api/admin/assistant/access` also
+  returns `spaceRefs` (`{slug, name}`) so the space administrator's note can
+  show names. `insertUnanswered` takes an advisory lock per run: the same
+  question (case, spacing and trailing punctuation ignored) in one run is not
+  recorded twice, an empty `missing` is only completed. There is no unique
+  index, so no migration.
 
 ## What must never break
 

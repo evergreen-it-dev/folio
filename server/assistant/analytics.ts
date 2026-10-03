@@ -12,7 +12,7 @@ import {
   type AssistantSurveyDue,
   type AssistantUnansweredReason,
 } from '../../shared/contracts.js';
-import { query, queryOne } from '../db/pool.js';
+import { query, queryOne, withTransaction } from '../db/pool.js';
 
 /** The assistant message `messageId` if it exists, is an assistant message and belongs to a conversation of `userId`. */
 export async function findOwnedAssistantMessage(messageId: string, userId: string): Promise<{ id: string; conversationId: string } | null> {
@@ -103,7 +103,22 @@ export async function computeSurveyDue(conversationId: string): Promise<Assistan
 
 export const MAX_UNANSWERED_REPORTS_PER_RUN = 3;
 
-/** Inserts a report unless the run already has MAX_UNANSWERED_REPORTS_PER_RUN (checked in the same statement). Returns false when the cap was hit. */
+/** A question compared case-, whitespace- and end-punctuation-insensitively, so a re-sent report of the same question is recognised. */
+export function normalizeUnansweredQuestion(question: string): string {
+  return question.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[\s?!.…]+$/u, '');
+}
+
+export type InsertUnansweredResult = 'inserted' | 'duplicate' | 'capped';
+
+/**
+ * Records a report for a run. One run is one user message, so within a run:
+ *  - the same question (compared by normalizeUnansweredQuestion) is never recorded twice: the
+ *    model sometimes calls the tool again for it. The repeat is ignored ('duplicate'), except that
+ *    it fills `missing` of the existing row when that was empty;
+ *  - at most MAX_UNANSWERED_REPORTS_PER_RUN reports are kept ('capped').
+ * The check and the insert run under a per-run advisory lock, so two concurrent calls of one run
+ * cannot both insert (no unique index: the question is compared after normalization).
+ */
 export async function insertUnanswered(input: {
   conversationId: string;
   runId: string;
@@ -113,13 +128,27 @@ export async function insertUnanswered(input: {
   question: string;
   reason: AssistantUnansweredReason;
   missing: string | null;
-}): Promise<boolean> {
-  const rows = await query<{ id: string }>(
-    `INSERT INTO ai_unanswered_questions (id, conversation_id, run_id, user_id, space, page_id, question, reason, missing)
-     SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::text, $7::text, $8::text, $9::text
-      WHERE (SELECT COUNT(*) FROM ai_unanswered_questions WHERE run_id = $3::uuid) < $10::int
-     RETURNING id`,
-    [randomUUID(), input.conversationId, input.runId, input.userId, input.space, input.pageId, input.question, input.reason, input.missing, MAX_UNANSWERED_REPORTS_PER_RUN],
-  );
-  return rows.length > 0;
+}): Promise<InsertUnansweredResult> {
+  return withTransaction(async (client) => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))', [`ai_unanswered:${input.runId}`]);
+    const existing = await client.query<{ id: string; question: string; missing: string | null }>(
+      'SELECT id, question, missing FROM ai_unanswered_questions WHERE run_id = $1::uuid ORDER BY created_at, id',
+      [input.runId],
+    );
+    const key = normalizeUnansweredQuestion(input.question);
+    const same = existing.rows.find((row) => normalizeUnansweredQuestion(row.question) === key);
+    if (same) {
+      if (input.missing && !same.missing?.trim()) {
+        await client.query('UPDATE ai_unanswered_questions SET missing = $2 WHERE id = $1::uuid', [same.id, input.missing]);
+      }
+      return 'duplicate';
+    }
+    if (existing.rows.length >= MAX_UNANSWERED_REPORTS_PER_RUN) return 'capped';
+    await client.query(
+      `INSERT INTO ai_unanswered_questions (id, conversation_id, run_id, user_id, space, page_id, question, reason, missing)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::text, $6::text, $7::text, $8::text, $9::text)`,
+      [randomUUID(), input.conversationId, input.runId, input.userId, input.space, input.pageId, input.question, input.reason, input.missing],
+    );
+    return 'inserted';
+  });
 }
