@@ -1100,6 +1100,8 @@ export interface AssistantMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  /** The owner's 👍/👎 on an assistant message (GET /api/assistant/chat only); absent/null — not rated. */
+  feedback?: AssistantFeedbackRating | null;
 }
 
 /** GET /api/assistant/chat?conversationId= (without an id — the user's latest conversation). */
@@ -1108,6 +1110,8 @@ export interface AssistantConversation {
   title: string | null;
   model: string | null;
   messages: AssistantMessage[];
+  /** Set when the "did it solve your question?" survey should be shown after `afterMessageId`. */
+  surveyDue?: AssistantSurveyDue | null;
   /** The run in progress in this conversation (05.09.2026) — the UI subscribes to it instead of starting a new one. */
   activeRun?: AssistantRunInfo | null;
 }
@@ -1206,6 +1210,212 @@ export interface ActiveAssistantRunResponse {
 }
 
 /** POST /api/assistant/runs/:runId/stop → 202 `{ stopped: true }` — the only way to cancel a run. */
+
+// ---------- AI assistant: feedback, unanswered questions, admin analytics ----------
+// Three signals about answer quality, all visible to instance admins only:
+// 1. 👍/👎 on any saved assistant answer (one rating per message, changeable).
+// 2. A periodic "Did the assistant solve your question?" survey: due after every
+//    ASSISTANT_SURVEY_EVERY assistant answers since the previous survey (answered
+//    or skipped), so it comes back while the person keeps talking.
+// 3. Questions the assistant could not answer or was unsure about, reported by
+//    the assistant itself through the built-in `report_unanswered_question` tool
+//    (always available, in Ask and Agent mode; instructions in prompts/system.md).
+// Every run also records the space and page it was started from, so analytics
+// can be filtered by space.
+//
+// Who sees the admin analytics (cookie session only; PAT → 403):
+// - an instance admin — everything;
+// - a space admin (explicit membership role `admin`, as in canAdministerSpace) —
+//   ONLY what happened in the spaces they administer. A conversation is listed
+//   when at least one of its runs was started in such a space; inside it, only
+//   the messages of those runs are visible (a user message and the answer of the
+//   same run), plus the surveys shown after a visible answer and the unanswered
+//   reports of those spaces. Messages of other spaces and older messages without
+//   a recorded space are hidden. Counters, `firstQuestion` and `space` of a row
+//   are computed over the visible part only. Filter options list only those spaces.
+// - anyone else — 403.
+
+/** Assistant answers between two survey prompts. */
+export const ASSISTANT_SURVEY_EVERY = 3;
+
+export type AssistantFeedbackRating = 'up' | 'down';
+
+/** PUT /api/assistant/messages/:messageId/feedback → `AssistantFeedbackResponse`. `null` removes the rating. Only the owner of the conversation; only assistant messages. */
+export const assistantFeedbackBodySchema = z.object({
+  rating: z.enum(['up', 'down']).nullable(),
+});
+export type AssistantFeedbackBody = z.infer<typeof assistantFeedbackBodySchema>;
+export interface AssistantFeedbackResponse {
+  messageId: string;
+  rating: AssistantFeedbackRating | null;
+}
+
+export type AssistantSurveyAnswer = 'solved' | 'partly' | 'not_solved' | 'skipped';
+
+/** POST /api/assistant/conversations/:conversationId/survey → 201 `{ ok: true }`. `afterMessageId` is the assistant message the survey was shown after (from `AssistantConversation.surveyDue`). */
+export const assistantSurveyBodySchema = z.object({
+  afterMessageId: z.string().uuid(),
+  answer: z.enum(['solved', 'partly', 'not_solved', 'skipped']),
+  comment: z.string().trim().max(2000).nullable().optional(),
+});
+export type AssistantSurveyBody = z.infer<typeof assistantSurveyBodySchema>;
+
+/** Set on `AssistantConversation` (GET /api/assistant/chat) when the survey should be shown now. */
+export interface AssistantSurveyDue {
+  afterMessageId: string;
+}
+
+export type AssistantUnansweredReason = 'no_answer' | 'low_confidence';
+
+/** The input of the assistant's built-in tool `report_unanswered_question`. */
+export const reportUnansweredQuestionInputSchema = z.object({
+  /** The user's question, restated so it reads on its own. */
+  question: z.string().trim().min(1).max(2000),
+  reason: z.enum(['no_answer', 'low_confidence']),
+  /** What is missing or unclear in the documentation, if the assistant can tell. */
+  missing: z.string().trim().max(2000).nullable().optional(),
+});
+export type ReportUnansweredQuestionInput = z.infer<typeof reportUnansweredQuestionInputSchema>;
+
+export interface AdminAssistantUserRef {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/**
+ * GET /api/admin/assistant/access → who the caller is for the analytics page.
+ * 403 when the caller is neither an instance admin nor an admin of any space
+ * (the client hides the menu item and shows "no access").
+ */
+export interface AdminAssistantAccess {
+  scope: 'instance' | 'spaces';
+  /** For `spaces`: the slugs the caller administers (sorted). Empty for `instance`. */
+  spaces: string[];
+}
+
+/** A space as the analytics shows it: the name people know, the slug as the key. */
+export interface AdminAssistantSpaceRef {
+  slug: string;
+  /** Null when the space no longer exists (deleted/trashed) — show the slug, marked as deleted. */
+  name: string | null;
+}
+
+/** A filter option list shared by the admin analytics responses. */
+export interface AdminAssistantFilterOptions {
+  /** Spaces that occur in the data (runs started outside a space are left out), sorted by name. The filter value is the slug. */
+  spaces: AdminAssistantSpaceRef[];
+  users: AdminAssistantUserRef[];
+}
+
+export interface AdminAssistantConversationRow {
+  conversationId: string;
+  user: AdminAssistantUserRef;
+  /** The space (slug) of the first run of the conversation; null when it was started outside a space. */
+  space: string | null;
+  /** The name of `space`; null when there is no space or it no longer exists. */
+  spaceName: string | null;
+  /** The first user message of the conversation, in full. */
+  firstQuestion: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Number of user messages. */
+  questions: number;
+  likes: number;
+  dislikes: number;
+  surveys: { solved: number; partly: number; notSolved: number };
+  unanswered: number;
+}
+
+/**
+ * GET /api/admin/assistant/conversations?space=&userId=&from=&to=&limit=&offset=
+ * Newest activity first. `space` matches a conversation that has ANY run in that
+ * space. `from`/`to` are ISO dates (inclusive days) on `updatedAt`. limit ≤ 200, default 50.
+ */
+export interface AdminAssistantConversationsResponse extends AdminAssistantFilterOptions {
+  items: AdminAssistantConversationRow[];
+  total: number;
+  /** The caller's scope: `spaces` means everything is limited to their spaces. */
+  scope: AdminAssistantAccess['scope'];
+}
+
+export interface AdminAssistantMessage extends AssistantMessage {
+  /** The owner's rating of an assistant message. */
+  feedback: AssistantFeedbackRating | null;
+  /** The space the run producing/answering this message was started from (user and assistant messages of one run share it). */
+  space: string | null;
+  /** The name of `space`; null when there is no space or it no longer exists. */
+  spaceName: string | null;
+}
+
+export interface AdminAssistantSurveyEntry {
+  afterMessageId: string;
+  answer: AssistantSurveyAnswer;
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface AdminAssistantUnansweredItem {
+  id: string;
+  conversationId: string;
+  user: AdminAssistantUserRef;
+  space: string | null;
+  /** The name of `space`; null when there is no space or it no longer exists. */
+  spaceName: string | null;
+  pageId: string | null;
+  /** The question as the assistant restated it (the argument of its report tool) — not the user's own words. */
+  question: string;
+  /** What the person actually wrote: the user message of the run that raised the report. Null when the run or its message is gone (older rows), or is outside a space admin's scope. */
+  userQuestion: string | null;
+  reason: AssistantUnansweredReason;
+  missing: string | null;
+  createdAt: string;
+}
+
+/**
+ * GET /api/admin/assistant/conversations/:conversationId — the dialog, read-only.
+ * For a space admin only the visible part (see the scope rules above); 404 when it
+ * does not exist or nothing of it is visible to the caller.
+ */
+export interface AdminAssistantConversationDetail {
+  conversationId: string;
+  user: AdminAssistantUserRef;
+  title: string | null;
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: AdminAssistantMessage[];
+  surveys: AdminAssistantSurveyEntry[];
+  unanswered: AdminAssistantUnansweredItem[];
+  /** How many messages of this conversation are hidden from the caller (other spaces / no recorded space); 0 for an instance admin. */
+  hiddenMessages: number;
+}
+
+/** One opening of a conversation by an analytics viewer (audit_log `assistant.conversation_viewed`). */
+export interface AdminAssistantViewEntry {
+  /** Who opened it; null when that account has since been deleted. */
+  user: AdminAssistantUserRef | null;
+  at: string;
+}
+
+/**
+ * GET /api/admin/assistant/conversations/:conversationId/views — who opened this dialog in the analytics,
+ * newest first (the latest 50; `total` counts all). Same visibility as the dialog itself (404 when the caller cannot see it).
+ */
+export interface AdminAssistantConversationViews {
+  items: AdminAssistantViewEntry[];
+  total: number;
+}
+
+/**
+ * GET /api/admin/assistant/unanswered?space=&userId=&reason=&from=&to=&limit=&offset=
+ * Newest first. limit ≤ 200, default 50.
+ */
+export interface AdminAssistantUnansweredResponse extends AdminAssistantFilterOptions {
+  items: AdminAssistantUnansweredItem[];
+  total: number;
+  scope: AdminAssistantAccess['scope'];
+}
 
 // ---------- Notifications and access requests (round 31) ----------
 

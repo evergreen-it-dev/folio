@@ -17,6 +17,8 @@ import { ensureAssistantCursorPermissions } from './cursorCliConfig.js';
 import { filterAssistantModels } from './models.js';
 
 export interface RunAssistantInput {
+  /** The ai_runs row of this turn — the built-in tool report_unanswered_question writes against it. */
+  runId: string;
   apiKey: string;
   user: User;
   conversation: AssistantConversationRow;
@@ -48,6 +50,22 @@ function defaultTotalTimeoutMs(runMode: AssistantRunMode): number {
   if (runMode === 'agent') return Number(process.env.CURSOR_AGENT_TIMEOUT_MS_AGENT) || 1_800_000;
   return Number(process.env.CURSOR_AGENT_TIMEOUT_MS) || 300_000;
 }
+
+/**
+ * The only built-in tool family the model is offered: `mcp`, which carries the
+ * in-process custom tools of tools.ts (the RBAC-checked Folio tools,
+ * report_unanswered_question, read_skill). Everything else the Cursor agent
+ * ships — shell, read, grep, glob, ls, edit, web fetch/search, subagents — is
+ * OFF. The agent runs without an OS sandbox (see sandboxOptions below), so
+ * those tools are not confined to the conversation workspace: with them the
+ * model could read the git repositories of every space (and other users'
+ * assistant state) straight from the server's disk, around the per-user access
+ * checks of the Folio tools. A deny-list of shell names (cursorCliConfig.ts)
+ * and a sentence in the system prompt are not a boundary; an allow-list of one
+ * tool family is. Not persisted by the SDK: it must be passed on every
+ * Agent.create AND Agent.resume (agentOptions below is used for both).
+ */
+export const ASSISTANT_BUILTIN_TOOLS: string[] = ['mcp'];
 
 function modelSelection(model: string): ModelSelection {
   if (/^composer/i.test(model)) return { id: model, params: [{ id: 'fast', value: 'false' }] };
@@ -123,7 +141,12 @@ export async function runCursorAssistant(input: RunAssistantInput): Promise<stri
     space: input.space,
     pageId: input.pageId,
   });
-  const toolsHandle = await buildAssistantTools(input.user, input.runMode);
+  const toolsHandle = await buildAssistantTools(input.user, input.runMode, {
+    runId: input.runId,
+    conversationId: input.conversation.id,
+    space: input.space,
+    pageId: input.pageId,
+  });
   ensureAssistantCursorPermissions();
   const sdk = await configureSdk();
   const agentOptions = {
@@ -131,6 +154,7 @@ export async function runCursorAssistant(input: RunAssistantInput): Promise<stri
     model: modelSelection(input.conversation.model),
     name: input.conversation.title ?? 'Folio AI',
     mode: 'agent' as const,
+    tools: ASSISTANT_BUILTIN_TOOLS,
     local: {
       cwd: workspace.root,
       settingSources: [],
@@ -172,7 +196,7 @@ export async function runCursorAssistant(input: RunAssistantInput): Promise<stri
         '',
         '## Skills',
         '',
-        'Working instructions are in `.cursor/skills/<name>/SKILL.md`. Read ONLY the file the task needs, once per conversation:',
+        'You have no file or shell access. Working instructions are skills: call the `read_skill` tool with the name the task needs, once per conversation:',
         '- `folio-mcp` — the list of tools and the rules for writing (read before the first change to data);',
         '- `folio-content` — the syntax of Folio pages (before creating or editing markdown);',
         '- `folio-boards` — the `sketch` DSL for whiteboards (before create_board/update_board);',

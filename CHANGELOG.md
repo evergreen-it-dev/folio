@@ -6,6 +6,26 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **Assistant feedback and analytics.** Every saved assistant answer can be
+  rated 👍 or 👎, the panel asks "Did the assistant solve your question?" after
+  every third answer, and the assistant records questions it could not answer
+  or was unsure about. Instance administrators get an "Assistant analytics"
+  page (`/admin/assistant`) with the conversations, ratings, survey results and
+  a "Questions without an answer" list, filtered by space, user and date.
+  Opening someone's conversation is recorded in the audit log. Adds migration
+  032.
+- **Assistant analytics for space administrators.** A person who administers a
+  space now sees the "Assistant analytics" entry in the account menu, limited
+  to their own spaces: only conversations that ran in those spaces, and inside
+  them only the messages of those runs. Counts, first question and dates are
+  computed over that visible part, a filter by someone else's space is
+  refused, and the page says how many messages are hidden. Instance
+  administrators still see everything; a personal access token is still
+  refused.
+- **"Who opened this conversation".** The page of a conversation in the
+  assistant analytics lists who opened it and when (the latest 50, then "and N
+  earlier openings"), read from the audit log. Adds migration 033, a partial
+  index only.
 - **Paste a link over selected text.** Select some words and paste a single
   address: the words become a link to it instead of being replaced. Works in
   the page text and inside table cells. A selection that is already a link or
@@ -31,6 +51,11 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- The "what is missing" text of an unanswered question in the assistant
+  analytics is now rendered as Markdown (links open in a new tab; raw HTML and
+  `javascript:` links are dropped) instead of showing the markup as text.
+- **The trash page scrolls.** A long list of deleted items no longer runs
+  past the bottom of the window with no way to reach the rest.
 - **The sidebar page tree now updates by itself when someone else changes it.**
   A page created, renamed, moved, deleted or restored by another user, an API or
   MCP client, the assistant, an import or a Git sync used to stay invisible in an
@@ -104,6 +129,11 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Changed
 
+- In "Questions without an answer" the person's own question is now the main
+  line, with the assistant's restatement below it as "Assistant's wording";
+  older reports that were saved without a run show only the restatement. The
+  space filter and the space columns of the assistant analytics show space
+  names instead of slugs.
 - Interface languages are picked up from the bundle files that exist, so
   adding a language means adding files, not editing code. English is the
   fallback when the browser asks for a language there is no bundle for.
@@ -147,6 +177,21 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Security
 
+- **The assistant no longer has file or shell tools.** The Cursor agent runs
+  without an operating-system sandbox, and its built-in read, search and shell
+  tools were not confined to the conversation workspace, so they could open
+  the Git repositories of spaces the person cannot read. A run now offers the
+  model only Folio's own tools (the MCP tool set, the built-in tool that
+  records unanswered questions, and `read_skill`, which returns the shipped
+  working instructions by name); access control is therefore the one the
+  tools apply to the signed-in person, not the file system's.
+- Asking for a space or a page the caller has no role in at all now gets the
+  same "space not found" / "page not found" as for one that does not exist,
+  in the assistant and over MCP, so private space slugs and page ids cannot
+  be probed. A caller with too low a role (a viewer asking to write) is still
+  told so.
+- Page search over MCP and in the assistant returns nothing for a disabled
+  user, as every other read already did.
 - Dependency updates close four high-severity advisories. `puppeteer-core` is
   now 25.x (used only to render PDFs with the system Chromium); its browser
   downloader no longer pulls in `extract-zip` (symlink path traversal, no fixed

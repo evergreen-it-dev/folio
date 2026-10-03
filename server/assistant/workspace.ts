@@ -58,6 +58,27 @@ async function loadFolioContext(): Promise<string> {
   }
 }
 
+/** Names of the skills the server ships (server/assistant/skills/<name>/SKILL.md), sorted; [] when the directory is missing. */
+export async function listAssistantSkillNames(): Promise<string[]> {
+  try {
+    const entries = await readdir(SKILLS_DIR, { withFileTypes: true });
+    const names: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (await readFile(path.join(SKILLS_DIR, entry.name, 'SKILL.md'), 'utf8').then(() => true, () => false)) names.push(entry.name);
+    }
+    return names.sort();
+  } catch {
+    return [];
+  }
+}
+
+/** The text of one shipped skill, or null for a name that is not one of listAssistantSkillNames() (never a path: the name is matched against the directory listing, not joined blindly). */
+export async function readAssistantSkill(name: string): Promise<string | null> {
+  if (!(await listAssistantSkillNames()).includes(name)) return null;
+  return readFile(path.join(SKILLS_DIR, name, 'SKILL.md'), 'utf8').catch(() => null);
+}
+
 /** Copies every server/assistant/skills/<name>/SKILL.md into <root>/.cursor/skills/<name>/SKILL.md. A skill directory the SKILLS round hasn't populated yet (no SKILL.md there) is skipped, not an error — this module must not fail just because a sibling round is still in flight. */
 async function syncAssistantSkills(root: string): Promise<void> {
   const destination = path.join(root, '.cursor', 'skills');

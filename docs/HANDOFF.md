@@ -99,10 +99,32 @@ quick switcher, subtree, backlinks, collaboration, MCP, export.
   subtree, as one Markdown document.
 - **The built-in assistant** runs on the server as a job, survives a closed
   browser, and uses the MCP tool implementations in-process. In Ask mode the
-  write tools are refused by the server.
+  write tools are refused by the server. The Cursor agent is given **no
+  built-in file, shell or network tools** (`tools: ['mcp']`, passed on both
+  create and resume): it runs without an OS sandbox, so those tools would read
+  the Git repositories of every space straight from disk around the access
+  checks. It sees only the in-process tools (Folio MCP,
+  `report_unanswered_question`, `read_skill`). A caller with no role in a space
+  or page gets "not found", identical to a missing one. `toolAccess.test.ts`
+  pins every read tool against a private space, a page hidden by page access
+  and `.agent`.
 - **`.agent`**: pages in this folder of a space are added to every assistant
   run in that space, up to about 60,000 characters, cut at a page boundary.
   The folder is visible to space administrators only.
+- **Assistant analytics** (migration 032): ratings of answers, a periodic
+  survey, and questions the assistant reported through the built-in
+  `report_unanswered_question` tool. They are read at `/admin/assistant`
+  (`/api/admin/assistant/*`), which needs a cookie session; a token is
+  refused. An instance administrator sees everything; a space administrator
+  (explicit `admin` role) sees only runs in their spaces and, inside them, only
+  those runs' messages. The rule is applied in SQL (`visibleMessage` in
+  `server/assistant/adminRoutes.ts`), never by filtering in JS, and a filter by
+  someone else's space is refused. Opening a conversation is written to the
+  audit log (`assistant.conversation_viewed`, lowercase id as target); the
+  conversation page reads it back as "Who opened this conversation" (migration
+  033, a partial index). Reading that list is not itself audited, and the page
+  must not reload a conversation on window focus, since each load counts as an
+  opening.
 
 ## What must never break
 

@@ -209,7 +209,7 @@ the content (the text of a label, a color), when `board_ops` does not fit.
 ## Default scope
 
 Unless the user said otherwise, work within the page that is open now, from
-`.folio/runtime/current-context.md`: read and change exactly it (its `id`),
+the `Current context` section of the request: read and change exactly it (its `id`),
 and create new things as its children (`parentPath` from the same place, the
 same `space`).
 

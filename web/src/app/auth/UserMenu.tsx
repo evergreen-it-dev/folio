@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Bot, Building2, CircleHelp, Compass, GitBranch, HardDriveDownload, KeyRound, LogOut, SlidersHorizontal, Trash2, Users } from 'lucide-react';
+import { Bot, Building2, ChartColumn, CircleHelp, Compass, GitBranch, HardDriveDownload, KeyRound, LogOut, SlidersHorizontal, Trash2, Users } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { Menu, MenuItem } from '../ui/Menu';
 import { SettingsDialog } from './SettingsDialog';
@@ -11,6 +11,7 @@ import { ApiTokensModal } from '../tokens/ApiTokensModal';
 import { GitCredentialsSettings } from '../git/GitCredentialsSettings';
 import { ConfluenceImportDialog } from '../import/ConfluenceImportDialog';
 import { AssistantSettingsModal } from '../assistant/AssistantSettingsModal';
+import { useAssistantAccess } from '../admin/assistant/useAssistantAccess';
 import '../i18n/register';
 
 function initials(name: string): string {
@@ -42,6 +43,12 @@ export function UserMenu({ space = '' }: UserMenuProps) {
   const [gitCredentialsOpen, setGitCredentialsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [assistantSettingsOpen, setAssistantSettingsOpen] = useState(false);
+  // Space admins (not instance admins, who always have it in the admin section below)
+  // get the analytics of their own spaces. Asked once per session when the sidebar
+  // mounts — not when the menu opens — so the item is already known by the time the
+  // panel is measured and positioned (it would otherwise grow after placement).
+  const spaceAdminAccess = useAssistantAccess(!user.isAdmin);
+  const showSpaceAnalytics = !user.isAdmin && spaceAdminAccess.isSuccess;
 
   return (
     <div className="shrink-0 border-t border-neutral-200 p-2 dark:border-neutral-800">
@@ -116,6 +123,20 @@ export function UserMenu({ space = '' }: UserMenuProps) {
             >
               {t('assistant.menu.label')}
             </MenuItem>
+            {/* A space admin's analytics of their own spaces sits next to the other assistant
+                item rather than under an "Administration" heading of its own (the instance
+                admin's item lives in the admin section below). */}
+            {showSpaceAnalytics && (
+              <MenuItem
+                icon={<ChartColumn size={14} />}
+                onSelect={() => {
+                  close();
+                  navigate('/admin/assistant');
+                }}
+              >
+                {t('auth.userMenu.assistantAnalytics')}
+              </MenuItem>
+            )}
 
             {user.isAdmin && <SectionLabel>{t('auth.userMenu.sections.admin')}</SectionLabel>}
             {user.isAdmin && (
@@ -138,6 +159,17 @@ export function UserMenu({ space = '' }: UserMenuProps) {
                 }}
               >
                 {t('auth.userMenu.spaces')}
+              </MenuItem>
+            )}
+            {user.isAdmin && (
+              <MenuItem
+                icon={<ChartColumn size={14} />}
+                onSelect={() => {
+                  close();
+                  navigate('/admin/assistant');
+                }}
+              >
+                {t('auth.userMenu.assistantAnalytics')}
               </MenuItem>
             )}
             {/* Trash round: instance-wide trash. Space admins reach the same
@@ -192,6 +224,19 @@ export function UserMenu({ space = '' }: UserMenuProps) {
               >
                 {t('auth.userMenu.signOut')}
               </MenuItem>
+              {/* A quiet credit line; a brand tagline, so it stays in English in every language. */}
+              <div className="px-2.5 pb-0.5 pt-1.5 text-[10px] leading-none text-neutral-400 dark:text-neutral-500">
+                Powered by{' '}
+                <a
+                  href="https://evergreen.team/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => close()}
+                  className="hover:text-neutral-600 hover:underline dark:hover:text-neutral-300"
+                >
+                  Evergreen
+                </a>
+              </div>
             </div>
           </div>
         )}

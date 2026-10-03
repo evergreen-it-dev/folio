@@ -211,6 +211,9 @@ function boardSceneSummary(scene: ExcalidrawScene): Record<string, unknown> {
 async function checkSpaceRole(user: User, space: string, min: SpaceRole): Promise<string | null> {
   if (!(await storage.spaceExists(space))) return 'space not found';
   const role = await session.effectiveRole(user, space);
+  // No role at all: the same answer as for a slug that does not exist, so that a caller (the assistant included)
+  // cannot probe which private spaces there are. A role that is merely too low (a viewer asking to write) is told so.
+  if (role === undefined) return 'space not found';
   if (!session.roleAtLeast(role, min)) return `requires ${min}+ role in this space`;
   return null;
 }
@@ -225,6 +228,8 @@ async function checkPageRole(user: User, id: string, min: SpaceRole): Promise<{ 
   }
   if (isAgentPath(entry.relPath) && !(await session.canAdministerSpace(user, entry.space))) return { error: 'page not found' };
   const role = await session.effectivePageRole(user, entry);
+  // No role at all (a private space, or a page hidden by page-level access): "not found", like `.agent` above.
+  if (role === undefined) return { error: 'page not found' };
   if (!session.roleAtLeast(role, min)) return { error: `requires ${min}+ role in this page's space` };
   return { entry };
 }
@@ -505,6 +510,9 @@ export function buildFolioMcpServer(actor: McpActor): McpServer {
       inputSchema: { query: z.string().describe('Search query'), space: z.string().optional().describe('Restrict to one space slug') },
     },
     async ({ query, space }) => {
+      // searchPages filters in SQL by user id and knows nothing of `disabled`; every other read goes through
+      // effectiveRole, which gives a disabled user nothing. Same here.
+      if (actor.user.disabled) return textResult([]);
       if (space) {
         const err = await checkSpaceRole(actor.user, space, 'viewer');
         if (err) return errorResult(err);

@@ -4,6 +4,8 @@
 Your team's wiki lives in Git. People write in the browser, together, in real
 time. AI agents read and write the same pages. One command to run it yourself.
 
+Website: <https://foliowiki.online>
+
 ![A page in Folio](docs/images/document.png)
 
 Folio was built to replace Confluence and Notion for a real team — and it was
@@ -275,6 +277,32 @@ it appears in the table on the left — and answered from the data.
   implementation, and in Ask mode the write tools are switched off on the
   server, not just hidden.
 
+### Is the assistant actually helping?
+
+Folio collects three signals about answer quality, without asking anyone to
+fill in a form:
+
+- **👍 / 👎 on an answer.** Every saved assistant answer can be rated
+  "Helpful answer" or "Not helpful". One rating per answer, and you can change
+  or remove it.
+- **A short survey.** After every third answer in a conversation the panel
+  asks "Did the assistant solve your question?" — Yes, Partly, No or Not now —
+  with an optional comment.
+- **Questions without an answer.** When the pages do not contain the answer,
+  or the assistant is not sure of it, it records the question and what was
+  missing, then still answers the person plainly.
+
+Instance administrators see all of it on one page, **Assistant analytics**
+(`/admin/assistant`, from the account menu): the conversations with their
+ratings and survey results, and a second tab, "Questions without an answer",
+which is a ready list of what your documentation is missing — the person's own
+words first, the assistant's restatement below. Both tabs filter by space,
+user and date. A space administrator sees the same page limited to the spaces
+they administer: only conversations that ran there, and only the messages of
+those runs. An administrator can open a conversation to read it; the
+conversation page lists who opened it and when, and every opening is written
+to the audit log. Other people do not see this page.
+
 ### Your own agent in every space: `.agent`
 
 Every space has a `.agent` folder. Whatever you put there becomes the
@@ -461,6 +489,7 @@ gets in your way.
 
 ## Documentation
 
+- [Website: foliowiki.online](https://foliowiki.online)
 - [Installation, HTTPS, updates, backups](docs/INSTALL.md)
 - [Features](docs/FEATURES.md)
 - [What is not there yet](docs/LIMITATIONS.md)

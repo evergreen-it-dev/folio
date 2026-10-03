@@ -336,6 +336,22 @@ describe('F-05: the assistant authorizes the client-supplied space before it loa
   // What must keep working
   // -------------------------------------------------------------------------
 
+  it('a started run records the space, the page and the user message it began with (analytics context)', async () => {
+    const res = await postRun(aliceCookie, { space: slugA, currentPath: `/s/${slugA}/p/${pageInA}` });
+    expect(res.statusCode).toBe(202);
+    const { runId, conversationId } = res.json() as { runId: string; conversationId: string };
+    await waitForRunDone(runId);
+
+    const { query } = await import('../db/pool.js');
+    const [row] = await query<{ space: string | null; page_id: string | null; user_message_id: string | null }>(
+      'SELECT space, page_id, user_message_id FROM ai_runs WHERE id = $1',
+      [runId],
+    );
+    expect(row?.space).toBe(slugA);
+    const messages = await assistantStore.listMessages(conversationId);
+    expect(row?.user_message_id).toBe(messages.find((m) => m.role === 'user')?.id);
+  });
+
   it('a member of B still gets B\'s rules — in the model request and in the conversation workspace', async () => {
     const res = await postRun(bobCookie, { space: slugB });
     expect(res.statusCode).toBe(202);

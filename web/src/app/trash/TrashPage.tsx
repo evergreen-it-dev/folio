@@ -164,7 +164,7 @@ export function TrashPage() {
   const retentionValue = retentionInput ?? (settings?.retentionDays != null ? String(settings.retentionDays) : '');
 
   return (
-    <div className="min-h-full bg-white dark:bg-neutral-950">
+    <div className="h-full overflow-y-auto bg-white dark:bg-neutral-950">
       <header className="flex h-14 items-center gap-2 border-b border-neutral-200 px-3 dark:border-neutral-800 md:gap-3 md:px-4">
         <Link
           to="/"

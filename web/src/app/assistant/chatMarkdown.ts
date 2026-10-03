@@ -15,11 +15,12 @@ import type { Root, Element } from 'hast';
  * an absolute http(s) URL anyway. Every `<a>` remark-rehype/remark-gfm can
  * produce here has an `href`, but we don't depend on that.
  */
-function rehypeChatLinkTargets() {
+function rehypeChatLinkTargets(options: { allLinksNewTab?: boolean } = {}) {
   return (tree: Root) => {
     visit(tree, 'element', (node: Element) => {
-      // In-app links (/s/<space>/p/<id>) navigate in the same tab; only external URLs open a new one.
-      if (node.tagName === 'a' && typeof node.properties?.href === 'string' && /^https?:\/\//i.test(node.properties.href)) {
+      // In-app links (/s/<space>/p/<id>) navigate in the same tab (the chat panel); only external URLs open a new one.
+      // `allLinksNewTab` (admin analytics tables) opens in-app links in a new tab too, so the table stays where it was.
+      if (node.tagName === 'a' && typeof node.properties?.href === 'string' && (options.allLinksNewTab || /^https?:\/\//i.test(node.properties.href))) {
         node.properties.target = '_blank';
         node.properties.rel = ['noopener'];
       }
@@ -44,13 +45,13 @@ function rehypeChatLinkTargets() {
  * enough for that. AssistantPanel only invokes this for assistant messages;
  * user messages render as plain text.
  */
-export function renderChatMarkdown(markdown: string): string {
+export function renderChatMarkdown(markdown: string, options: { allLinksNewTab?: boolean } = {}): string {
   const file = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype)
     .use(rehypeSanitize, defaultSchema)
-    .use(rehypeChatLinkTargets)
+    .use(rehypeChatLinkTargets, { allLinksNewTab: options.allLinksNewTab })
     .use(rehypeStringify)
     .processSync(markdown);
   return String(file);

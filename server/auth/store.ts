@@ -463,6 +463,21 @@ export async function spacesForUser(userId: string): Promise<Record<string, Spac
   return Object.fromEntries(rows.map((r) => [r.space_slug, r.role]));
 }
 
+/**
+ * Slugs of the spaces where `userId` is an EXPLICIT `admin` member (sorted, byte order) — the
+ * "space admin" of canAdministerSpace without the instance-admin bypass. The join on `spaces`
+ * drops a membership whose space no longer exists (a trashed space is deleted from `spaces`
+ * and its memberships cascade away, so it never counts until restored).
+ */
+export async function listAdminSpaceSlugs(userId: string): Promise<string[]> {
+  const rows = await query<{ space_slug: string }>(
+    `SELECT m.space_slug FROM space_members m JOIN spaces s ON s.slug = m.space_slug
+      WHERE m.user_id = $1 AND m.role = 'admin' ORDER BY m.space_slug COLLATE "C"`,
+    [userId],
+  );
+  return rows.map((r) => r.space_slug);
+}
+
 /** Round 27: GET /api/access/matrix's roles[userId][space] grid — every EXPLICIT membership, instance-wide, in one query (a per-user/per-space loop would be O(users*spaces) round trips). Implicit `visibility: 'instance'` viewer grants are deliberately NOT included — the matrix UI derives those from spaces[].visibility instead (see AccessMatrixResponse's doc comment in shared/contracts.ts). */
 export async function listAllMemberships(): Promise<{ userId: string; space: string; role: SpaceRole }[]> {
   const rows = await query<{ user_id: string; space_slug: string; role: SpaceRole }>('SELECT user_id, space_slug, role FROM space_members');

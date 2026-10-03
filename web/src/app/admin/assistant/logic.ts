@@ -1,0 +1,92 @@
+import type { AdminAssistantMessage, AdminAssistantSpaceRef, AdminAssistantSurveyEntry, AdminAssistantUnansweredItem } from '@shared/contracts';
+
+/** The filter state of one analytics list (every value is a raw input value; '' = not set). */
+export interface AnalyticsFilters {
+  space: string;
+  userId: string;
+  reason: string;
+  from: string;
+  to: string;
+  offset: number;
+}
+
+export const EMPTY_FILTERS: AnalyticsFilters = { space: '', userId: '', reason: '', from: '', to: '', offset: 0 };
+
+export const PAGE_SIZE = 50;
+
+/** The analytics page opened on one dialog. */
+export function conversationHref(conversationId: string): string {
+  return `/admin/assistant?tab=conversations&conversation=${encodeURIComponent(conversationId)}`;
+}
+
+export interface DialogAnnotations {
+  /** Survey answers keyed by the assistant message they were given after. */
+  surveysAfter: Map<string, AdminAssistantSurveyEntry[]>;
+  /** Unanswered-question reports keyed by the assistant message that closed the run they were raised in. */
+  unansweredAfter: Map<string, AdminAssistantUnansweredItem[]>;
+  /** Things that could not be tied to a message (a survey for a deleted message, a report of a run that never saved an answer). */
+  trailingSurveys: AdminAssistantSurveyEntry[];
+  trailingUnanswered: AdminAssistantUnansweredItem[];
+}
+
+/**
+ * Ties the survey answers and unanswered-question reports to the dialog.
+ * A survey names its message (`afterMessageId`). A report has only a timestamp,
+ * raised by the assistant while it was working on a run, so it belongs to the
+ * first assistant message saved at or after that moment — the answer of that run.
+ */
+export function annotateDialog(
+  messages: AdminAssistantMessage[],
+  surveys: AdminAssistantSurveyEntry[],
+  unanswered: AdminAssistantUnansweredItem[],
+): DialogAnnotations {
+  const messageIds = new Set(messages.map((m) => m.id));
+  const assistantMessages = messages.filter((m) => m.role === 'assistant').map((m) => ({ id: m.id, at: Date.parse(m.createdAt) }));
+
+  const surveysAfter = new Map<string, AdminAssistantSurveyEntry[]>();
+  const trailingSurveys: AdminAssistantSurveyEntry[] = [];
+  for (const entry of surveys) {
+    if (!messageIds.has(entry.afterMessageId)) {
+      trailingSurveys.push(entry);
+      continue;
+    }
+    surveysAfter.set(entry.afterMessageId, [...(surveysAfter.get(entry.afterMessageId) ?? []), entry]);
+  }
+
+  const unansweredAfter = new Map<string, AdminAssistantUnansweredItem[]>();
+  const trailingUnanswered: AdminAssistantUnansweredItem[] = [];
+  for (const item of [...unanswered].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))) {
+    const at = Date.parse(item.createdAt);
+    const target = assistantMessages.find((m) => m.at >= at);
+    if (!target) {
+      trailingUnanswered.push(item);
+      continue;
+    }
+    unansweredAfter.set(target.id, [...(unansweredAfter.get(target.id) ?? []), item]);
+  }
+
+  return { surveysAfter, unansweredAfter, trailingSurveys, trailingUnanswered };
+}
+
+/** What the person wrote and, when it differs, how the assistant restated it (only a restatement for older reports). */
+export function unansweredQuestionTexts(item: Pick<AdminAssistantUnansweredItem, 'question' | 'userQuestion'>): { primary: string; restated: string | null } {
+  const own = item.userQuestion?.trim();
+  if (!own) return { primary: item.question, restated: null };
+  const norm = (v: string) => v.replace(/\s+/g, ' ').trim().toLowerCase();
+  return { primary: own, restated: norm(own) === norm(item.question) ? null : item.question };
+}
+
+/**
+ * The text of a space filter option: its name, with the slug added only when two spaces share a name; a deleted
+ * space (no name) is its slug plus the localized "deleted" mark. The option value stays the slug.
+ */
+export function spaceOptionLabels(spaces: AdminAssistantSpaceRef[], deletedMark: string): Map<string, string> {
+  const nameCount = new Map<string, number>();
+  for (const space of spaces) if (space.name) nameCount.set(space.name, (nameCount.get(space.name) ?? 0) + 1);
+  return new Map(
+    spaces.map((space) => [
+      space.slug,
+      space.name === null ? `${space.slug} (${deletedMark})` : (nameCount.get(space.name) ?? 0) > 1 ? `${space.name} (${space.slug})` : space.name,
+    ]),
+  );
+}

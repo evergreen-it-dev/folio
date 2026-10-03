@@ -2088,6 +2088,18 @@ async function insertSpaceRow(slug: string, name: string, opts: { repoUrl?: stri
     // eslint-disable-next-line no-console
     console.error(`[changes] could not clear stale history for new space "${slug}":`, error);
   });
+  // The same for assistant analytics: runs and unanswered reports remember the
+  // space by slug, and space admins see only their spaces' slugs. A new space
+  // taking an old slug must not inherit the old space's conversations — they stay
+  // visible to instance admins, without a space.
+  await query('UPDATE ai_runs SET space = NULL WHERE space = $1', [slug]).catch((error) => {
+    // eslint-disable-next-line no-console
+    console.error(`[assistant] could not detach old runs from new space "${slug}":`, error);
+  });
+  await query('UPDATE ai_unanswered_questions SET space = NULL WHERE space = $1', [slug]).catch((error) => {
+    // eslint-disable-next-line no-console
+    console.error(`[assistant] could not detach old reports from new space "${slug}":`, error);
+  });
 }
 
 async function uniqueSpaceSlug(name: string): Promise<string> {
