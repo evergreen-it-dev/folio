@@ -303,6 +303,8 @@ those runs. An administrator can open a conversation to read it; the
 conversation page lists who opened it and when, and every opening is written
 to the audit log. Other people do not see this page.
 
+![Assistant analytics: the list of questions the pages could not answer, with the person's words, the space and what is missing](docs/images/assistant-unanswered.png)
+
 ### Your own agent in every space: `.agent`
 
 Every space has a `.agent` folder. Whatever you put there becomes the
