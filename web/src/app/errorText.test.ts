@@ -25,6 +25,10 @@ describe('matchApiErrorRule', () => {
     expect(matchApiErrorRule('invalid email or password')).toEqual({ key: 'errors.invalidCredentials', values: undefined });
   });
 
+  it('localizes the public-demo guard message', () => {
+    expect(matchApiErrorRule('Creating API tokens is disabled in the public demo')).toEqual({ key: 'errors.demoDisabled', values: undefined });
+  });
+
   it('captures the required role out of the role message', () => {
     expect(matchApiErrorRule('requires viewer+ role in this space')).toEqual({
       key: 'errors.requiresRole',

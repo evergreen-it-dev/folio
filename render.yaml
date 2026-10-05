@@ -1,0 +1,65 @@
+# Render Blueprint for Folio: the app (published image), PostgreSQL, Key Value
+# (Redis-compatible) and a persistent disk for the Git repositories.
+# Steps and limits: deploy/render/README.md
+#
+# A persistent disk exists only on paid web service plans, so this blueprint
+# cannot run on the free plan.
+services:
+  - type: web
+    name: folio
+    runtime: image
+    image:
+      url: ghcr.io/evergreen-it-dev/folio:latest
+    plan: standard # 2 GB RAM. The smallest plan that is comfortable; `starter` (512 MB) is tight.
+    healthCheckPath: /api/health
+    disk:
+      name: folio-data
+      mountPath: /app/data
+      sizeGB: 10
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: '4870'
+      - key: ASSET_BACKEND
+        value: local
+      # Encrypts saved git tokens and personal AI keys. Generated once; never
+      # change it afterwards.
+      - key: FOLIO_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: folio-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: folio-cache
+          property: connectionString
+      # Render asks for this when the Blueprint is created. Type the address
+      # the service will have, e.g. https://folio.onrender.com (the name of the
+      # service plus .onrender.com, or your custom domain). Links in
+      # invitations and shared pages are built from it.
+      - key: PUBLIC_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ALLOWED_DOMAINS
+        sync: false
+      - key: CURSOR_API_KEY
+        sync: false
+
+  # Transient data only (presence, rate limits); no persistence needed.
+  - type: keyvalue
+    name: folio-cache
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: [] # internal connections only
+
+databases:
+  - name: folio-db
+    plan: basic-256mb
+    postgresMajorVersion: '17'
+    diskSizeGB: 5

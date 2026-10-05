@@ -65,6 +65,7 @@ import { badRequest, conflict, forbidden, gone, notFound, tooManyRequests } from
 import { resolveTextLanguage } from './serverText.js';
 import { parseBody, queryString } from './validate.js';
 import * as session from './auth/session.js';
+import { assertNotDemo } from './demo.js';
 import * as authStore from './auth/store.js';
 import { hashPassword } from './auth/passwords.js';
 import { isGoogleEnabled } from './auth/google.js';
@@ -266,6 +267,7 @@ export function registerRoutes(app: FastifyInstance): void {
 
   /** Lists a remote's branches without cloning it — feeds the create-space dialog's branch picker. Any authenticated user; not space-scoped (there's no space yet). */
   app.post('/api/git/branches', async (request): Promise<RepoBranches> => {
+    assertNotDemo('Browsing a remote repository');
     const body = parseBody(listBranchesBodySchema, request.body);
     try {
       git.validateRepoUrl(body.repoUrl);
@@ -289,6 +291,7 @@ export function registerRoutes(app: FastifyInstance): void {
   // provider using their OWN saved credential for that host (never a
   // caller-supplied token; this route only ever reads what's already saved).
   app.get('/api/git/repos', async (request): Promise<GitProviderRepos> => {
+    assertNotDemo('Browsing a remote repository');
     const host = queryString(request.query, 'host');
     if (!host) throw badRequest('host is required');
     const cred = await userGitCredentials.getDecryptedTokenForHost(request.authUser!.id, host);
@@ -310,6 +313,7 @@ export function registerRoutes(app: FastifyInstance): void {
   // /api/spaces and POST /api/git/branches already use, so a public repo
   // (or one matching an auto-detected saved credential) still works.
   app.get('/api/git/tree', async (request): Promise<GitRepoTreeResponse> => {
+    assertNotDemo('Browsing a remote repository');
     const repoUrl = queryString(request.query, 'repoUrl');
     const branch = queryString(request.query, 'branch');
     const path = queryString(request.query, 'path');
@@ -442,6 +446,7 @@ export function registerRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/spaces', async (request, reply) => {
+    assertNotDemo('Creating a space');
     session.requireWriteScope(request);
     const user = request.authUser!;
     const body = parseBody(createSpaceGit, request.body);
@@ -586,6 +591,7 @@ export function registerRoutes(app: FastifyInstance): void {
    * identically to one created "from repo" from this point on.
    */
   app.post('/api/spaces/:space/connect-git', async (request) => {
+    assertNotDemo('Connecting a space to a git repository');
     const { space } = request.params as { space: string };
     await session.requireSpaceRole(request, space, 'admin');
     session.requireWriteScope(request);
@@ -1233,6 +1239,7 @@ export function registerRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/pages/:id/shares', async (request, reply) => {
+    assertNotDemo('Creating a share link');
     const { id } = request.params as { id: string };
     session.requireCookieAuth(request);
     await session.requirePageRole(request, id, 'editor');
@@ -1304,6 +1311,7 @@ export function registerRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/invites', async (request, reply) => {
+    assertNotDemo('Creating an invite');
     session.requireCookieAuth(request);
     session.requireWriteScope(request);
     const user = request.authUser!;
@@ -1351,6 +1359,7 @@ export function registerRoutes(app: FastifyInstance): void {
   // --- Confluence import (round 12) ---------------------------------------
 
   app.post('/api/import/confluence', async (request, reply) => {
+    assertNotDemo('Importing from Confluence');
     session.requireWriteScope(request);
     const user = request.authUser!;
     const body = parseBody(confluenceImport.confluenceImportBodySchema, request.body);

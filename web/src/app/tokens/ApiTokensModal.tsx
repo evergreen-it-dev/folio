@@ -3,7 +3,7 @@ import type { FormEvent, ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Check, Copy, Plus, Trash2 } from 'lucide-react';
-import type { ApiTokenInfo, ApiTokenScope, CreatedApiToken } from '@shared/contracts';
+import type { ApiTokenInfo, ApiTokenScope, CreatedApiToken, OAuthConnectionInfo } from '@shared/contracts';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { formatRelativeDate } from '../history';
@@ -19,6 +19,7 @@ export interface ApiTokensModalProps {
 }
 
 const TOKENS_QUERY_KEY = ['api-tokens'] as const;
+const CONNECTIONS_QUERY_KEY = ['oauth-connections'] as const;
 
 /**
  * "API tokens" (DEV-PLAN Round 7; MCP preset tabs added Round 9).
@@ -98,6 +99,8 @@ export function ApiTokensModal({ onClose }: ApiTokensModalProps) {
             </button>
           )}
 
+          <ConnectedApps />
+
           <McpBlock token={justCreated?.token ?? null} />
         </div>
       )}
@@ -115,6 +118,75 @@ export function ApiTokensModal({ onClose }: ApiTokensModalProps) {
         </ConfirmDialog>
       )}
     </Modal>
+  );
+}
+
+/** "Connected apps": OAuth connections (Claude, ChatGPT, …) the user approved. Hidden when the endpoint is not there (older server). */
+function ConnectedApps() {
+  const { t } = useTranslation('app');
+  const errorText = useApiErrorText();
+  const queryClient = useQueryClient();
+  const showToast = useToast();
+  const [disconnecting, setDisconnecting] = useState<OAuthConnectionInfo | null>(null);
+  const connections = useQuery({ queryKey: CONNECTIONS_QUERY_KEY, queryFn: api.listOAuthConnections, retry: false });
+  const disconnect = useMutation({
+    mutationFn: (id: string) => api.revokeOAuthConnection(id),
+    onSuccess: () => {
+      setDisconnecting(null);
+      void queryClient.invalidateQueries({ queryKey: CONNECTIONS_QUERY_KEY });
+    },
+    onError: (err) => showToast(errorText(err, 'tokens.connected.failed')),
+  });
+
+  if (connections.isError || !connections.data) return null;
+  return (
+    <div className="border-t border-neutral-200 pt-3 dark:border-neutral-800">
+      <div className="mb-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('tokens.connected.title')}</div>
+      {connections.data.connections.length === 0 ? (
+        <p className="text-sm text-neutral-400">{t('tokens.connected.empty')}</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {connections.data.connections.map((c) => (
+            <li key={c.id} className="flex items-center gap-2 rounded-md border border-neutral-200 px-3 py-2 dark:border-neutral-800">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">{c.clientName}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  {c.scopes.map((s) => (
+                    <span key={s} className="rounded-full bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-800">
+                      {scopeLabel(s)}
+                    </span>
+                  ))}
+                  <span>{t('tokens.connected.from', { host: c.redirectHost })}</span>
+                  <span>· {t('tokens.createdAt', { date: formatRelativeDate(c.createdAt) })}</span>
+                  <span>· {c.lastUsedAt ? t('tokens.lastUsedAt', { date: formatRelativeDate(c.lastUsedAt) }) : t('tokens.neverUsed')}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDisconnecting(c)}
+                aria-label={t('tokens.connected.disconnectNamed', { name: c.clientName })}
+                title={t('tokens.connected.disconnect')}
+                className="shrink-0 rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-red-600 dark:hover:bg-neutral-800"
+              >
+                <Trash2 size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {disconnecting && (
+        <ConfirmDialog
+          title={t('tokens.connected.confirmTitle')}
+          destructive
+          confirmLabel={t('tokens.connected.disconnect')}
+          busy={disconnect.isPending}
+          onCancel={() => setDisconnecting(null)}
+          onConfirm={() => disconnect.mutate(disconnecting.id)}
+        >
+          {t('tokens.connected.confirmBody', { name: disconnecting.clientName })}
+        </ConfirmDialog>
+      )}
+    </div>
   );
 }
 

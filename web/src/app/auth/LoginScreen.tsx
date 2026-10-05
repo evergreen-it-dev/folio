@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { DemoInfo } from '@shared/contracts';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { LabeledInput } from '../ui/LabeledInput';
@@ -11,6 +12,8 @@ export interface LoginScreenProps {
   onDone: () => void;
   /** GET /api/auth/state's `google` flag — whether GOOGLE_CLIENT_ID/SECRET are configured server-side. Only then is the "Continue with Google" button shown at all. */
   google: boolean;
+  /** GET /api/auth/state's `demo` — present only on a public-demo instance (FOLIO_DEMO_MODE). The "sign in as…" block renders only when it lists accounts. */
+  demo?: DemoInfo;
 }
 
 /** Codes server/auth/google.ts's callback appends as `?authError=<code>` on every refusal — see that file's own doc comment for what each means. Anything unrecognized falls back to the generic message. */
@@ -53,7 +56,7 @@ function GoogleIcon() {
 }
 
 /** Shown whenever GET /api/auth/state reports no user (fresh visit or a session dropped mid-use). Localized from localStorage/browser language (round 10) — there's no session yet to carry a profile preference. */
-export function LoginScreen({ onDone, google }: LoginScreenProps) {
+export function LoginScreen({ onDone, google, demo }: LoginScreenProps) {
   const { t } = useTranslation('app');
   const errorText = useApiErrorText();
   const googleErrorKey = useGoogleAuthError();
@@ -61,13 +64,15 @@ export function LoginScreen({ onDone, google }: LoginScreenProps) {
   const [password, setPassword] = useState('');
 
   const login = useMutation({
-    mutationFn: () => api.login(email, password),
+    mutationFn: (credentials: { email: string; password: string }) => api.login(credentials.email, credentials.password),
     onSuccess: onDone,
   });
+  const demoAccounts = demo?.accounts ?? [];
 
   return (
-    <div className="flex h-full items-center justify-center bg-white p-4 dark:bg-neutral-950">
-      <div className="w-full max-w-sm">
+    <div className="flex h-full overflow-y-auto bg-white p-4 dark:bg-neutral-950">
+      {/* m-auto (not items-center on the parent): centers a short screen, yet lets a tall one (demo cards on a phone) scroll from its top. */}
+      <div className="m-auto w-full max-w-sm">
         <h1 className="mb-1 text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t('auth.login.title')}</h1>
         <p className="mb-6 text-sm text-neutral-500 dark:text-neutral-400">{t('auth.login.subtitle')}</p>
         {googleErrorKey && (
@@ -95,7 +100,7 @@ export function LoginScreen({ onDone, google }: LoginScreenProps) {
           className="flex flex-col gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            login.mutate();
+            login.mutate({ email, password });
           }}
         >
           <LabeledInput
@@ -133,6 +138,47 @@ export function LoginScreen({ onDone, google }: LoginScreenProps) {
             {login.isPending ? t('auth.login.loggingIn') : t('auth.login.submit')}
           </button>
         </form>
+        {demoAccounts.length > 0 && (
+          <section aria-labelledby="demo-accounts-heading" className="mt-8 border-t border-neutral-200 pt-6 dark:border-neutral-800">
+            <h2 id="demo-accounts-heading" className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+              {t('auth.demo.heading')}
+            </h2>
+            <p className="mb-3 mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t('auth.demo.hint')}</p>
+            <ul className="flex flex-col gap-2">
+              {demoAccounts.map((account) => (
+                <li key={account.email}>
+                  {/* One click fills the form (so a failure is visible next to the fields) and signs in. */}
+                  <button
+                    type="button"
+                    disabled={login.isPending}
+                    aria-label={t('auth.demo.signInAs', { name: account.name })}
+                    onClick={() => {
+                      setEmail(account.email);
+                      setPassword(account.password);
+                      login.mutate({ email: account.email, password: account.password });
+                    }}
+                    className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-left hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">{account.name}</span>
+                      {account.role && (
+                        <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                          {account.role}
+                        </span>
+                      )}
+                    </span>
+                    {account.description && (
+                      <span className="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400">{account.description}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+              {demo?.resetHours ? t('auth.demo.note', { count: demo.resetHours }) : t('auth.demo.noteNoInterval')}
+            </p>
+          </section>
+        )}
       </div>
     </div>
   );

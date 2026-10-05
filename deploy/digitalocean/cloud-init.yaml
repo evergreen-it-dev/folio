@@ -1,0 +1,16 @@
+#cloud-config
+# Paste into "Initialization scripts" when you create a Droplet (Ubuntu 24.04).
+# Installs Docker, then Folio with generated secrets. Follow the progress with:
+#   tail -f /var/log/cloud-init-output.log
+#
+# As written it runs Folio on http://<droplet-ip>:4870, to try it. For a real
+# instance, use the second command instead: replace wiki.example.com with your
+# domain (its DNS A record must point at the Droplet) and swap the two lines.
+package_update: true
+packages:
+  - curl
+  - ca-certificates
+runcmd:
+  - curl -fsSL https://get.docker.com | sh
+  - FOLIO_YES=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/evergreen-it-dev/folio/main/deploy/vps/install.sh)"
+  # - FOLIO_YES=1 FOLIO_DOMAIN=wiki.example.com bash -c "$(curl -fsSL https://raw.githubusercontent.com/evergreen-it-dev/folio/main/deploy/vps/install.sh)"

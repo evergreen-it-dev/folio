@@ -21,6 +21,17 @@
         "generic": "Could not sign in with Google. Please try again."
       }
     },
+    "demo": {
+      "heading": "Public demo — sign in as…",
+      "hint": "Pick an account to sign in with one click.",
+      "note_one": "Data resets every hour; don't store anything private.",
+      "note_other": "Data resets every {{count}} hours; don't store anything private.",
+      "noteNoInterval": "Data is reset regularly; don't store anything private.",
+      "signInAs": "Sign in as {{name}}",
+      "banner_one": "Public demo · shared login · data resets every hour · don't enter personal data or API keys",
+      "banner_other": "Public demo · shared login · data resets every {{count}} hours · don't enter personal data or API keys",
+      "bannerNoInterval": "Public demo · shared login · data is reset regularly · don't enter personal data or API keys"
+    },
     "setup": {
       "title": "First run",
       "subtitle": "This is a fresh Folio instance. Create an administrator account to get started.",
@@ -165,6 +176,7 @@
     "requiresSpaceAdmin": "Needs the admin role in this space.",
     "requiresInstanceAdmin": "Needs Folio administrator rights.",
     "tokenWriteScope": "This access token is read-only.",
+    "demoDisabled": "Disabled in the public demo.",
     "notViaToken": "This action isn't available to an API token — sign in to the app.",
     "onlyCreator": "Only its creator or a space admin can change or revoke this.",
     "spaceNotFound": "No such space.",
@@ -879,6 +891,16 @@
       "read": "Read",
       "write": "Write"
     },
+    "connected": {
+      "title": "Connected apps",
+      "empty": "No apps connected yet. Add Folio as a connector in Claude or ChatGPT and it will appear here.",
+      "disconnect": "Disconnect",
+      "disconnectNamed": "Disconnect {{name}}",
+      "confirmTitle": "Disconnect this app?",
+      "confirmBody": "\"{{name}}\" will lose access to Folio immediately. You can connect it again later.",
+      "failed": "Could not disconnect the app",
+      "from": "via {{host}}"
+    },
     "tokenPlaceholder": "<your token>",
     "mcp": {
       "title": "Connect MCP",
@@ -886,6 +908,10 @@
       "cursorHint": "Paste into ~/.cursor/mcp.json",
       "replaceHint": "Replace the token placeholder with a real one — create a new one above or paste an existing one."
     }
+  },
+  "oauth": {
+    "resuming": "Continuing the connection…",
+    "resumeFailed": "Could not continue the connection. Go back to the app and start it again."
   },
   "ui": {
     "cancel": "Cancel",

@@ -1,0 +1,78 @@
+# Builds the Folio image for amd64 and arm64 and publishes it to
+# ghcr.io/evergreen-it-dev/folio. Every one-click kit in deploy/ pulls this image.
+#
+# Runs when a release tag (vX.Y.Z) is pushed, and by hand from the Actions tab
+# ("Run workflow"; pick a tag or a branch).
+#
+# Tags published:
+#   a release tag   v0.2.0, 0.2.0, latest, sha-<short>
+#   a branch        sha-<short>, and edge when run on the default branch
+#   by hand         the same rules; "latest" only moves when you tick the box
+#
+# First time only: after the first push, open the package on GitHub
+# (Packages -> folio -> Package settings) and set its visibility to Public,
+# otherwise nobody can pull it without a login.
+name: Publish image
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      latest:
+        description: 'Also move the "latest" tag to this build'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/evergreen-it-dev/folio
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=sha
+            type=edge
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || inputs.latest == true }}
+          labels: |
+            org.opencontainers.image.title=Folio
+            org.opencontainers.image.description=Git-native collaborative wiki
+            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false

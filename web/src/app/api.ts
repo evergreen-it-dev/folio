@@ -22,6 +22,7 @@ import type {
   AccessMatrixResponse,
   AccessRequestSummary,
   ApiTokenInfo,
+  OAuthConnectionInfo,
   ActiveAssistantRunResponse,
   AdminAssistantAccess,
   AdminAssistantConversationDetail,
@@ -698,6 +699,10 @@ export const api = {
 
   /** Soft revoke. */
   revokeApiToken: (id: string) => request<{ ok: true }>(`/api/me/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /** OAuth connections (claude.ai, ChatGPT, …) the user approved — "Connected apps". */
+  listOAuthConnections: () => request<{ connections: OAuthConnectionInfo[] }>('/api/me/oauth-connections'),
+  revokeOAuthConnection: (id: string) => request<{ ok: true }>(`/api/me/oauth-connections/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // ---------- share links (round 8) ----------
 

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { resolveTextLanguage, serverText, serverTextLanguages } from './serverText.js';
 
@@ -25,5 +28,17 @@ describe('serverText', () => {
     expect(serverText('table.defaultView', 'uk')).not.toBe('All records');
     expect(serverText('table.defaultView', 'xx')).toBe('All records');
     expect(serverText('table.defaultView')).toBe('All records');
+  });
+});
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+describe('serverText: OAuth consent page', () => {
+  it('has every oauth key in every bundle that ships', () => {
+    const keysOf = (lang: string) =>
+      Object.keys(JSON.parse(readFileSync(path.join(__dirname, 'i18n', `${lang}.json`), 'utf8'))).filter((k) => k.startsWith('oauth.'));
+    const english = keysOf('en').sort();
+    expect(english.length).toBeGreaterThan(0);
+    for (const lang of serverTextLanguages()) expect(keysOf(lang).sort()).toEqual(english);
   });
 });

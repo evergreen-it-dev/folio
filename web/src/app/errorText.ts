@@ -58,6 +58,7 @@ const RULES: { test: RegExp; key: string; values?: (m: RegExpMatchArray) => Reco
   { test: /^requires instance admin/i, key: 'errors.requiresInstanceAdmin' },
   { test: /^this action requires a token with write scope$/i, key: 'errors.tokenWriteScope' },
   { test: /^not available via API token$/i, key: 'errors.notViaToken' },
+  { test: /is disabled in the public demo$/i, key: 'errors.demoDisabled' },
   { test: /^only the (?:link|invite) creator/i, key: 'errors.onlyCreator' },
 
   // --- missing things -----------------------------------------------------

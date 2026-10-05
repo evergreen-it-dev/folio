@@ -1,0 +1,36 @@
+# Folio on Fly.io. Not tested on a live Fly account: written from Fly's
+# documentation. See README.md for the steps around it.
+app = "folio-change-me"        # must be unique across Fly: pick your own
+primary_region = "ams"         # pick the region closest to your people
+
+[build]
+  image = "ghcr.io/evergreen-it-dev/folio:latest"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "4870"
+  ASSET_BACKEND = "local"
+  # PUBLIC_URL and FOLIO_SECRET are set with `fly secrets set` (README.md).
+
+# The Git repositories of the spaces. A Fly volume attaches to exactly one machine.
+[mounts]
+  source = "folio_data"
+  destination = "/app/data"
+
+[http_service]
+  internal_port = 4870
+  force_https = true
+  auto_stop_machines = "off"   # Folio keeps WebSocket connections open: never stop it
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "90s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"

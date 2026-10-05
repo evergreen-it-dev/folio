@@ -92,9 +92,33 @@ that account; signing out is a separate secondary action.
 Every path that returns content filters by these rules: the tree, search,
 quick switcher, subtree, backlinks, collaboration, MCP, export.
 
+**Public-demo mode** (`server/demo.ts`, `FOLIO_DEMO_MODE=1`) is inert unless
+switched on: `GET /api/auth/state` then carries the demo accounts (to
+signed-out visitors only) and the reset interval, the sign-in screen shows
+account cards and the app a banner. For everyone in that mode, tokens, the
+assistant and AI keys, endpoints that reach a host the caller picks (git,
+Confluence import), space creation, share links, invitations and name changes
+answer 403, and uploads are capped. **`TRUST_PROXY`** (`server/trustProxy.ts`,
+off by default) lets `request.ip` come from `X-Forwarded-For`, but only from a
+proxy on a loopback or private address; without it the sign-in rate limit is
+one bucket for all visitors behind a proxy.
+
 ### Agents
 
-- **MCP** at `/mcp`, personal access tokens only, 21 tools.
+- **MCP** at `/mcp`, 21 tools, each with explicit `title` and
+  `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`
+  annotations, plus a short `instructions` text on `initialize`. It accepts a
+  personal access token (`folio_pat_…`) or an OAuth access token
+  (`folio_oat_…`); the code is `server/mcpRoutes.ts`. Folio is its own OAuth
+  2.1 authorization server (`server/oauth/`, migration 034): discovery
+  documents, dynamic client registration and Client ID Metadata Documents,
+  authorization code with PKCE S256 only, consent on top of the cookie
+  session, one-hour access tokens, rotating 30-day refresh tokens (reuse of an
+  old one revokes the connection), audience `https://<host>/mcp` (RFC 8707),
+  everything stored as hashes. OAuth tokens work on `/mcp` only, never on
+  REST, and a `read` grant cannot run write tools. Metadata and audience are
+  built from `PUBLIC_URL`, so it must be set to the public address, and the
+  reverse proxy must pass `/.well-known/*` and `/oauth/*` to the app.
 - **Markdown links**: `/share/<token>.md` returns a page, or a page with its
   subtree, as one Markdown document.
 - **The built-in assistant** runs on the server as a job, survives a closed
@@ -252,6 +276,10 @@ Each of these was a real defect. They are here so that nobody pays twice.
 - Moving a page does not rewrite relative links inside it.
 - Offline mode does not cover data tables, forms, uploads or templates.
 - Assets are not carried along when a space's repository is moved.
+- OAuth: signing in with Google during the consent step returns to `/`, so the
+  person repeats "Connect"; its rate limits live in process memory, not Redis;
+  a client's metadata document is cached for an hour; no connector has been
+  tried live from claude.ai or ChatGPT.
 - Folio runs as one server process. Real-time rooms and sockets live in that
   process, so several processes behind one address need a deliberate design.
 
@@ -273,7 +301,7 @@ Each of these was a real defect. They are here so that nobody pays twice.
 - Whiteboard editing and the quick switcher with an open keyboard on a real
   phone.
 - Automatic HTTPS with a real domain (checked with a local certificate).
-- Deployment on container platforms other than plain Docker Compose.
+- The install kits on their platforms (only plain Docker Compose has been run end to end).
 
 **Languages**
 

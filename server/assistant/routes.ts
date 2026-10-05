@@ -36,6 +36,7 @@ import {
   updateAssistantModelBodySchema,
 } from '../../shared/contracts.js';
 import * as session from '../auth/session.js';
+import { assertNotDemo } from '../demo.js';
 import { badRequest, conflict, notFound, HttpError } from '../errors.js';
 import { parseBody, queryString } from '../validate.js';
 import { hasSecretConfigured } from '../secretCrypto.js';
@@ -192,6 +193,7 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
   });
 
   app.put('/api/assistant/settings/key', async (request) => {
+    assertNotDemo('Connecting an AI key');
     session.requireCookieAuth(request);
     const user = request.authUser!;
     if (!hasSecretConfigured()) throw conflict('FOLIO_SECRET is not configured on this server — Cursor API keys cannot be stored securely.');
@@ -290,6 +292,7 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
   // --- Continuous runs (05.09.2026) ----------------------------------------
 
   app.post('/api/assistant/runs', async (request, reply) => {
+    assertNotDemo('The AI assistant');
     session.requireCookieAuth(request);
     const { runId, conversationId } = await startRunForRequest(request);
     reply.status(202);
@@ -368,6 +371,7 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
   // --- Backward-compatible wrapper: same request, same response shape -----
 
   app.post('/api/assistant/chat/stream', async (request, reply) => {
+    assertNotDemo('The AI assistant');
     session.requireCookieAuth(request);
     // Everything that can refuse (space/page access, key, runtime) happens in
     // here, BEFORE the response is hijacked below — a refusal is a plain JSON

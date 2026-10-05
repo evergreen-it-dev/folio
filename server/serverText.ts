@@ -1,6 +1,7 @@
 /**
  * The few pieces of text the SERVER writes on a person's behalf: a default
- * name inside a new file, a note in an imported page. Everything else the
+ * name inside a new file, a note in an imported page, the OAuth consent page.
+ * Everything else the
  * interface shows is translated on the client; these cannot be, because they
  * end up in the content itself.
  *
@@ -16,7 +17,22 @@ export type ServerTextKey =
   | 'table.firstField'
   | 'import.emptyPage'
   | 'whiteboard.linksHeading'
-  | 'audit.deletedUser';
+  | 'audit.deletedUser'
+  | 'oauth.title'
+  | 'oauth.heading'
+  | 'oauth.signedInAs'
+  | 'oauth.willOpen'
+  | 'oauth.unverifiedDcr'
+  | 'oauth.unverifiedCimd'
+  | 'oauth.canDo'
+  | 'oauth.read'
+  | 'oauth.write'
+  | 'oauth.writeOptional'
+  | 'oauth.sameRights'
+  | 'oauth.allow'
+  | 'oauth.deny'
+  | 'oauth.errorTitle'
+  | 'oauth.back';
 
 const FALLBACK_LANGUAGE = 'en';
 const BUNDLE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n');

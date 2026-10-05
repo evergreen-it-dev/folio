@@ -527,6 +527,27 @@ export interface AuthState {
   memberships: Record<string, SpaceRole>;
   /** "Sign in with Google" (server/auth/google.ts) is configured (GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET both set) — drives whether the login screen shows the button at all. */
   google: boolean;
+  /**
+   * Public-demo mode (server/demo.ts, FOLIO_DEMO_MODE=1): present ONLY then — absent on every ordinary instance. On the login screen it lists the demo accounts to sign in as; for an authenticated session `accounts` is empty (the header banner needs only the reset interval).
+   */
+  demo?: DemoInfo;
+}
+
+/** One public demo account, shown as a card on the login screen. The password is public by design — it is only ever served while demo mode is on. */
+export interface DemoAccount {
+  email: string;
+  password: string;
+  name: string;
+  /** Short free-text label, e.g. "Editor". */
+  role: string;
+  /** One line about what this account can do, e.g. "Editor in Engineering and Product". */
+  description: string;
+}
+
+export interface DemoInfo {
+  accounts: DemoAccount[];
+  /** FOLIO_DEMO_RESET_HOURS — how often the operator resets the data; null = not stated. */
+  resetHours: number | null;
 }
 
 export const setupBodySchema = z.object({
@@ -700,6 +721,17 @@ export const createApiTokenBodySchema = z.object({
   name: z.string().min(1).max(80),
   scopes: z.array(apiTokenScopeSchema).min(1),
 });
+
+/** One OAuth connection ("Connected apps"): an app a user approved for MCP access. */
+export interface OAuthConnectionInfo {
+  id: string;
+  clientName: string;
+  /** Host of the client's callback, so a user can tell apps with the same name apart. */
+  redirectHost: string;
+  scopes: ApiTokenScope[];
+  createdAt: string;
+  lastUsedAt: string | null;
+}
 
 /** The response of creation — the token is shown exactly once. */
 export interface CreatedApiToken extends ApiTokenInfo {

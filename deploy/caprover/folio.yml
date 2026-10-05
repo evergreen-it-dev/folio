@@ -1,0 +1,86 @@
+captainVersion: 4
+services:
+    $$cap_appname:
+        image: ghcr.io/evergreen-it-dev/folio:$$cap_folio_version
+        environment:
+            NODE_ENV: production
+            PORT: 4870
+            DATABASE_URL: postgresql://folio:$$cap_db_password@srv-captain--$$cap_appname-db:5432/folio
+            REDIS_URL: redis://srv-captain--$$cap_appname-redis:6379
+            PUBLIC_URL: http://$$cap_appname.$$cap_root_domain
+            ASSET_BACKEND: local
+            FOLIO_SECRET: $$cap_folio_secret
+            GOOGLE_CLIENT_ID: $$cap_google_client_id
+            GOOGLE_CLIENT_SECRET: $$cap_google_client_secret
+            GOOGLE_ALLOWED_DOMAINS: $$cap_google_allowed_domains
+            CURSOR_API_KEY: $$cap_cursor_api_key
+            CURSOR_AGENT_WORKSPACE_ROOT: /app/data/assistant/workspaces
+            CURSOR_AGENT_STATE_DIR: /app/data/assistant/state
+        volumes:
+            - $$cap_appname-data:/app/data
+        depends_on:
+            - $$cap_appname-db
+            - $$cap_appname-redis
+        caproverExtra:
+            containerHttpPort: '4870'
+            websocketSupport: 'true'
+    $$cap_appname-db:
+        image: postgres:17-alpine
+        environment:
+            POSTGRES_USER: folio
+            POSTGRES_PASSWORD: $$cap_db_password
+            POSTGRES_DB: folio
+        volumes:
+            - $$cap_appname-db-data:/var/lib/postgresql/data
+        caproverExtra:
+            notExposeAsWebApp: 'true'
+    $$cap_appname-redis:
+        image: redis:7-alpine
+        command: redis-server --save '' --appendonly no
+        caproverExtra:
+            notExposeAsWebApp: 'true'
+caproverOneClickApp:
+    variables:
+        - id: $$cap_folio_version
+          label: Folio version
+          defaultValue: latest
+          description: Image tag. Use a release such as v0.1.0 to update only when you choose. Tags https://github.com/evergreen-it-dev/folio/pkgs/container/folio
+          validRegex: /^([^\s^\/])+$/
+        - id: $$cap_db_password
+          label: Database password
+          defaultValue: $$cap_gen_random_hex(24)
+          description: Password of the PostgreSQL user. Generated for you. It is applied when the database is first created.
+          validRegex: /^[0-9a-f]{20,}$/
+        - id: $$cap_folio_secret
+          label: Folio secret
+          defaultValue: $$cap_gen_random_hex(32)
+          description: Encrypts saved Git tokens and personal AI keys. Generated for you. Never change it afterwards.
+          validRegex: /^[0-9a-f]{32,}$/
+        - id: $$cap_google_client_id
+          label: '[OPTIONAL] Google client ID'
+          description: For "Sign in with Google". Redirect URI to register with Google is the https address of the app plus /api/auth/google/callback
+        - id: $$cap_google_client_secret
+          label: '[OPTIONAL] Google client secret'
+        - id: $$cap_google_allowed_domains
+          label: '[OPTIONAL] Google allowed email domains'
+          description: Comma-separated, for example example.com. Empty means Google sign-in lets nobody in.
+        - id: $$cap_cursor_api_key
+          label: '[OPTIONAL] Cursor API key'
+          description: Shared key for the AI assistant. Without it each person adds their own key.
+    instructions:
+        start: |-
+            Folio is a git-native collaborative wiki: pages are plain files in a Git repository, edited together in real time.
+            This installs Folio with its own PostgreSQL and Redis and one persistent volume.
+            It needs about 2 GB of RAM on the CapRover server.
+        end: |-
+            Folio is deployed as $$cap_appname.
+
+            IMPORTANT:
+            1. It takes about a minute to start. Until then you may see a 502 page.
+            2. Open the app's page in CapRover and enable HTTPS, then change the PUBLIC_URL environment variable to the https:// address and save. Folio builds invitation links from it, and signing in over HTTPS needs it.
+            3. Open the address; the first account you create is the administrator.
+            4. Websocket support is switched on for the app (real-time editing needs it).
+    displayName: Folio
+    isOfficial: false
+    description: Git-native collaborative wiki with real-time editing, access rights, history and an MCP server for AI agents.
+    documentation: https://github.com/evergreen-it-dev/folio/blob/main/docs/INSTALL.md

@@ -16,6 +16,7 @@ import { AccessAdmin } from './admin/access/AccessAdmin';
 import { AssistantAnalytics } from './admin/assistant/AssistantAnalytics';
 import { TrashPage } from './trash/TrashPage';
 import { NotFound } from './routes/NotFound';
+import { OAuthResume } from './routes/OAuthResume';
 import { SharedPageView } from './share/SharedPageView';
 import { AcceptInviteView } from './invites/AcceptInviteView';
 import './i18n/register';
@@ -126,6 +127,8 @@ function AppRoutes() {
             rendered a 404 to a user who had just logged in successfully. Anyone who
             bookmarks the login URL hits that. Send it home instead. */}
         <Route path="/login" element={<Navigate to="/" replace />} />
+        {/* OAuth for MCP: after logging in at the consent URL, ask the server for it again. */}
+        <Route path="/oauth/authorize" element={<OAuthResume />} />
         {/* Round 27: consolidated into /admin/access (spec-access.md §6) — redirect stale links/bookmarks rather than 404 them. */}
         <Route path="/admin/users" element={<Navigate to="/admin/access?tab=people" replace />} />
         <Route path="/admin/spaces" element={<Navigate to="/admin/access?tab=spaces" replace />} />

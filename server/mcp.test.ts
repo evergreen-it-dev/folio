@@ -20,7 +20,7 @@ import { setUpTestSchema, deleteTestSpace } from './db/testSchema.js';
 import * as storage from './storage.js';
 import * as authStore from './auth/store.js';
 import { readFileSync } from 'node:fs';
-import { buildFolioMcpServer, FOLIO_SERVER_VERSION, type McpActor } from './mcp.js';
+import { buildFolioMcpServer, FOLIO_MCP_INSTRUCTIONS, FOLIO_SERVER_VERSION, type McpActor } from './mcp.js';
 import type { User } from '../shared/contracts.js';
 
 async function connectedClient(actor: McpActor): Promise<{ client: Client; close: () => Promise<void> }> {
@@ -53,6 +53,61 @@ describe('server/mcp.ts — server identity', () => {
     const { client, close } = await connectedClient(actor);
     try {
       expect(client.getServerVersion()).toMatchObject({ name: 'folio', version: pkg.version });
+    } finally {
+      await close();
+    }
+  });
+});
+
+describe('server/mcp.ts — tool annotations and instructions', () => {
+  const actor: McpActor = { user: { id: 'nobody' } as User, scopes: ['read'], tokenId: 'test-annotations-token' };
+
+  it('annotates all 21 tools: a title, explicit booleans, and readOnlyHint or destructiveHint', async () => {
+    const { client, close } = await connectedClient(actor);
+    try {
+      const { tools } = await client.listTools();
+      expect(tools).toHaveLength(21);
+      for (const tool of tools) {
+        const a = tool.annotations;
+        expect(a?.title ?? tool.title, `${tool.name} title`).toBeTruthy();
+        expect(typeof a?.readOnlyHint, `${tool.name} readOnlyHint`).toBe('boolean');
+        expect(typeof a?.destructiveHint, `${tool.name} destructiveHint`).toBe('boolean');
+        expect(a?.openWorldHint, `${tool.name} openWorldHint`).toBe(false);
+        // A read-only tool can never be destructive.
+        if (a?.readOnlyHint) expect(a.destructiveHint).toBe(false);
+      }
+      const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort();
+      expect(readOnly).toHaveLength(11);
+      expect(readOnly).toContain('search_pages');
+      // Tools that replace or delete content say so.
+      const byName = new Map(tools.map((t) => [t.name, t.annotations]));
+      for (const name of ['update_page', 'update_board', 'folio_table_update', 'folio_table_delete']) expect(byName.get(name)?.destructiveHint, name).toBe(true);
+      for (const name of ['create_page', 'create_board', 'folio_table_insert', 'folio_table_create', 'folio_table_add_column']) expect(byName.get(name)?.destructiveHint, name).toBe(false);
+    } finally {
+      await close();
+    }
+  });
+
+  it('read-only annotation matches the real behaviour: every non-read-only tool refuses a read-scoped token', async () => {
+    const { client, close } = await connectedClient(actor);
+    try {
+      const { tools } = await client.listTools();
+      const writers = tools.filter((t) => !t.annotations?.readOnlyHint);
+      expect(writers.map((t) => t.name).sort()).toEqual(
+        ['board_ops', 'create_board', 'create_page', 'folio_table_add_column', 'folio_table_create', 'folio_table_delete', 'folio_table_insert', 'folio_table_update', 'update_board', 'update_page'],
+      );
+    } finally {
+      await close();
+    }
+  });
+
+  it('sends short English instructions on initialize', async () => {
+    const { client, close } = await connectedClient(actor);
+    try {
+      expect(client.getInstructions()).toBe(FOLIO_MCP_INSTRUCTIONS);
+      expect(FOLIO_MCP_INSTRUCTIONS.length).toBeLessThanOrEqual(2048);
+      expect(FOLIO_MCP_INSTRUCTIONS.slice(0, 512)).toContain('Folio is a team wiki');
+      expect(FOLIO_MCP_INSTRUCTIONS).toMatch(/Git/);
     } finally {
       await close();
     }

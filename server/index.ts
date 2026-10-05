@@ -26,8 +26,8 @@ import { registerNotificationRoutes } from './notifications/routes.js';
 import * as notificationSocket from './notifications/socket.js';
 import { startTreeSignal, stopTreeSignal } from './treeSignal.js';
 import * as assistantRuns from './assistant/runs.js';
-import { buildFolioMcpServer } from './mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { registerMcpRoutes } from './mcpRoutes.js';
+import { registerOAuthRoutes } from './oauth/routes.js';
 import * as session from './auth/session.js';
 import { registerPublicAuthRoutes, registerProtectedAuthRoutes } from './auth/routes.js';
 import { registerGoogleAuthRoutes } from './auth/google.js';
@@ -44,6 +44,8 @@ import { shouldServeSpaFallback, spaStaticOptions } from './spaFallback.js';
 import { matchShareRoute, renderShareIndexHtml } from './shareMeta.js';
 import { publicUrlOrOrigin } from './publicUrl.js';
 import { runBootScan } from './bootScan.js';
+import { demoMaxUploadBytes, isDemoMode } from './demo.js';
+import { parseTrustProxy } from './trustProxy.js';
 
 loadEnv();
 
@@ -57,7 +59,10 @@ const fastifyCookie = fastifyCookieModule.default;
 // already bound to the default port. The contract itself (and the web dev proxy) is untouched.
 const PORT = process.env.PORT ? Number(process.env.PORT) : SERVER_PORT;
 
-const app = Fastify({ logger: true });
+// TRUST_PROXY (server/trustProxy.ts): off unless the operator says how many
+// reverse proxies sit in front, so a client can't forge X-Forwarded-For.
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
+const app = Fastify({ logger: true, trustProxy });
 app.decorateRequest('authUser', null);
 
 app.setErrorHandler((err, request, reply) => {
@@ -128,8 +133,9 @@ async function main(): Promise<void> {
   // never block boot on it; server/db/redis.ts degrades every caller gracefully if it's down.
   getRedis();
 
-  await app.register(fastifyCors, { origin: true });
-  await app.register(fastifyMultipart, { limits: { fileSize: 50 * 1024 * 1024 } });
+  await app.register(fastifyCors, { origin: true, exposedHeaders: ['WWW-Authenticate'] });
+  // Public demo (FOLIO_DEMO_MODE): a much smaller cap (FOLIO_DEMO_MAX_UPLOAD_MB, default 5).
+  await app.register(fastifyMultipart, { limits: { fileSize: demoMaxUploadBytes() ?? 50 * 1024 * 1024 } });
   // Populates request.cookies for every route (public and protected) — /api/auth/state
   // needs to read the session cookie without requiring one, so this is registered globally
   // rather than only inside the protected scope below.
@@ -193,52 +199,11 @@ async function main(): Promise<void> {
   // fresh McpServer + transport per POST, matching the SDK's own reference
   // implementation (dist/esm/examples/server/simpleStatelessStreamableHttp.js)
   // — see server/mcp.ts's module doc comment for why not one shared instance.
-  app.post('/mcp', async (request, reply) => {
-    const resolved = await session.resolvePatOnly(request);
-    if (!resolved) {
-      reply.status(401).send({
-        jsonrpc: '2.0',
-        error: { code: -32001, message: 'authentication required: Authorization: Bearer folio_pat_... ' },
-        id: null,
-      });
-      return;
-    }
-    reply.hijack();
-    const server = buildFolioMcpServer({ user: resolved.user, scopes: resolved.tokenScopes ?? [], tokenId: resolved.tokenId! });
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    try {
-      await server.connect(transport);
-      await transport.handleRequest(request.raw, reply.raw, request.body);
-      reply.raw.on('close', () => {
-        void transport.close();
-        void server.close();
-      });
-    } catch (err) {
-      app.log.error(err);
-      if (!reply.raw.headersSent) {
-        reply.raw.writeHead(500, { 'content-type': 'application/json' });
-        reply.raw.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'internal server error' }, id: null }));
-      }
-    }
-  });
-  // Stateless mode has no session to stream (GET) or terminate (DELETE) — same
-  // 405 the SDK's own stateless example returns for both.
-  app.get('/mcp', async (request, reply) => {
-    const resolved = await session.resolvePatOnly(request);
-    if (!resolved) {
-      reply.status(401).send({ jsonrpc: '2.0', error: { code: -32001, message: 'authentication required' }, id: null });
-      return;
-    }
-    reply.status(405).send({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null });
-  });
-  app.delete('/mcp', async (request, reply) => {
-    const resolved = await session.resolvePatOnly(request);
-    if (!resolved) {
-      reply.status(401).send({ jsonrpc: '2.0', error: { code: -32001, message: 'authentication required' }, id: null });
-      return;
-    }
-    reply.status(405).send({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null });
-  });
+  registerMcpRoutes(app);
+
+  // OAuth 2.1 for MCP (connectors in claude.ai / ChatGPT): discovery documents, /oauth/*, and
+  // "Connected apps". Without a login the SPA's own login screen is shown at /oauth/authorize.
+  await registerOAuthRoutes(app, { serveSpa: (_request, reply) => reply.callNotFound() });
 
   // --- Everything else: session required ----------------------------------
   // A Fastify child scope, not registration order, is what actually exempts
@@ -305,6 +270,9 @@ async function main(): Promise<void> {
 
   collab.initCollab();
 
+  if (isDemoMode() && trustProxy === false) {
+    app.log.warn('demo mode without TRUST_PROXY: behind a reverse proxy every visitor shares one IP, so the login rate limit (10/min) is shared by all. Set TRUST_PROXY=true.');
+  }
   await app.listen({ port: PORT, host: process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1' });
   collab.attachToServer(app.server);
   // Round 31: a second 'upgrade' listener — the /events socket. Both return

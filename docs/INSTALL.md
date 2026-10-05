@@ -8,6 +8,7 @@ command starts all of them.
 - [Settings](#settings)
 - [Updating](#updating)
 - [Backup and restore](#backup-and-restore)
+- [One-click and PaaS](#one-click-and-paas)
 - [Other platforms](#other-platforms)
 - [When something goes wrong](#when-something-goes-wrong)
 
@@ -89,6 +90,8 @@ All settings live in the `.env` file next to `docker-compose.yml`. Copy
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | — | Turn on "Sign in with Google". |
 | `GOOGLE_ALLOWED_DOMAINS` | empty | Email domains allowed to sign in with Google, comma-separated. Empty means nobody. |
 | `CURSOR_API_KEY` | — | Shared key for the AI assistant. Without it each person adds their own key. |
+| `TRUST_PROXY` | off | Set `true` behind a reverse proxy on the same host or Docker network so the sign-in rate limit is per visitor instead of one shared bucket. Only a proxy on a loopback or private address is believed. |
+| `FOLIO_DEMO_MODE` | off | `1` turns on public-demo mode for running your own demo: one-click demo accounts and a banner, and tokens, the assistant, outbound git and import, new spaces, share links and invitations are disabled. See `.env.dev.example`. |
 
 ### The secret
 
@@ -145,6 +148,31 @@ docker compose up -d
 Spaces connected to a remote Git repository also keep their pages in that
 repository after each synchronization.
 
+## One-click and PaaS
+
+Ready-made kits install Folio from the published image
+(`ghcr.io/evergreen-it-dev/folio`, for amd64 and arm64) without building
+anything. Each kit has its own README with steps, settings, updating and backup.
+Prefer to look first? [Try the public demo](https://demo.foliowiki.online).
+
+| Platform | How | Kit |
+|---|---|---|
+| Any Linux server | one command: `install.sh` | [deploy/vps](../deploy/vps/) |
+| Coolify | paste a Compose file | [deploy/coolify](../deploy/coolify/) |
+| Railway | template (specification inside) | [deploy/railway](../deploy/railway/) |
+| Render | Blueprint, paid plan (disk) | [deploy/render](../deploy/render/) |
+| DigitalOcean | Droplet with cloud-init | [deploy/digitalocean](../deploy/digitalocean/) |
+| Dokploy | compose + template files | [deploy/dokploy](../deploy/dokploy/) |
+| CapRover | One-Click App | [deploy/caprover](../deploy/caprover/) |
+| Easypanel | template files | [deploy/easypanel](../deploy/easypanel/) |
+| Portainer | stack | [deploy/portainer](../deploy/portainer/) |
+| Fly.io | manual recipe | [deploy/fly](../deploy/fly/) |
+
+Everywhere the sizing is the same: **2 GB of RAM, 1 vCPU and 10 GB of disk** at
+least. [`deploy/README.md`](../deploy/README.md) has the overview, and
+[`deploy/smoke.mjs`](../deploy/smoke.mjs) checks a fresh installation (sign-up,
+a space, a page, real-time editing).
+
 ## Other platforms
 
 Folio can run anywhere that runs a container from the `Dockerfile` and
@@ -157,13 +185,10 @@ provides all of the following:
 - environment variables `PUBLIC_URL`, `FOLIO_SECRET`, `NODE_ENV=production`,
   `PORT=4870`.
 
-Platforms of this kind include Railway, Render, Fly.io and Coolify. There are
-no ready-made templates for them yet; the variables above are what you would
-enter by hand.
-
 Serverless hosting — Vercel, Netlify, Cloudflare Pages and similar — cannot
 run Folio: it has no persistent disk for the Git repositories and does not
-keep a process alive for WebSocket connections.
+keep a process alive for WebSocket connections. DigitalOcean's App Platform
+cannot either, because it has no persistent volumes; use a Droplet.
 
 ## When something goes wrong
 

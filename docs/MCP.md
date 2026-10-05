@@ -19,17 +19,49 @@ claude mcp add folio --transport http https://<host>/mcp \
 ```
 
 Any MCP client that supports the HTTP transport with a custom header can
-connect the same way.
+connect the same way. Clients that cannot send a header connect through OAuth
+(next section).
 
 Three access rules:
 
-- `/mcp` accepts tokens only; a session cookie is rejected there with 401.
+- `/mcp` accepts a personal access token or an OAuth access token (see below); a session cookie is rejected there with 401. An OAuth access token works only on `/mcp`, not on the REST API.
 - Administrative routes (`/api/admin/*`, `/api/access/*`, `/api/invites`) and
   changes to page access are cookie-only. A token does not reach them with any
   scope.
 - The space sets the base rights (`viewer`, `editor`, `admin`), and page
   access can narrow them for a particular page. The token scope, too, only
   narrows the rights of its owner.
+
+## OAuth: connect from claude.ai / ChatGPT
+
+Clients that run in a vendor's cloud (claude.ai, Claude Desktop, ChatGPT) cannot send a static header, so Folio is also an OAuth 2.1 authorization server for `/mcp`. A personal access token keeps working exactly as before.
+
+**Claude (claude.ai, Claude Desktop).** Settings → Connectors → "Add custom connector", enter `https://<host>/mcp`, then "Connect". Folio opens its sign-in page, then a consent screen: the app, where you will be sent back to, and whether it may also write. Allow, and the connector appears with Folio's tools.
+
+**ChatGPT.** Plugins → "+" → "Create custom MCP server", URL `https://<host>/mcp`, authentication "OAuth". Sign in to Folio and allow the same way. The instance must be reachable from the public internet over HTTPS.
+
+What you get:
+
+- The connector acts with **your** rights and nothing more: a page you cannot open stays invisible to it. Writes are saved to Git history under your name.
+- On the consent screen you choose `read` or `read` + `write`. With `read` only, every tool that changes something refuses to run.
+- Access tokens last one hour and are renewed by a refresh token (30 days, rotated on every use). Folio stores only hashes of all of them.
+- To disconnect, open user menu → "API tokens" → "Connected apps" and remove the app. Its tokens stop working immediately. Disabling a user does the same.
+
+How it is built (for client authors):
+
+| What | Where |
+|---|---|
+| Unauthenticated `/mcp` request | `401` with `WWW-Authenticate: Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource/mcp"` (RFC 9728) |
+| Protected resource metadata | `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` |
+| Authorization server metadata | `/.well-known/oauth-authorization-server` (RFC 8414) |
+| Client registration | Dynamic Client Registration `POST /oauth/register` (RFC 7591), or a Client ID Metadata Document (`client_id` is an `https://` URL) |
+| Authorization | `GET /oauth/authorize`, authorization code with PKCE, **S256 only** |
+| Tokens | `POST /oauth/token`: `authorization_code` and `refresh_token` (rotating; reusing an old refresh token revokes the connection) |
+| Revocation | `POST /oauth/revoke` (RFC 7009) |
+| Scopes | `read`, `write` |
+| Audience | the `resource` parameter (RFC 8707) must be `https://<host>/mcp`; tokens are bound to it |
+
+Clients are public (no client secret). Redirect URIs must be `https`, or `http` on `localhost`, `127.0.0.1` or `[::1]` (any port), and must match what the client registered exactly. Set `PUBLIC_URL` on the instance: the metadata documents and the token audience are built from it.
 
 ## MCP tools
 

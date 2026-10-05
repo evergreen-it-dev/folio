@@ -12,6 +12,10 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:4870',
       '/files': 'http://localhost:4870',
+      // OAuth for MCP: discovery documents, the consent screen, token endpoints.
+      '/oauth/': 'http://localhost:4870',
+      '/.well-known/': 'http://localhost:4870',
+      '/mcp': 'http://localhost:4870',
       // QA-3 P2 #8 (dev only): a plain string key matches by PREFIX, not by
       // path segment, so '/a' swallowed EVERY url starting with those two
       // characters — `/admin/access`, `/admin/users`, `/admin/spaces` and any

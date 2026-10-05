@@ -1,0 +1,54 @@
+name: Folio
+description: >-
+  Folio is a git-native collaborative wiki. Pages are plain files in a Git
+  repository you control, edited together in real time, with access rights,
+  history, sharing and an MCP server for AI agents.
+instructions: >-
+  The first account you create becomes the administrator of the instance.
+  Folio builds invitation and share links from the domain of the app, so set
+  the domain before you invite anyone. It needs about 2 GB of RAM on the server.
+changeLog:
+  - date: 2026-10-05
+    description: Template draft
+links:
+  - label: Website
+    url: https://foliowiki.online
+  - label: Documentation
+    url: https://github.com/evergreen-it-dev/folio/blob/main/docs/INSTALL.md
+  - label: Github
+    url: https://github.com/evergreen-it-dev/folio
+contributors:
+  - name: Evergreen
+    url: https://github.com/evergreen-it-dev
+schema:
+  type: object
+  required:
+    - appServiceName
+    - appServiceImage
+  properties:
+    appServiceName:
+      type: string
+      title: App Service Name
+      default: folio
+    appServiceImage:
+      type: string
+      title: App Service Image
+      default: ghcr.io/evergreen-it-dev/folio:latest
+benefits:
+  - title: Your content is yours
+    description: Every page is a plain file in a Git repository you control. Stop using Folio and the files are still there.
+  - title: Real-time collaboration
+    description: Several people edit the same page at once, with access rights, history and sharing.
+  - title: Built for AI agents
+    description: A full MCP server and a built-in assistant read and write the same pages people do.
+features:
+  - title: Documents, tables, whiteboards and diagrams
+    description: One page tree for text, data tables, boards, Mermaid diagrams and files.
+  - title: Works offline
+    description: Open pages stay available and edits sync when the connection returns.
+  - title: Sign in with Google
+    description: Optional single sign-on limited to the email domains you list.
+tags:
+  - Wiki
+  - Documentation
+  - Self-Hosted

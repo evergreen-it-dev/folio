@@ -1,0 +1,82 @@
+# Folio as a Portainer stack: Stacks > Add stack > Web editor, paste this, and
+# set the environment variables listed in README.md. No port other than
+# FOLIO_PORT is published; put your reverse proxy in front of it for HTTPS.
+services:
+  app:
+    image: ${FOLIO_IMAGE:-ghcr.io/evergreen-it-dev/folio:latest}
+    restart: unless-stopped
+    ports:
+      - '${FOLIO_BIND:-0.0.0.0}:${FOLIO_PORT:-4870}:4870'
+    environment:
+      NODE_ENV: production
+      PORT: '4870'
+      DATABASE_URL: postgresql://folio:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/folio
+      REDIS_URL: redis://redis:6379
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL to the address people will open}
+      ASSET_BACKEND: local
+      # Left empty, the app generates a secret on first start and keeps it on
+      # the data volume (see the command below).
+      FOLIO_SECRET: ${FOLIO_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_ALLOWED_DOMAINS: ${GOOGLE_ALLOWED_DOMAINS:-}
+      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+      CURSOR_AGENT_MODEL: ${CURSOR_AGENT_MODEL:-auto}
+      CURSOR_AGENT_WORKSPACE_ROOT: /app/data/assistant/workspaces
+      CURSOR_AGENT_STATE_DIR: /app/data/assistant/state
+    entrypoint: ['/sbin/tini', '--', '/bin/sh', '-c']
+    command:
+      - |
+        set -e
+        if [ -z "$$FOLIO_SECRET" ]; then
+          secret_file=/app/data/.folio-secret
+          if [ ! -s "$$secret_file" ]; then
+            umask 077
+            node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))" > "$$secret_file"
+          fi
+          FOLIO_SECRET="$$(cat "$$secret_file")"
+          export FOLIO_SECRET
+        fi
+        exec npx tsx server/index.ts
+    volumes:
+      - folio-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4870/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: folio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: folio
+    volumes:
+      - folio-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U folio -d folio']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Transient data only (presence, rate limits): persistence is off on purpose.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save '' --appendonly no
+
+volumes:
+  folio-data:
+  folio-pg:

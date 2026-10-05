@@ -6,6 +6,45 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **OAuth 2.1 for MCP: connect Folio from claude.ai, Claude Desktop and
+  ChatGPT.** `/mcp` now answers an unauthenticated request with `401` and a
+  `WWW-Authenticate` header pointing at the protected-resource metadata, and
+  Folio is its own authorization server: discovery documents
+  (`/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`),
+  dynamic client registration and Client ID Metadata Documents, authorization
+  code with PKCE (S256 only), a consent screen on top of the normal sign-in
+  (read, or read and write), one-hour access tokens with rotating 30-day
+  refresh tokens, audience binding to `/mcp` (RFC 8707) and revocation
+  (`/oauth/revoke`, and "Connected apps" under "API tokens"). Tokens act with
+  the rights of the person who approved them; a `read` connection cannot run
+  write tools; everything is stored as hashes. Personal access tokens work
+  unchanged. Adds migration 034 (five tables).
+- **MCP tool annotations and server instructions.** All 21 tools now declare
+  `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint` and
+  `openWorldHint` explicitly, so clients can skip confirmation for reads and
+  ask for it on replacing or deleting tools. The server also sends a short
+  `instructions` text on `initialize`.
+- **Install kits and a ready-made image.** A workflow publishes the image
+  (`ghcr.io/evergreen-it-dev/folio`, amd64 and arm64), and `deploy/` carries
+  kits for a plain Linux server (`install.sh`), Coolify, Railway, Render,
+  DigitalOcean, Dokploy, CapRover, Easypanel, Portainer and Fly.io, plus a
+  smoke check for a fresh installation (`deploy/smoke.mjs`). See
+  `docs/INSTALL.md`.
+- **Public-demo mode (for running your own demo).** Off unless
+  `FOLIO_DEMO_MODE=1`; an ordinary instance never serves any of it. When on,
+  the sign-in screen offers one-click demo accounts and a thin banner shows in
+  the app. For everyone in that mode the features that could be abused on a
+  shared instance are refused with 403: API tokens, the assistant and AI keys,
+  git and Confluence endpoints that connect to a host the caller chooses,
+  creating spaces, share links, invitations and changing name or username;
+  uploads are capped (`FOLIO_DEMO_MAX_UPLOAD_MB`, default 5), and a demo
+  account cannot change passwords. See `.env.dev.example`.
+- **`TRUST_PROXY`.** Behind nginx, Traefik or Caddy every visitor used to
+  share the proxy's address, so the sign-in rate limit was one bucket for
+  everybody. `TRUST_PROXY=true` takes the client address from
+  `X-Forwarded-For`, but only from a proxy on a loopback or private address
+  and only the entry that proxy appended. Off by default; a bare hop count is
+  refused.
 - **Assistant feedback and analytics.** Every saved assistant answer can be
   rated 👍 or 👎, the panel asks "Did the assistant solve your question?" after
   every third answer, and the assistant records questions it could not answer

@@ -3,5 +3,20 @@
   "table.firstField": "Field 1",
   "import.emptyPage": "This page has no content (it is empty in Confluence).",
   "whiteboard.linksHeading": "Links from the board:",
-  "audit.deletedUser": "(deleted user)"
+  "audit.deletedUser": "(deleted user)",
+  "oauth.title": "Authorize access to Folio",
+  "oauth.heading": "{app} wants to connect to your Folio",
+  "oauth.signedInAs": "Signed in as {user}",
+  "oauth.willOpen": "After you decide, you will be sent back to {host}.",
+  "oauth.unverifiedDcr": "This app registered itself automatically; Folio has not verified who runs it. Allow only if you just started connecting it yourself.",
+  "oauth.unverifiedCimd": "This app is identified by {host}. Allow only if you just started connecting it yourself.",
+  "oauth.canDo": "It will be able to:",
+  "oauth.read": "Read the pages, tables and boards you can access",
+  "oauth.write": "Create and change pages, tables and boards as you (every change is saved in Git history)",
+  "oauth.writeOptional": "Also allow it to make changes (write access)",
+  "oauth.sameRights": "It acts with your rights only: it cannot see anything you cannot see. You can disconnect it at any time in Settings, API tokens, Connected apps.",
+  "oauth.allow": "Allow",
+  "oauth.deny": "Deny",
+  "oauth.errorTitle": "Cannot authorize",
+  "oauth.back": "Go back to the app and start the connection again."
 }

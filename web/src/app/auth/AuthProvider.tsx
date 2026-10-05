@@ -144,7 +144,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   if (!data.user) {
-    return <LoginScreen onDone={() => refetch()} google={data.google} />;
+    return <LoginScreen onDone={() => refetch()} google={data.google} demo={data.demo} />;
   }
 
   const value: AuthContextValue = {

@@ -79,6 +79,8 @@ In the order it was built.
 | 42 | Live tree and input methods | The sidebar page tree updates by itself when someone else changes it; emoji panels, dead keys and phone keyboards no longer break tables; a pasted address over selected text makes a link; whiteboard labels stay on top in rendered pictures; the assistant starts again in the Docker image |
 | 43 | Assistant analytics | 👍/👎 on answers, a periodic "did it solve your question?" survey, questions the assistant could not answer, and an instance-administrator page with filters (migration 032) |
 | 44 | Assistant security and analytics for space administrators | The assistant has no file or shell tools, only Folio's own; a space or page without any role looks the same as a missing one; space administrators see the analytics of their own spaces; the person's own question, space names and a "who opened this conversation" list (migration 033); an unanswered question links the pages the assistant read, space names in the space administrator's note, the Ask/Agent labels in Ukrainian, one report per question per run |
+| 45 | OAuth for MCP | Folio is its own OAuth 2.1 authorization server, so claude.ai, Claude Desktop and ChatGPT connect without a pasted token; consent screen, rotating refresh tokens, audience binding, "Connected apps" (migration 034); tool annotations and server instructions on all 21 tools |
+| 46 | Install kits and demo mode | A published image for amd64 and arm64 and kits for ten platforms; an inert-by-default public-demo mode for running your own demo; `TRUST_PROXY` for the sign-in rate limit behind a proxy |
 
 ## What comes next
 
@@ -96,9 +98,8 @@ picked up.
 
 **Reach**
 
+- Check the kits on each platform (only plain Docker Compose has been run end to end).
 - More providers for the assistant.
-- Templates for container platforms.
-- A public demo instance.
 - Share links, history and content search for file pages.
 
 **Depth**

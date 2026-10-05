@@ -23,9 +23,11 @@ import * as userConfluenceCredentials from '../userConfluenceCredentials.js';
 import { saveConfluenceCredentialBodySchema } from '../userConfluenceCredentials.js';
 import type { ConfluenceCredentialInfo } from '../userConfluenceCredentials.js';
 import { recordAudit } from '../audit.js';
+import { assertNotDemo, assertNotDemoAccount, demoInfoFor, isDemoAccountEmail } from '../demo.js';
+
 
 async function toAuthState(user: User): Promise<AuthState> {
-  return { needsSetup: false, user, memberships: await session.membershipsFor(user), google: isGoogleEnabled() };
+  return { needsSetup: false, user, memberships: await session.membershipsFor(user), google: isGoogleEnabled(), demo: demoInfoFor(true) };
 }
 
 /** Space-member endpoints accept either a user id or an email as the :identifier segment. */
@@ -44,6 +46,8 @@ export function registerPublicAuthRoutes(app: FastifyInstance): void {
       user,
       memberships: user ? await session.membershipsFor(user) : {},
       google: isGoogleEnabled(),
+      // Public-demo mode only (server/demo.ts); undefined — and so absent from the JSON — everywhere else.
+      demo: demoInfoFor(Boolean(user)),
     };
     return state;
   });
@@ -125,8 +129,17 @@ export function registerProtectedAuthRoutes(app: FastifyInstance): void {
     session.requireCookieAuth(request);
     session.requireInstanceAdmin(request);
     const { id } = request.params as { id: string };
-    if (!(await store.findStoredUserById(id))) throw new HttpError(404, 'user not found');
+    const target = await store.findStoredUserById(id);
+    if (!target) throw new HttpError(404, 'user not found');
     const body = parseBody(updateUserBodySchema, lowerCaseUsernameField(request.body));
+
+    // Public demo: a shared demo login must keep working for the next visitor.
+    // A demo account may not set anyone's password, nor lock out / demote another demo account.
+    const caller = request.authUser!;
+    if (body.password !== undefined) assertNotDemoAccount(caller, 'Changing a password');
+    if ((body.disabled !== undefined || body.isAdmin !== undefined) && isDemoAccountEmail(target.email)) {
+      assertNotDemoAccount(caller, 'Changing a demo account');
+    }
 
     if (await store.wouldRemoveLastActiveAdmin(id, body)) {
       throw conflict('cannot demote or disable the last active instance admin');
@@ -201,6 +214,8 @@ export function registerProtectedAuthRoutes(app: FastifyInstance): void {
     // but doing it here first is what keeps a mixed-case handle from being
     // rejected as invalid in the first place.
     const body = parseBody(updateMyPreferencesBodySchema, lowerCaseUsernameField(request.body));
+    // Public demo: the login is shared, so a visitor must not rename it (language stays editable).
+    if (body.name !== undefined || body.username !== undefined) assertNotDemo('Changing the name or username');
     // {} is valid per the schema (every field optional) -- nothing to change, return current state.
     let user = request.authUser!;
     if (body.lang !== undefined) user = await store.updateUserLang(user.id, body.lang);
@@ -258,6 +273,7 @@ export function registerProtectedAuthRoutes(app: FastifyInstance): void {
 
   app.post('/api/me/tokens', async (request, reply) => {
     session.requireCookieAuth(request);
+    assertNotDemo('Creating API tokens');
     const body = parseBody(createApiTokenBodySchema, request.body);
     const created: CreatedApiToken = await store.createApiToken(request.authUser!.id, body.name, body.scopes);
     recordAudit(request.authUser!.id, 'token.created', created.id, { name: created.name, scopes: created.scopes });
@@ -286,6 +302,7 @@ export function registerProtectedAuthRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/me/git-credentials', async (request, reply) => {
+    assertNotDemo('Saving git credentials');
     session.requireCookieAuth(request);
     session.requireWriteScope(request);
     const body = parseBody(saveGitCredentialBodySchema, request.body);
@@ -317,6 +334,7 @@ export function registerProtectedAuthRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/me/confluence-credentials', async (request, reply) => {
+    assertNotDemo('Saving Confluence credentials');
     session.requireCookieAuth(request);
     session.requireWriteScope(request);
     const body = parseBody(saveConfluenceCredentialBodySchema, request.body);

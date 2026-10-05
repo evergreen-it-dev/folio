@@ -3,6 +3,7 @@ import { Outlet, useLocation, useParams } from 'react-router';
 import { Sidebar } from './sidebar/Sidebar';
 import { Header } from './header/Header';
 import { ConflictBanner } from './git/ConflictBanner';
+import { DemoBanner } from './DemoBanner';
 import { QuickSwitcher } from './switcher/QuickSwitcher';
 import { useLocalStorage } from './hooks';
 import { SetPagePresenceContext, type PagePresencePerson } from './presence';
@@ -142,6 +143,7 @@ export function Shell() {
         onMobileClose={() => setMobileSidebarOpen(false)}
       />
       <div className="flex min-w-0 flex-1 flex-col">
+        <DemoBanner />
         <Header
           space={space}
           pageId={headerInfo?.pageId}
