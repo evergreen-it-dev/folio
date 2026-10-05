@@ -6,6 +6,8 @@ time. AI agents read and write the same pages. One command to run it yourself.
 
 Website: <https://foliowiki.online>
 
+Try the public demo: <https://demo.foliowiki.online> — pick Sam on the sign-in screen. Shared login, data resets every 24 hours; don't enter personal data or API keys.
+
 ![A page in Folio](docs/images/document.png)
 
 Folio was built to replace Confluence and Notion for a real team — and it was
@@ -495,6 +497,7 @@ gets in your way.
 ## Documentation
 
 - [Website: foliowiki.online](https://foliowiki.online)
+- [Public demo: demo.foliowiki.online](https://demo.foliowiki.online) — shared login, resets every 24 hours
 - [Installation, HTTPS, updates, backups](docs/INSTALL.md)
 - [Features](docs/FEATURES.md)
 - [What is not there yet](docs/LIMITATIONS.md)

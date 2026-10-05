@@ -14,6 +14,10 @@ what is not there.
 - **The built-in AI assistant needs a Cursor subscription** and sends the
   pages it works with to that service. Other providers are not supported yet.
   Without a subscription the rest of Folio works normally.
+- **The public demo is shared and resets daily.** It is at
+  <https://demo.foliowiki.online>: one login for everyone, data reset every
+  24 hours. Tokens, Git and import, share links, invitations and the AI
+  assistant are turned off there. Don't enter personal data or API keys.
 - **One agent per space.** `.agent` customizes the assistant for a space; a
   space cannot have several differently configured agents.
 

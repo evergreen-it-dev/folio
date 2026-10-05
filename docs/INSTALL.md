@@ -153,7 +153,7 @@ repository after each synchronization.
 Ready-made kits install Folio from the published image
 (`ghcr.io/evergreen-it-dev/folio`, for amd64 and arm64) without building
 anything. Each kit has its own README with steps, settings, updating and backup.
-Prefer to look first? [Try the public demo](https://demo.foliowiki.online).
+Prefer to look first? [Try the public demo](https://demo.foliowiki.online) — pick Sam on the sign-in screen. The login is shared and the data resets every 24 hours, so don't enter personal data or API keys.
 
 | Platform | How | Kit |
 |---|---|---|

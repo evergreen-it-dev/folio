@@ -93,7 +93,8 @@ Every path that returns content filters by these rules: the tree, search,
 quick switcher, subtree, backlinks, collaboration, MCP, export.
 
 **Public-demo mode** (`server/demo.ts`, `FOLIO_DEMO_MODE=1`) is inert unless
-switched on: `GET /api/auth/state` then carries the demo accounts (to
+switched on (the project's own demo runs it at <https://demo.foliowiki.online>,
+shared login, data reset every 24 hours): `GET /api/auth/state` then carries the demo accounts (to
 signed-out visitors only) and the reset interval, the sign-in screen shows
 account cards and the app a banner. For everyone in that mode, tokens, the
 assistant and AI keys, endpoints that reach a host the caller picks (git,
