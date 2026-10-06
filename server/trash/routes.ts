@@ -21,6 +21,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as session from '../auth/session.js';
 import { parseBody, queryString } from '../validate.js';
+import { assertNotDemoAccount } from '../demo.js';
 import { backfillTrashFromDisk } from './backfill.js';
 import { emptyTrash, getTrashSettings, listTrash, purgeTrashItem, restoreTrashItem, setTrashRetention } from './service.js';
 
@@ -49,6 +50,7 @@ export function registerTrashRoutes(app: FastifyInstance): void {
   app.get('/api/trash/settings', async () => getTrashSettings());
 
   app.put('/api/trash/settings', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Changing the trash retention');
     // The one instance-ADMIN endpoint in this file (setTrashRetention rejects
     // a non-admin actor), so it falls under DEV-PLAN round 7's blanket rule:
     // admin endpoints are unreachable via a PAT whatever its scope. The
@@ -67,6 +69,7 @@ export function registerTrashRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/trash/:id', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Purging the trash');
     const { id } = request.params as { id: string };
     session.requireWriteScope(request);
     return purgeTrashItem(request.authUser!, id);
@@ -74,6 +77,7 @@ export function registerTrashRoutes(app: FastifyInstance): void {
 
   // "Empty the trash" — everything the caller can see, optionally one space.
   app.delete('/api/trash', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Emptying the trash');
     session.requireWriteScope(request);
     return emptyTrash(request.authUser!, queryString(request.query, 'space') || undefined);
   });

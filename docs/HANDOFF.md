@@ -99,16 +99,16 @@ signed-out visitors only) and the reset interval, the sign-in screen shows
 account cards and the app a banner. For everyone in that mode, tokens, the
 assistant and AI keys, endpoints that reach a host the caller picks (git,
 Confluence import), space creation, share links, invitations and name changes
-answer 403, and uploads are capped. **`TRUST_PROXY`** (`server/trustProxy.ts`,
+answer 403, and uploads are capped. Demo accounts may be space administrators for editing `.agent`, but delete/rename space, members and roles, git sync, page permissions, trash purge and removing `.agent` itself answer 403 (`server/demo.ts`); `/mcp` and the OAuth credential endpoints are rate and size limited (`server/demoLimits.ts`, `FOLIO_DEMO_MCP_RPM`, `FOLIO_DEMO_MCP_WRITES_PER_HOUR`). **`TRUST_PROXY`** (`server/trustProxy.ts`,
 off by default) lets `request.ip` come from `X-Forwarded-For`, but only from a
 proxy on a loopback or private address; without it the sign-in rate limit is
 one bucket for all visitors behind a proxy.
 
 ### Agents
 
-- **MCP** at `/mcp`, 21 tools, each with explicit `title` and
+- **MCP** at `/mcp`, 23 tools, each with explicit `title` and
   `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`
-  annotations, plus a short `instructions` text on `initialize`. It accepts a
+  annotations, plus a short `instructions` text on `initialize`. `search` and `fetch` are read-only twins of `search_pages` and `read_page` with the same access rules; they exist because ChatGPT deep research and company knowledge only accept tools with exactly those names. Ready-made client setups live in `integrations/` (placeholders only), and `.claude-plugin/marketplace.json` makes the Claude Code plugin installable from this repository. It accepts a
   personal access token (`folio_pat_…`) or an OAuth access token
   (`folio_oat_…`); the code is `server/mcpRoutes.ts`. Folio is its own OAuth
   2.1 authorization server (`server/oauth/`, migration 034): discovery
@@ -302,7 +302,7 @@ Each of these was a real defect. They are here so that nobody pays twice.
 - Whiteboard editing and the quick switcher with an open keyboard on a real
   phone.
 - Automatic HTTPS with a real domain (checked with a local certificate).
-- The install kits on their platforms (only plain Docker Compose has been run end to end).
+- The install kits on their platforms (only plain Docker Compose and Coolify have been run end to end; Folio's own production runs on Coolify).
 
 **Languages**
 

@@ -261,7 +261,7 @@ describe('full flow with the MCP SDK OAuth client', () => {
     // The access token works on /mcp, through a real MCP client.
     const client = await mcpClient(tokens!.access_token);
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(21);
+    expect(tools).toHaveLength(23);
     expect(client.getInstructions()).toMatch(/Folio is a team wiki/);
     await client.close();
 

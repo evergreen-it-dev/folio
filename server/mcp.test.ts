@@ -19,8 +19,9 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { setUpTestSchema, deleteTestSpace } from './db/testSchema.js';
 import * as storage from './storage.js';
 import * as authStore from './auth/store.js';
+import * as pageAccess from './pageAccess.js';
 import { readFileSync } from 'node:fs';
-import { buildFolioMcpServer, FOLIO_MCP_INSTRUCTIONS, FOLIO_SERVER_VERSION, type McpActor } from './mcp.js';
+import { buildFolioMcpServer, FOLIO_MCP_INSTRUCTIONS, FOLIO_SERVER_VERSION, MCP_WRITE_TOOL_NAMES, type McpActor } from './mcp.js';
 import type { User } from '../shared/contracts.js';
 
 async function connectedClient(actor: McpActor): Promise<{ client: Client; close: () => Promise<void> }> {
@@ -62,11 +63,11 @@ describe('server/mcp.ts — server identity', () => {
 describe('server/mcp.ts — tool annotations and instructions', () => {
   const actor: McpActor = { user: { id: 'nobody' } as User, scopes: ['read'], tokenId: 'test-annotations-token' };
 
-  it('annotates all 21 tools: a title, explicit booleans, and readOnlyHint or destructiveHint', async () => {
+  it('annotates all 23 tools: a title, explicit booleans, and readOnlyHint or destructiveHint', async () => {
     const { client, close } = await connectedClient(actor);
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(21);
+      expect(tools).toHaveLength(23);
       for (const tool of tools) {
         const a = tool.annotations;
         expect(a?.title ?? tool.title, `${tool.name} title`).toBeTruthy();
@@ -77,8 +78,11 @@ describe('server/mcp.ts — tool annotations and instructions', () => {
         if (a?.readOnlyHint) expect(a.destructiveHint).toBe(false);
       }
       const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort();
-      expect(readOnly).toHaveLength(11);
+      expect(readOnly).toHaveLength(13);
       expect(readOnly).toContain('search_pages');
+      // ChatGPT deep research needs these two exact names, and they must never count as writes.
+      expect(readOnly).toContain('search');
+      expect(readOnly).toContain('fetch');
       // Tools that replace or delete content say so.
       const byName = new Map(tools.map((t) => [t.name, t.annotations]));
       for (const name of ['update_page', 'update_board', 'folio_table_update', 'folio_table_delete']) expect(byName.get(name)?.destructiveHint, name).toBe(true);
@@ -96,6 +100,8 @@ describe('server/mcp.ts — tool annotations and instructions', () => {
       expect(writers.map((t) => t.name).sort()).toEqual(
         ['board_ops', 'create_board', 'create_page', 'folio_table_add_column', 'folio_table_create', 'folio_table_delete', 'folio_table_insert', 'folio_table_update', 'update_board', 'update_page'],
       );
+      // The public demo's write limit (demoLimits.ts) counts exactly these names: a new write tool must be added to the list.
+      expect([...MCP_WRITE_TOOL_NAMES].sort()).toEqual(writers.map((t) => t.name).sort());
     } finally {
       await close();
     }
@@ -460,5 +466,157 @@ describe('server/mcp.ts — folio_table_* tools (real fs + real PG, in-memory MC
     } finally {
       await close();
     }
+  });
+});
+
+describe('server/mcp.ts — search and fetch (ChatGPT deep research format; real fs + real PG)', () => {
+  let teardownSchema: () => Promise<void>;
+  let admin: User;
+  let editor: User;
+  let viewer: User;
+  let outsider: User;
+  let ownSpace: string;
+  let otherSpace: string;
+  const stamp = Date.now();
+  const marker = `zebrafish${stamp}`;
+  const originalPublicUrl = process.env.PUBLIC_URL;
+  let openDocId: string;
+  let privateDocId: string;
+  let restrictedDocId: string;
+  let agentDocId: string;
+  let tableId: string;
+
+  const actorFor = (user: User): McpActor => ({ user, scopes: ['read'], tokenId: `test-sf-${user.id}` });
+  const call = async (user: User, name: string, args: Record<string, unknown>, options?: { origin?: string }) => {
+    const server = buildFolioMcpServer(actorFor(user), options);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+    try {
+      return await client.callTool({ name, arguments: args });
+    } finally {
+      await client.close();
+    }
+  };
+
+  beforeAll(async () => {
+    process.env.PUBLIC_URL = 'https://folio.example.com';
+    teardownSchema = await setUpTestSchema();
+    const mk = (n: string) => authStore.createUser({ email: `sf-${n}-${stamp}@test.local`, name: n, passwordHash: 'x', isAdmin: false });
+    [admin, editor, viewer, outsider] = await Promise.all([mk('admin'), mk('editor'), mk('viewer'), mk('outsider')]);
+    ownSpace = (await storage.createSpace(`SF Own ${stamp}`, admin.id)).slug;
+    otherSpace = (await storage.createSpace(`SF Other ${stamp}`, null)).slug;
+    await authStore.setMembership(ownSpace, admin.id, 'admin');
+    await authStore.setMembership(ownSpace, editor.id, 'editor');
+    await authStore.setMembership(ownSpace, viewer.id, 'viewer');
+
+    const doc = (space: string, parentPath: string, title: string, body: string) =>
+      storage.createPage({ space, parentPath, title, kind: 'doc' }, { docBody: body });
+    openDocId = (await doc(ownSpace, '', 'Open handbook', `# Open handbook\n\nThe ${marker} lives here.\n`)).id;
+    privateDocId = (await doc(otherSpace, '', 'Hidden handbook', `# Hidden handbook\n\nThe ${marker} hides here.\n`)).id;
+    restrictedDocId = (await doc(ownSpace, '', 'Restricted note', `# Restricted note\n\nThe ${marker} is restricted.\n`)).id;
+    agentDocId = (await doc(ownSpace, '.agent', 'Agent rules', `# Agent rules\n\nThe ${marker} is a rule.\n`)).id;
+    await pageAccess.setAccess(admin, await storage.requireEntry(restrictedDocId), 'restricted', [{ userId: editor.id, role: 'editor' }]);
+    const table = await storage.createPage({ space: ownSpace, parentPath: '', title: 'Fish table', kind: 'table', columns: [{ id: 'species', name: 'Species', type: 'text' }] as never });
+    tableId = table.id;
+  });
+  afterAll(async () => {
+    if (originalPublicUrl === undefined) delete process.env.PUBLIC_URL;
+    else process.env.PUBLIC_URL = originalPublicUrl;
+    await deleteTestSpace(ownSpace);
+    await deleteTestSpace(otherSpace);
+    await teardownSchema();
+  });
+
+  const parsed = (r: Awaited<ReturnType<typeof call>>) => JSON.parse(resultText(r)) as Record<string, any>;
+
+  it('search returns { results: [{ id, title, url }] } as structuredContent and as a JSON string in content', async () => {
+    const r = await call(editor, 'search', { query: marker });
+    expect(r.isError).toBeFalsy();
+    const body = parsed(r);
+    expect(Object.keys(body)).toEqual(['results']);
+    expect(r.structuredContent).toEqual(body);
+    const hit = body.results.find((x: { id: string }) => x.id === openDocId);
+    expect(hit).toEqual({ id: openDocId, title: 'Open handbook', url: `https://folio.example.com/s/${ownSpace}/p/${openDocId}` });
+    expect((r.content as unknown[]).length).toBe(1);
+  });
+
+  it('search finds nothing for an empty query and for a word nobody wrote', async () => {
+    expect(parsed(await call(editor, 'search', { query: '   ' }))).toEqual({ results: [] });
+    expect(parsed(await call(editor, 'search', { query: `nothing${stamp}at-all` }))).toEqual({ results: [] });
+  });
+
+  it('url falls back to the request origin when PUBLIC_URL is unset', async () => {
+    delete process.env.PUBLIC_URL;
+    try {
+      const body = parsed(await call(editor, 'search', { query: marker }, { origin: 'http://wiki.local:4871' }));
+      expect(body.results.find((x: { id: string }) => x.id === openDocId).url).toBe(`http://wiki.local:4871/s/${ownSpace}/p/${openDocId}`);
+    } finally {
+      process.env.PUBLIC_URL = 'https://folio.example.com';
+    }
+  });
+
+  it('fetch returns { id, title, text, url, metadata } with the page as markdown', async () => {
+    const r = await call(viewer, 'fetch', { id: openDocId });
+    expect(r.isError).toBeFalsy();
+    const body = parsed(r);
+    expect(r.structuredContent).toEqual(body);
+    expect(Object.keys(body).sort()).toEqual(['id', 'metadata', 'text', 'title', 'url']);
+    expect(body).toMatchObject({ id: openDocId, title: 'Open handbook', url: `https://folio.example.com/s/${ownSpace}/p/${openDocId}` });
+    expect(body.text).toContain(`The ${marker} lives here.`);
+    expect(body.metadata).toMatchObject({ space: ownSpace, kind: 'doc' });
+    expect(body.metadata.path).toMatch(/\.md$/);
+    expect(Number.isNaN(Date.parse(body.metadata.updatedAt))).toBe(false);
+  });
+
+  it('fetch renders a data table as a markdown table', async () => {
+    const editorClient = await call(editor, 'fetch', { id: tableId });
+    // Empty table: header and the row count line.
+    expect(parsed(editorClient).text).toContain('| Species |');
+    expect(parsed(editorClient).text).toContain('0 of 0 row(s) shown');
+    expect(parsed(editorClient).metadata.kind).toBe('table');
+  });
+
+  it("someone else's private space is neither searched nor fetched, and fetch answers like for an id that does not exist", async () => {
+    const found = parsed(await call(editor, 'search', { query: marker }));
+    expect(found.results.map((x: { id: string }) => x.id)).not.toContain(privateDocId);
+    const hidden = await call(editor, 'fetch', { id: privateDocId });
+    const missing = await call(editor, 'fetch', { id: 'no-such-page-id' });
+    expect(hidden.isError).toBe(true);
+    expect(missing.isError).toBe(true);
+    expect(resultText(hidden)).toBe('page not found');
+    expect(resultText(hidden)).toBe(resultText(missing));
+    // An outsider with no membership anywhere sees nothing at all.
+    expect(parsed(await call(outsider, 'search', { query: marker }))).toEqual({ results: [] });
+    expect(resultText(await call(outsider, 'fetch', { id: openDocId }))).toBe('page not found');
+  });
+
+  it('page-level access: a restricted page is searched and fetched only by those it is shared with', async () => {
+    const forEditor = parsed(await call(editor, 'search', { query: marker })).results.map((x: { id: string }) => x.id);
+    const forViewer = parsed(await call(viewer, 'search', { query: marker })).results.map((x: { id: string }) => x.id);
+    expect(forEditor).toContain(restrictedDocId);
+    expect(forViewer).not.toContain(restrictedDocId);
+    expect(forViewer).toContain(openDocId);
+    expect((await call(editor, 'fetch', { id: restrictedDocId })).isError).toBeFalsy();
+    const denied = await call(viewer, 'fetch', { id: restrictedDocId });
+    expect(denied.isError).toBe(true);
+    expect(resultText(denied)).toBe('page not found');
+  });
+
+  it('.agent pages are visible to a space admin and invisible to an editor, in search and in fetch', async () => {
+    const forAdmin = parsed(await call(admin, 'search', { query: marker })).results.map((x: { id: string }) => x.id);
+    const forEditor = parsed(await call(editor, 'search', { query: marker })).results.map((x: { id: string }) => x.id);
+    expect(forAdmin).toContain(agentDocId);
+    expect(forEditor).not.toContain(agentDocId);
+    expect(parsed(await call(admin, 'fetch', { id: agentDocId })).text).toContain('is a rule');
+    const denied = await call(editor, 'fetch', { id: agentDocId });
+    expect(denied.isError).toBe(true);
+    expect(resultText(denied)).toBe('page not found');
+  });
+
+  it('a disabled user searches and fetches nothing', async () => {
+    const disabled = { ...editor, disabled: true } as User;
+    expect(parsed(await call(disabled, 'search', { query: marker }))).toEqual({ results: [] });
+    expect((await call(disabled, 'fetch', { id: openDocId })).isError).toBe(true);
   });
 });

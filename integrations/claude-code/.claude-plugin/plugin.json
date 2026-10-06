@@ -1,0 +1,29 @@
+{
+  "name": "folio",
+  "displayName": "Folio",
+  "version": "0.1.0",
+  "description": "Connect Claude Code to a Folio wiki over MCP: search, read and update pages, tables and whiteboards, with a skill that explains how.",
+  "author": {
+    "name": "Evergreen",
+    "url": "https://github.com/evergreen-it-dev"
+  },
+  "homepage": "https://github.com/evergreen-it-dev/folio/tree/main/integrations/claude-code",
+  "repository": "https://github.com/evergreen-it-dev/folio",
+  "license": "MIT",
+  "keywords": ["folio", "wiki", "mcp", "knowledge-base", "docs"],
+  "userConfig": {
+    "folio_mcp_url": {
+      "type": "string",
+      "title": "Folio MCP address",
+      "description": "The full address of your Folio's MCP endpoint, for example https://your-folio.example.com/mcp",
+      "required": true
+    },
+    "folio_token": {
+      "type": "string",
+      "title": "Folio personal access token",
+      "description": "Create it in Folio: user menu, API tokens. Scope read for questions, write to let the agent edit. Stored in your system's secure storage.",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

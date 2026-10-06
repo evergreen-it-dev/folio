@@ -1,0 +1,15 @@
+[
+  {
+    "type": "mcp",
+    "url": "https://your-folio.example.com/mcp",
+    "path": "",
+    "auth_type": "bearer",
+    "key": "REPLACE_WITH_A_READ_ONLY_FOLIO_TOKEN",
+    "config": { "enable": true },
+    "info": {
+      "id": "folio",
+      "name": "Folio wiki",
+      "description": "Search and read the team wiki. Answer from the pages and link them."
+    }
+  }
+]

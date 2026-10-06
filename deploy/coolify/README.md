@@ -66,9 +66,8 @@ the server) or snapshot the server's disk.
 
 - One instance of the app only (the disk is local to the container).
 - Redeploys restart the app; open pages reconnect by themselves.
-- Tested with the Compose file and substituted magic variables on a local
-  Docker; not on a live Coolify instance. If something differs on yours,
-  please open an issue.
+- Tested: Folio's own production runs on Coolify. If something differs on
+  your instance, please open an issue.
 
 ## The official Coolify catalog
 

@@ -38,6 +38,7 @@ import * as session from '../auth/session.js';
 import { recordAudit } from '../audit.js';
 import { badRequest, forbidden, notFound } from '../errors.js';
 import { parseBody } from '../validate.js';
+import { assertNotDemoAccount } from '../demo.js';
 import { resolveTextLanguage } from '../serverText.js';
 
 const ACCESS_LOG_LIMIT = 100;
@@ -192,6 +193,7 @@ export function registerAccessRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/access/bulk', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Changing access rights');
     session.requireCookieAuth(request);
     session.requireWriteScope(request);
     const body = parseBody(accessBulkBodySchema, request.body);
@@ -199,6 +201,7 @@ export function registerAccessRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/spaces/:space', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Changing space visibility');
     session.requireCookieAuth(request);
     session.requireWriteScope(request);
     const { space } = request.params as { space: string };

@@ -1,0 +1,5 @@
+# Add this to ~/.codex/config.toml, or to .codex/config.toml in a trusted project.
+# Put the token in the environment first:  export FOLIO_TOKEN=folio_pat_...
+[mcp_servers.folio]
+url = "https://your-folio.example.com/mcp"
+bearer_token_env_var = "FOLIO_TOKEN"

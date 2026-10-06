@@ -12,7 +12,16 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { ApiTokenScope, User } from '../shared/contracts.js';
 import * as authStore from './auth/store.js';
 import * as session from './auth/session.js';
-import { buildFolioMcpServer } from './mcp.js';
+import { isDemoMode } from './demo.js';
+import {
+  DEMO_MCP_MAX_BODY_BYTES,
+  checkDemoMcpAnonymousRate,
+  checkDemoMcpRate,
+  checkDemoMcpWrites,
+  inspectMcpBody,
+  type DemoLimitResult,
+} from './demoLimits.js';
+import { MCP_WRITE_TOOL_NAMES, buildFolioMcpServer } from './mcp.js';
 import * as oauthStore from './oauth/store.js';
 import { issuerFor, mcpResourceFor, protectedResourceMetadataUrl } from './oauth/routes.js';
 
@@ -50,15 +59,45 @@ function sendUnauthorized(request: FastifyRequest, reply: FastifyReply, message:
   reply.header('WWW-Authenticate', challenge).status(401).send({ jsonrpc: '2.0', error: { code: -32001, message }, id: null });
 }
 
+/** A JSON-RPC error a client can show: HTTP 429 (+ Retry-After) for a limit, 413 for a size cap. */
+function sendLimited(reply: FastifyReply, status: 429 | 413, message: string, id: string | number | null, retryAfterSeconds?: number): void {
+  if (retryAfterSeconds !== undefined) reply.header('Retry-After', String(retryAfterSeconds));
+  reply.status(status).send({ jsonrpc: '2.0', error: { code: status === 429 ? -32029 : -32030, message }, id });
+}
+
+function rateMessage(what: string, r: DemoLimitResult): string {
+  return `Rate limit reached in the public demo (${what}). Retry in ${r.retryAfterSeconds} s.`;
+}
+
 export function registerMcpRoutes(app: FastifyInstance): void {
-  app.post('/mcp', async (request, reply) => {
+  // Public demo: refuse an oversized body from its Content-Length before it is read (the route's own bodyLimit covers chunked uploads).
+  const refuseOversizedInDemo = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isDemoMode()) return;
+    const length = Number(request.headers['content-length']);
+    if (Number.isFinite(length) && length > DEMO_MCP_MAX_BODY_BYTES) {
+      sendLimited(reply, 413, 'Request too large for the public demo (limit 1 MB).', null);
+      return reply;
+    }
+  };
+
+  app.post('/mcp', { bodyLimit: DEMO_MCP_MAX_BODY_BYTES, onRequest: refuseOversizedInDemo }, async (request, reply) => {
     const auth = await resolveMcpAuth(request);
     if (!auth) {
+      const anon = checkDemoMcpAnonymousRate(request.ip);
+      if (anon.limited) return sendLimited(reply, 429, rateMessage('too many requests', anon), null, anon.retryAfterSeconds);
       sendUnauthorized(request, reply, 'authentication required: Authorization: Bearer <folio_pat_… or OAuth access token>');
       return;
     }
+    if (isDemoMode()) {
+      const body = inspectMcpBody(request.body, MCP_WRITE_TOOL_NAMES);
+      const rate = checkDemoMcpRate(auth.user.id, request.ip);
+      if (rate.limited) return sendLimited(reply, 429, rateMessage('requests per minute', rate), body.id, rate.retryAfterSeconds);
+      if (body.oversizedWrite) return sendLimited(reply, 413, 'A write in the public demo may carry at most 200 KB of content.', body.id);
+      const writes = checkDemoMcpWrites(request.ip, body.writeCalls);
+      if (writes.limited) return sendLimited(reply, 429, rateMessage('writes per hour', writes), body.id, writes.retryAfterSeconds);
+    }
     reply.hijack();
-    const server = buildFolioMcpServer({ user: auth.user, scopes: auth.scopes, tokenId: auth.tokenId });
+    const server = buildFolioMcpServer({ user: auth.user, scopes: auth.scopes, tokenId: auth.tokenId }, { origin: `${request.protocol}://${request.hostname}` });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     try {
       await server.connect(transport);
@@ -81,9 +120,13 @@ export function registerMcpRoutes(app: FastifyInstance): void {
     app[method]('/mcp', async (request, reply) => {
       const auth = await resolveMcpAuth(request);
       if (!auth) {
+        const anon = checkDemoMcpAnonymousRate(request.ip);
+        if (anon.limited) return sendLimited(reply, 429, rateMessage('too many requests', anon), null, anon.retryAfterSeconds);
         sendUnauthorized(request, reply, 'authentication required');
         return;
       }
+      const rate = checkDemoMcpRate(auth.user.id, request.ip);
+      if (rate.limited) return sendLimited(reply, 429, rateMessage('requests per minute', rate), null, rate.retryAfterSeconds);
       reply.status(405).send({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null });
     });
   }

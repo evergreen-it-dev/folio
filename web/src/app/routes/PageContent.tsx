@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { officeFormat, type PageDoc } from '@shared/contracts';
+import { AGENT_FOLDER, officeFormat, type PageDoc } from '@shared/contracts';
 import { PageEditor } from '../../editor';
 import { BoardEditor } from '../../diagrams';
 import { api, ApiError } from '../api';
@@ -17,6 +17,7 @@ import { canEditContent } from '../auth/roles';
 import { OutlinePanel } from '../outline/OutlinePanel';
 import { PageChrome } from '../page-meta/PageChrome';
 import { PageConflictBanner } from '../git/PageConflictBanner';
+import { AgentDemoNote } from '../AgentDemoNote';
 import { StaticBoardView } from './StaticBoardView';
 import { PdfView } from './PdfView';
 import { OfficeView } from './OfficeView';
@@ -284,9 +285,11 @@ export function PageContent({ id }: PageContentProps) {
   }
 
   const collabUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/collab`;
+  const inAgentFolder = data.path === AGENT_FOLDER || data.path.startsWith(`${AGENT_FOLDER}/`);
   return (
     <div className="flex h-full flex-col">
       <PageConflictBanner space={data.space} pageId={data.id} />
+      {inAgentFolder && <AgentDemoNote className="shrink-0 bg-amber-50 px-4 py-1.5 dark:bg-amber-950/40" />}
       {/* Round 5: the outline panel is a flex sibling of the editor, not
           something bolted onto editor/'s own layout (out of this agent's area)
           — min-w-0 on the editor's wrapper keeps it from pushing the outline

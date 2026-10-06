@@ -9,7 +9,7 @@ exactly that, from the published image `ghcr.io/evergreen-it-dev/folio`
 | Platform | What you do | Kit | Persistent disk |
 |---|---|---|---|
 | **Any Linux server (VPS)** | Run one command | [vps/](vps/) | yes |
-| **Coolify** | Paste a Compose file | [coolify/](coolify/) | yes |
+| **Coolify** | Paste a Compose file (tested: Folio's own production runs on Coolify) | [coolify/](coolify/) | yes |
 | **Railway** | Click a button (template) | [railway/](railway/) | yes (volume) |
 | **Render** | Click a button (Blueprint) | [render/](render/) and [`render.yaml`](../render.yaml) | paid plans only |
 | **DigitalOcean** | Droplet + cloud-init (App Platform is not possible) | [digitalocean/](digitalocean/) | yes (Droplet disk) |

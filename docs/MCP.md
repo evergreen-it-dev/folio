@@ -22,6 +22,10 @@ Any MCP client that supports the HTTP transport with a custom header can
 connect the same way. Clients that cannot send a header connect through OAuth
 (next section).
 
+Ready-made configs for Claude Code (a plugin with a skill), Cursor, VS Code,
+Codex, n8n, Open WebUI, ChatGPT and Claude are in
+[`integrations/`](../integrations/README.md).
+
 Three access rules:
 
 - `/mcp` accepts a personal access token or an OAuth access token (see below); a session cookie is rejected there with 401. An OAuth access token works only on `/mcp`, not on the REST API.
@@ -71,7 +75,10 @@ Clients are public (no client secret). Redirect URIs must be `https`, or `http` 
 | Pages (scope `write`) | `create_page`, `update_page` |
 | Whiteboards (scope `write`) | `create_board`, `update_board`, `board_ops` |
 | Data tables, reading | `folio_table_list`, `folio_table_schema`, `folio_table_query` |
+| ChatGPT deep research | `search`, `fetch` |
 | Data tables (scope `write`) | `folio_table_insert`, `folio_table_update`, `folio_table_delete`, `folio_table_add_column`, `folio_table_create` |
+
+**`search` and `fetch`.** ChatGPT deep research and company knowledge only work with two read-only tools of exactly these names, so Folio has them next to `search_pages` and `read_page`; they apply the same access rules (spaces, page access, `.agent` for space admins only). `search(query)` returns `{"results": [{"id", "title", "url"}]}`; `fetch(id)` takes an `id` from `search` and returns `{"id", "title", "text", "url", "metadata"}`: `text` is the page as Markdown (a data table as a Markdown table of up to 500 rows, a board as a list of its labels and connections, a PDF or Office file as a short note without the file), `url` is the page's link in Folio, `metadata` holds `space`, `path`, `kind` and `updatedAt`. Both return the result as structured content and as a JSON string in the text content. A page that does not exist and a page you may not see give the same `page not found`.
 
 ## REST: what MCP does not cover
 

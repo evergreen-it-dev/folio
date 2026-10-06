@@ -1,0 +1,17 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "folio-token",
+      "description": "Folio personal access token",
+      "password": true
+    }
+  ],
+  "servers": {
+    "folio": {
+      "type": "http",
+      "url": "https://your-folio.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${input:folio-token}" }
+    }
+  }
+}

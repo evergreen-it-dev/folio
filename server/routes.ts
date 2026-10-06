@@ -65,7 +65,7 @@ import { badRequest, conflict, forbidden, gone, notFound, tooManyRequests } from
 import { resolveTextLanguage } from './serverText.js';
 import { parseBody, queryString } from './validate.js';
 import * as session from './auth/session.js';
-import { assertNotDemo } from './demo.js';
+import { assertDemoAgentRootIntact, assertNotDemo, assertNotDemoAccount } from './demo.js';
 import * as authStore from './auth/store.js';
 import { hashPassword } from './auth/passwords.js';
 import { isGoogleEnabled } from './auth/google.js';
@@ -419,6 +419,7 @@ export function registerRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/admin/spaces/:space', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Renaming a space');
     session.requireCookieAuth(request);
     session.requireWriteScope(request);
     const admin = session.requireInstanceAdmin(request);
@@ -436,6 +437,7 @@ export function registerRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/admin/spaces/:space', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Deleting a space');
     session.requireCookieAuth(request);
     const admin = session.requireInstanceAdmin(request);
     session.requireWriteScope(request);
@@ -541,6 +543,7 @@ export function registerRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/spaces/:space/sync', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Syncing a space with git');
     const { space } = request.params as { space: string };
     if (!(await storage.spaceExists(space))) throw notFound('space');
     if (!(await session.canAdministerSpace(request.authUser!, space))) throw forbidden('requires space admin or instance admin');
@@ -566,6 +569,7 @@ export function registerRoutes(app: FastifyInstance): void {
    * never a looser one.
    */
   app.post('/api/spaces/:space/git/reset-to-remote', async (request): Promise<ResetToRemoteResponse> => {
+    assertNotDemoAccount(request.authUser!, 'Resetting a space to the remote');
     const { space } = request.params as { space: string };
     if (!(await storage.spaceExists(space))) throw notFound('space');
     if (!(await session.canAdministerSpace(request.authUser!, space))) throw forbidden('requires space admin or instance admin');
@@ -857,6 +861,7 @@ export function registerRoutes(app: FastifyInstance): void {
   });
 
   app.put('/api/pages/:id/access', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Changing page permissions');
     const { id } = request.params as { id: string };
     const entry = await session.requirePageRole(request, id, 'editor');
     session.requireCookieAuth(request);
@@ -986,6 +991,7 @@ export function registerRoutes(app: FastifyInstance): void {
     const { id } = request.params as { id: string };
     const body = parseBody(movePageBodySchema, request.body);
     const entry = await session.requirePageRole(request, id, 'editor');
+    assertDemoAgentRootIntact(request.authUser!, entry.relPath, 'Moving the .agent folder');
     const before = snapshotPageChange(entry);
     session.requireWriteScope(request);
     await session.requireAgentWriteAllowed(request.authUser!, entry.space, storage.normalizeDirParam(body.toParentPath));
@@ -1043,6 +1049,7 @@ export function registerRoutes(app: FastifyInstance): void {
     const { id } = request.params as { id: string };
     const body = parseBody(renamePageBodySchema, request.body);
     const entry = await session.requirePageRole(request, id, 'editor');
+    assertDemoAgentRootIntact(request.authUser!, entry.relPath, 'Renaming the .agent folder');
     const before = snapshotPageChange(entry);
     session.requireWriteScope(request);
     gitSync.recordEditor(entry.space, { name: request.authUser!.name, email: request.authUser!.email });
@@ -1099,6 +1106,7 @@ export function registerRoutes(app: FastifyInstance): void {
     const { id } = request.params as { id: string };
     const body = parseBody(renamePageSlugBodySchema, request.body);
     const entry = await session.requirePageRole(request, id, 'editor');
+    assertDemoAgentRootIntact(request.authUser!, entry.relPath, 'Renaming the .agent folder');
     const before = snapshotPageChange(entry);
     session.requireWriteScope(request);
     const author = { name: request.authUser!.name, email: request.authUser!.email };
@@ -1112,6 +1120,7 @@ export function registerRoutes(app: FastifyInstance): void {
   app.delete('/api/pages/:id', async (request) => {
     const { id } = request.params as { id: string };
     const entry = await session.requirePageRole(request, id, 'editor');
+    assertDemoAgentRootIntact(request.authUser!, entry.relPath, 'Deleting the .agent folder');
     session.requireWriteScope(request);
     const before = snapshotPageChange(entry);
     gitSync.recordEditor(entry.space, { name: request.authUser!.name, email: request.authUser!.email });
@@ -1342,6 +1351,7 @@ export function registerRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/invites/:id', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Revoking an invite');
     const { id } = request.params as { id: string };
     session.requireCookieAuth(request);
     session.requireWriteScope(request);

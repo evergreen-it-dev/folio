@@ -128,6 +128,8 @@ function ConnectedApps() {
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [disconnecting, setDisconnecting] = useState<OAuthConnectionInfo | null>(null);
+  // Cache only (as DemoBanner): `demo` is present in /api/auth/state only on a public-demo instance.
+  const { data: authState } = useQuery({ queryKey: ['auth', 'state'], queryFn: api.getAuthState, enabled: false });
   const connections = useQuery({ queryKey: CONNECTIONS_QUERY_KEY, queryFn: api.listOAuthConnections, retry: false });
   const disconnect = useMutation({
     mutationFn: (id: string) => api.revokeOAuthConnection(id),
@@ -142,6 +144,7 @@ function ConnectedApps() {
   return (
     <div className="border-t border-neutral-200 pt-3 dark:border-neutral-800">
       <div className="mb-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('tokens.connected.title')}</div>
+      {authState?.demo && <p className="mb-1.5 text-xs text-amber-700 dark:text-amber-400">{t('tokens.connected.demoNote')}</p>}
       {connections.data.connections.length === 0 ? (
         <p className="text-sm text-neutral-400">{t('tokens.connected.empty')}</p>
       ) : (

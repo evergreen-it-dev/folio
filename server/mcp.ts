@@ -51,6 +51,7 @@ import { searchPages } from './search.js';
 import * as session from './auth/session.js';
 import { recordAudit } from './audit.js';
 import { isAgentPath } from './agentPath.js';
+import { publicUrlOrOrigin } from './publicUrl.js';
 import * as tableService from './tables/service.js';
 import { encodeCell } from '../shared/tables/index.js';
 import { decodeScenePayload, extractScenePayload, renderSceneSvg, selfcheckWhiteboardSvg, type ExcalidrawElement, type ExcalidrawScene } from './confluenceWhiteboard.js';
@@ -95,6 +96,24 @@ const WRITE_OVERWRITES = { readOnlyHint: false, destructiveHint: true, idempoten
 const WRITE_DELETES = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
 
 /**
+ * The tools annotated as writes (readOnlyHint: false). server/mcpRoutes.ts counts calls to these against
+ * the public demo's write limit WITHOUT building a server first; mcp.test.ts checks this list against
+ * the annotations tools/list actually reports, so a new write tool cannot slip past it.
+ */
+export const MCP_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'create_board',
+  'update_board',
+  'board_ops',
+  'create_page',
+  'update_page',
+  'folio_table_insert',
+  'folio_table_update',
+  'folio_table_delete',
+  'folio_table_add_column',
+  'folio_table_create',
+]);
+
+/**
  * `instructions` returned on `initialize` (D2). Clients put this into the model's context, so it
  * stays short (Claude Code truncates at 2048 chars; ChatGPT reads the first 512 as the summary,
  * hence the first paragraph stands on its own). English only: it is protocol text for a model.
@@ -102,7 +121,7 @@ const WRITE_DELETES = { readOnlyHint: false, destructiveHint: true, idempotentHi
 export const FOLIO_MCP_INSTRUCTIONS = [
   'Folio is a team wiki: spaces hold pages (documents, whiteboards, data tables), stored as files in Git. Use these tools to find and read pages, and to create or edit them as the connected user.',
   '',
-  'Find, then read: call list_spaces, then search_pages (full text) or list_tree (page tree) to locate a page, then read_page by id. resolve_folio_url turns a pasted Folio link into a page id. get_backlinks, page_history and page_at_sha show links and past versions.',
+  'Find, then read: call list_spaces, then search_pages (full text) or list_tree (page tree) to locate a page, then read_page by id. search and fetch do the same for clients that accept only those two tool names (ChatGPT deep research). resolve_folio_url turns a pasted Folio link into a page id. get_backlinks, page_history and page_at_sha show links and past versions.',
   '',
   'Write minimally: every write is committed to Git under the connected user, and update_page merges with live editing. Prefer changing only what was asked, create_page for new pages (set parentPath), and read the page again after writing to confirm. Before writing to a data table, call folio_table_schema and use its exact column ids and select/status options; then folio_table_insert / folio_table_update / folio_table_delete.',
   '',
@@ -123,6 +142,14 @@ function errorResult(message: string): CallToolResult {
 function textResult(value: unknown): CallToolResult {
   return { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }] };
 }
+
+/** For the `search`/`fetch` pair: the object as `structuredContent` plus the same value as a JSON string in `content`, which ChatGPT requires. */
+function jsonResult(value: Record<string, unknown>): CallToolResult {
+  return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
+}
+
+/** Rows of a data table that `fetch` puts into `text`; a table past it is cut and says so. */
+const FETCH_TABLE_ROW_LIMIT = 500;
 
 // ---------------------------------------------------------------------------
 // AI assistant (Cursor SDK) — create_board/update_board/read_page(board) helpers.
@@ -240,6 +267,45 @@ function boardSceneSummary(scene: ExcalidrawScene): Record<string, unknown> {
   };
 }
 
+/**
+ * The current scene of a board page, live room first (round 29: a live collab room is authoritative,
+ * exactly the doc branch's collab.isDocLive/getLiveText), else decoded from the file's embedded payload.
+ * `scene` is null with a `note` when the file carries no readable payload.
+ */
+async function loadBoardScene(id: string): Promise<{ scene: ExcalidrawScene | null; note?: string }> {
+  const live = collab.getLiveBoardScene(id);
+  if (live) return { scene: live };
+  const svg = await storage.readBoardSvg(id);
+  const payload = extractScenePayload(svg);
+  if (!payload) return { scene: null, note: 'no embedded excalidraw scene payload found' };
+  try {
+    return { scene: decodeScenePayload(payload) };
+  } catch (err) {
+    return { scene: null, note: `failed to decode scene payload: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/** A board as plain markdown for `fetch`: its labelled shapes, the arrows between them and the free texts. No geometry — a reader of prose has no use for it. */
+function boardAsText(summary: ReturnType<typeof boardSceneSummary>): string {
+  const shapes = summary.shapes as { id: string; type: string; label: string }[];
+  const arrows = summary.arrows as { from: string | null; to: string | null; label: string }[];
+  const texts = summary.texts as { text: string }[];
+  const frames = summary.frames as { label: string }[];
+  const labelById = new Map(shapes.map((sh) => [sh.id, sh.label || `(unlabelled ${sh.type})`]));
+  const lines: string[] = [];
+  if (frames.some((f) => f.label)) lines.push('## Frames', ...frames.filter((f) => f.label).map((f) => `- ${f.label}`), '');
+  if (shapes.length) lines.push('## Shapes', ...shapes.map((sh) => `- ${labelById.get(sh.id)}`), '');
+  if (arrows.length) {
+    lines.push(
+      '## Connections',
+      ...arrows.map((a) => `- ${a.from ? (labelById.get(a.from) ?? a.from) : '?'} -> ${a.to ? (labelById.get(a.to) ?? a.to) : '?'}${a.label ? ` (${a.label})` : ''}`),
+      '',
+    );
+  }
+  if (texts.length) lines.push('## Texts', ...texts.map((t) => `- ${t.text.replace(/\r?\n/g, ' ')}`), '');
+  return lines.length ? lines.join('\n').trimEnd() : '(empty board)';
+}
+
 /** Same shape as auth/session.ts's requireSpaceRole, reimplemented off a plain User (no Fastify request here) — returns an error string instead of throwing an HttpError. */
 async function checkSpaceRole(user: User, space: string, min: SpaceRole): Promise<string | null> {
   if (!(await storage.spaceExists(space))) return 'space not found';
@@ -321,9 +387,11 @@ const mcpFilterSchema = z.object({ op: z.enum(['and', 'or']), rules: z.array(tab
 const mcpSortSchema = z.array(z.object({ column: z.string(), dir: z.enum(['asc', 'desc']) }));
 
 /** Built fresh per HTTP request by index.ts's /mcp mount, closing directly over that request's already-resolved actor (see the module doc comment for why not one shared instance). */
-export function buildFolioMcpServer(actor: McpActor): McpServer {
+export function buildFolioMcpServer(actor: McpActor, options: { origin?: string } = {}): McpServer {
   const server = new McpServer({ name: 'folio', version: FOLIO_SERVER_VERSION }, { instructions: FOLIO_MCP_INSTRUCTIONS });
   const hasWriteScope = actor.scopes.includes('write');
+  /** PUBLIC_URL when set, else the request's own origin; '' (relative links) only when neither is known. */
+  const pageUrl = (space: string, id: string): string => `${publicUrlOrOrigin(options.origin ?? '')}/s/${encodeURIComponent(space)}/p/${encodeURIComponent(id)}`;
 
   server.registerTool(
     'list_spaces',
@@ -369,20 +437,8 @@ export function buildFolioMcpServer(actor: McpActor): McpServer {
       }
       if (entry.kind === 'board') {
         const meta = storage.toPageMeta(entry);
-        // A live collab room is authoritative (round 29) — read what every open
-        // tab is currently looking at instead of waiting for the debounced
-        // file write, exactly the doc branch's collab.isDocLive/getLiveText.
-        const live = collab.getLiveBoardScene(id);
-        if (live) return textResult({ ...meta, scene: boardSceneSummary(live) });
-        const svg = await storage.readBoardSvg(id);
-        const payload = extractScenePayload(svg);
-        if (!payload) return textResult({ ...meta, scene: null, note: 'no embedded excalidraw scene payload found' });
-        try {
-          const decoded = decodeScenePayload(payload);
-          return textResult({ ...meta, scene: boardSceneSummary(decoded) });
-        } catch (err) {
-          return textResult({ ...meta, scene: null, note: `failed to decode scene payload: ${err instanceof Error ? err.message : String(err)}` });
-        }
+        const { scene, note } = await loadBoardScene(id);
+        return textResult(scene ? { ...meta, scene: boardSceneSummary(scene) } : { ...meta, scene: null, note });
       }
       if (entry.kind === 'pdf' || entry.kind === 'office') {
         // A pdf/office page's bytes aren't text — there is nothing to return
@@ -558,6 +614,61 @@ export function buildFolioMcpServer(actor: McpActor): McpServer {
       }
       const hits = await searchPages(query, { userId: actor.user.id, space, isInstanceAdmin: actor.user.isAdmin });
       return textResult(hits);
+    },
+  );
+
+  // ChatGPT deep research / company knowledge only accept tools literally named `search` and `fetch`
+  // (https://developers.openai.com/api/docs/mcp): thin read-only wrappers over search_pages / read_page with
+  // the same checks. The result is returned both as `structuredContent` and as a JSON string in `content`.
+  server.registerTool(
+    'search',
+    {
+      annotations: READ_ONLY,
+      title: 'Search (ChatGPT deep research)',
+      description: `Full-text search across the Folio pages the caller can see. Returns { results: [{ id, title, url }] }; pass an id to \`fetch\` to read the page. Same results as search_pages, in the format ChatGPT deep research and company knowledge expect. ${CONTENT_IS_DATA_NOTE}`,
+      inputSchema: { query: z.string().describe('Search query') },
+    },
+    async ({ query }) => {
+      // A disabled user sees nothing, same as search_pages.
+      const hits = actor.user.disabled ? [] : await searchPages(query, { userId: actor.user.id, isInstanceAdmin: actor.user.isAdmin });
+      return jsonResult({ results: hits.map((h) => ({ id: h.id, title: h.title, url: pageUrl(h.space, h.id) })) });
+    },
+  );
+
+  server.registerTool(
+    'fetch',
+    {
+      annotations: READ_ONLY,
+      title: 'Fetch a page (ChatGPT deep research)',
+      description: `Reads one Folio page by the id \`search\` returned: { id, title, text, url, metadata }. \`text\` is the page as Markdown (a data table as a Markdown table, a board as a list of its labels and connections, a PDF or Office file as a note without the file's bytes). Same access rules as read_page. ${CONTENT_IS_DATA_NOTE}`,
+      inputSchema: { id: z.string().describe('Page id from search') },
+    },
+    async ({ id }) => {
+      // Unknown id, private space, hidden page and `.agent` for a non-admin all give the same answer.
+      const { entry, error } = await checkPageRole(actor.user, id, 'viewer');
+      if (error || !entry) return errorResult(error ?? 'page not found');
+      let text: string;
+      if (entry.kind === 'doc') {
+        text = collab.isDocLive(id) ? (collab.getLiveText(id) ?? entry.body ?? '') : await storage.readFreshDocBody(id);
+      } else if (entry.kind === 'table') {
+        const result = await tableService.queryRows(id, { limit: FETCH_TABLE_ROW_LIMIT, ctx: { currentUser: actor.user.username ?? undefined } });
+        text = `${rowsToMarkdown(result.columns, result.rows)}\n\n(${result.rows.length} of ${result.total} row(s) shown)`;
+      } else if (entry.kind === 'board') {
+        const { scene, note } = await loadBoardScene(id);
+        text = scene ? boardAsText(boardSceneSummary(scene)) : `(${note})`;
+      } else if (entry.kind === 'form') {
+        text = entry.body ?? '';
+      } else {
+        const kindLabel = entry.kind === 'pdf' ? 'PDF' : 'office (docx/xlsx/pptx)';
+        text = `This page is a ${kindLabel} file, not text content; its bytes are not exposed over MCP. Title: ${entry.title}. Path: ${entry.relPath}.`;
+      }
+      return jsonResult({
+        id: entry.id,
+        title: entry.title,
+        text,
+        url: pageUrl(entry.space, entry.id),
+        metadata: { space: entry.space, path: entry.relPath, kind: entry.kind, updatedAt: entry.updatedAt },
+      });
     },
   );
 

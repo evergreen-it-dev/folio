@@ -51,6 +51,7 @@ Short walkthroughs, no slides. The voice in the videos is synthetic.
 - [Onboarding a sales rep with Folio AI](https://youtu.be/T4JXTNRrsMg) — answers from the team's own pages with sources, a weekly check as a form, and the results in a table (1:22)
 - [Whiteboards that live in Git](https://youtu.be/HNK17qafhtc) — draw together, embed the board in a document, and keep every version in history (0:51)
 - [The editor and Mermaid diagrams](https://youtu.be/MfK7bhKoxSs) — live Markdown, a source view of the same page, and diagrams you edit visually or as code (1:04)
+- [Is your wiki's AI assistant helping? Folio AI analytics](https://youtu.be/7aszLTDQV8w) — instance admins see rated conversations and unanswered questions, add the missing page, and the same question gets an answer with its source (1:21)
 
 ---
 
@@ -346,7 +347,7 @@ Without a subscription everything else in Folio works as usual.
 
 ## Built for agents
 
-**MCP server.** 21 tools over `/mcp` with personal access tokens: list and
+**MCP server.** 23 tools over `/mcp` with personal access tokens: list and
 search spaces, read and write pages, create and edit whiteboards, query and
 update data tables, read history.
 
@@ -354,6 +355,11 @@ update data tables, read history.
 claude mcp add folio --transport http https://wiki.example.com/mcp \
   --header "Authorization: Bearer folio_pat_…"
 ```
+
+**Ready-made setups.** Files for Claude Code (a plugin and a skill), Cursor,
+VS Code, Codex, n8n (two importable workflows), Open WebUI, ChatGPT and Claude
+live in [integrations/](integrations/): configs with placeholders, rules for
+the agent and step-by-step instructions.
 
 **Markdown for an agent.** Any page — with its child pages, if you want — is
 one link that returns clean Markdown. No scraping, no HTML, no login flow:

@@ -160,6 +160,7 @@ export function registerProtectedAuthRoutes(app: FastifyInstance): void {
   });
 
   app.put('/api/spaces/:space/members/:identifier', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Changing space members and roles');
     session.requireCookieAuth(request);
     const { space, identifier } = request.params as { space: string; identifier: string };
     await session.requireSpaceRole(request, space, 'admin');
@@ -178,6 +179,7 @@ export function registerProtectedAuthRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/spaces/:space/members/:identifier', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Removing a space member');
     session.requireCookieAuth(request);
     const { space, identifier } = request.params as { space: string; identifier: string };
     await session.requireSpaceRole(request, space, 'admin');

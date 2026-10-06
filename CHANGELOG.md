@@ -6,6 +6,22 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **`search` and `fetch` MCP tools for ChatGPT deep research and company
+  knowledge.** ChatGPT only accepts two read-only tools of exactly these
+  names. `search(query)` returns `{results: [{id, title, url}]}` and
+  `fetch(id)` returns `{id, title, text, url, metadata}` (the page as
+  Markdown; a data table as a Markdown table, a board as its labels and
+  connections, a PDF or Office file as a note). They apply the same access
+  rules as `search_pages` and `read_page`: a page you may not see is "page not
+  found", the same answer as for one that does not exist. The server now has
+  23 tools.
+- **`integrations/`: ready-made setups for AI tools.** Config files and
+  instructions for connecting Folio over MCP: a Claude Code plugin (with a
+  `folio-wiki` skill and a marketplace file, so `claude plugin marketplace add
+  evergreen-it-dev/folio` works), Cursor (`mcp.json` and a rule), VS Code,
+  Codex, Open WebUI, two importable n8n workflows (a new GitHub issue becomes a
+  table row; a weekly summary page), steps for ChatGPT and Claude (OAuth), and a
+  description of an onboarding setup. Placeholders only, no tokens.
 - **OAuth 2.1 for MCP: connect Folio from claude.ai, Claude Desktop and
   ChatGPT.** `/mcp` now answers an unauthenticated request with `401` and a
   `WWW-Authenticate` header pointing at the protected-resource metadata, and
@@ -39,6 +55,12 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   creating spaces, share links, invitations and changing name or username;
   uploads are capped (`FOLIO_DEMO_MAX_UPLOAD_MB`, default 5), and a demo
   account cannot change passwords. See `.env.dev.example`.
+  Demo accounts may be space administrators (to edit a space's `.agent`
+  rules) without being able to break the demo for others: deleting or
+  renaming a space, members and roles, git sync, page permissions, emptying
+  the trash and removing the `.agent` folder itself answer 403. `/mcp` and the
+  OAuth credential endpoints are rate limited per address and size capped
+  (`FOLIO_DEMO_MCP_RPM`, `FOLIO_DEMO_MCP_WRITES_PER_HOUR`).
 - **`TRUST_PROXY`.** Behind nginx, Traefik or Caddy every visitor used to
   share the proxy's address, so the sign-in rate limit was one bucket for
   everybody. `TRUST_PROXY=true` takes the client address from

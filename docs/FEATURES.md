@@ -238,8 +238,8 @@ work continues; come back and read on from where it stopped.
 ## 12. Integration for external tools (MCP)
 
 The `/mcp` endpoint with a personal access token (`folio_pat_…`), scopes
-`read` and `write`. 21 tools: listing spaces and trees, reading a page,
-search, creating and updating pages, resolving a Folio link, backlinks,
+`read` and `write`. 23 tools: listing spaces and trees, reading a page,
+search (plus `search` and `fetch` for ChatGPT deep research), creating and updating pages, resolving a Folio link, backlinks,
 history and reading a page at a given commit, working with whiteboards, and a
 full set of operations on data tables. See [MCP.md](MCP.md).
 

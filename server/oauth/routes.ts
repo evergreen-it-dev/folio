@@ -19,6 +19,8 @@ import { recordAudit } from '../audit.js';
 import * as authStore from '../auth/store.js';
 import * as session from '../auth/session.js';
 import { publicUrlOrOrigin } from '../publicUrl.js';
+import { isDemoMode } from '../demo.js';
+import { DEMO_OAUTH_PER_MINUTE } from '../demoLimits.js';
 import { notFound } from '../errors.js';
 import { ClientMetadataError, fetchClientMetadata, isMetadataClientId } from './cimd.js';
 import { CONSENT_HEADERS, pickLang, renderConsentPage, renderErrorPage } from './consentPage.js';
@@ -108,6 +110,10 @@ function rateLimited(bucket: string, ip: string, max: number, windowMs: number):
     for (const [k, v] of hits) if (v.every((t) => t <= now - 3_600_000)) hits.delete(k);
   }
   return false;
+}
+/** Public demo only: the extra per-IP cap on the two endpoints that mint credentials (POST /oauth/authorize, POST /oauth/token). */
+function demoOAuthLimited(bucket: string, ip: string): boolean {
+  return isDemoMode() && rateLimited(`demo-${bucket}`, ip, DEMO_OAUTH_PER_MINUTE, 60 * 1000);
 }
 export function __resetOAuthRateLimitsForTests(): void {
   hits.clear();
@@ -305,6 +311,7 @@ export async function registerOAuthRoutes(app: FastifyInstance, opts: OAuthRoute
 
     // --- Consent decision (CSRF-protected by the single-use request id) -----
     oauth.post('/oauth/authorize', async (request, reply) => {
+      if (demoOAuthLimited('authorize-post', request.ip)) return htmlError(reply.header('Retry-After', '60'), 429, 'Too many requests. Try again in a minute.');
       if (rateLimited('authorize', request.ip, 60, 60 * 1000)) return htmlError(reply, 429, 'Too many requests. Try again in a minute.');
       const body = asParams(request.body);
       const user = await cookieUser(request);
@@ -334,6 +341,7 @@ export async function registerOAuthRoutes(app: FastifyInstance, opts: OAuthRoute
 
     // --- Token endpoint -----------------------------------------------------
     oauth.post('/oauth/token', async (request, reply) => {
+      if (demoOAuthLimited('token', request.ip)) return oauthError(reply.header('Retry-After', '60'), 429, 'temporarily_unavailable', 'too many requests');
       if (rateLimited('token', request.ip, 120, 60 * 1000)) return oauthError(reply, 429, 'temporarily_unavailable', 'too many requests');
       const p = asParams(request.body);
       const issuer = issuerFor(request);

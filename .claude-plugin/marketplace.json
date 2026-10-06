@@ -1,0 +1,15 @@
+{
+  "name": "folio",
+  "description": "Plugins that connect AI coding agents to a Folio wiki over MCP.",
+  "owner": {
+    "name": "Evergreen",
+    "url": "https://github.com/evergreen-it-dev"
+  },
+  "plugins": [
+    {
+      "name": "folio",
+      "source": "./integrations/claude-code",
+      "description": "Read and update your team's Folio wiki from Claude Code: the Folio MCP server and a skill that tells the agent how to work with pages, tables and boards."
+    }
+  ]
+}

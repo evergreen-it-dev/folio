@@ -1,0 +1,198 @@
+{
+  "id": "FolioWeeklySum1",
+  "name": "Folio: weekly summary page",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2ee03581-ba86-4cfe-a1fa-c36b0ac35d18",
+      "name": "Every Monday at 9"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "18f7a8ec-1235-47a3-93db-13d4ab2d4eef",
+              "name": "tablePageId",
+              "value": "PASTE_THE_FOLIO_TABLE_PAGE_ID",
+              "type": "string"
+            },
+            {
+              "id": "2468d82d-0ece-40fb-83c4-4d26d56ce3a8",
+              "name": "space",
+              "value": "your-space-slug",
+              "type": "string"
+            },
+            {
+              "id": "144eef85-4a0b-44d0-b397-ff39c465eb2e",
+              "name": "parentPath",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "id": "a7d8daba-be7e-43f3-83df-bdb9f2b69864",
+      "name": "Settings",
+      "notes": "tablePageId: the table to summarise. space: slug of the space for the new page. parentPath: the folder it goes under, empty for the space root.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "serverTransport": "httpStreamable",
+        "endpointUrl": "https://your-folio.example.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "value": "folio_table_query",
+          "mode": "id"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ { id: $json.tablePageId, filter: { op: 'and', rules: [ { column: 'opened', operator: 'last_n_days', value: 7 } ] }, sort: [ { column: 'opened', dir: 'desc' } ], limit: 100, format: 'markdown' } }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "id": "fb3049e4-8594-4336-ba88-0e23b3d67fcb",
+      "name": "Read last 7 days",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Folio token"
+        }
+      },
+      "notes": "Reads the rows whose \"opened\" column falls in the last 7 days. Needs a Folio token; read is enough here.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const settings = $('Settings').first().json;\n// The MCP Client node returns the tool result as content blocks; the text block holds the Markdown table.\nconst block = ($input.first().json.content || []).find((c) => c.type === 'text');\nconst table = block && typeof block.text === 'string' ? block.text : JSON.stringify(block && block.text);\nconst now = new Date();\nconst start = new Date(now.getTime() - 7 * 24 * 3600 * 1000);\nconst day = (d) => d.toISOString().slice(0, 10);\nconst title = 'Weekly summary ' + day(now);\nconst markdown = [\n  '# ' + title,\n  '',\n  'Opened between ' + day(start) + ' and ' + day(now) + '.',\n  '',\n  '## Issues',\n  '',\n  table,\n  '',\n  '_Written by an n8n workflow. Edit freely._',\n].join('\\n');\nreturn [{ json: { space: settings.space, parentPath: settings.parentPath, title, markdown } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "a6e117e7-3144-496a-9428-39c9ddf99d66",
+      "name": "Build the page"
+    },
+    {
+      "parameters": {
+        "serverTransport": "httpStreamable",
+        "endpointUrl": "https://your-folio.example.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "value": "create_page",
+          "mode": "id"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ { space: $json.space, parentPath: $json.parentPath, title: $json.title, markdown: $json.markdown } }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ],
+      "id": "ab7a1e01-e17e-40ec-bbf8-607c9591c4e5",
+      "name": "Create the page in Folio",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Folio token"
+        }
+      },
+      "notes": "Needs a Folio token with the write scope. Creates a new page each week; the reply holds its id and link.",
+      "notesInFlow": false
+    }
+  ],
+  "connections": {
+    "Every Monday at 9": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Read last 7 days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read last 7 days": {
+      "main": [
+        [
+          {
+            "node": "Build the page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build the page": {
+      "main": [
+        [
+          {
+            "node": "Create the page in Folio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

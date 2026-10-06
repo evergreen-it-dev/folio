@@ -1,0 +1,182 @@
+{
+  "id": "FolioIssueRow01",
+  "name": "Folio: new GitHub issue to a table row",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "folio-github-issue",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6580ca96-3528-44fc-8dce-542e182a6880",
+      "name": "GitHub issues webhook",
+      "webhookId": "be6a03e2-f512-4c8a-92be-47cd5a99d2f2",
+      "notes": "Point a GitHub repository webhook here (content type application/json, event: Issues). Any other source works too: map its fields in the next steps.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9421cb7f-e84a-4923-b3e7-c45a4e866532",
+              "leftValue": "={{ $json.body.action }}",
+              "rightValue": "opened",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "b69233dd-0a76-4dd4-a6b4-9b37542f5f36",
+      "name": "Only new issues"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2a2f00b6-ed39-47c6-8e3b-02be2d717658",
+              "name": "tablePageId",
+              "value": "PASTE_THE_FOLIO_TABLE_PAGE_ID",
+              "type": "string"
+            },
+            {
+              "id": "40a2a97b-1b63-4c38-a02d-03cd84d6bfae",
+              "name": "issue",
+              "value": "={{ '#' + $json.body.issue.number + ' ' + $json.body.issue.title }}",
+              "type": "string"
+            },
+            {
+              "id": "d35953f4-eb67-4d0e-acc5-f2e4ecf1e85c",
+              "name": "link",
+              "value": "={{ $json.body.issue.html_url }}",
+              "type": "string"
+            },
+            {
+              "id": "44a73f2b-90e2-429a-befe-d1b7f33e9af2",
+              "name": "author",
+              "value": "={{ $json.body.issue.user.login }}",
+              "type": "string"
+            },
+            {
+              "id": "d3ed8462-204d-44d4-8fef-41b5a4201a33",
+              "name": "opened",
+              "value": "={{ $json.body.issue.created_at.slice(0, 10) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        -100
+      ],
+      "id": "9ab9715b-0516-46a5-81e0-4455e6888cb7",
+      "name": "Map issue to a row",
+      "notes": "tablePageId is the id of your Folio table page (find it with folio_table_list). The other names are column ids of that table; see README.md in this folder for the table to create.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "serverTransport": "httpStreamable",
+        "endpointUrl": "https://your-folio.example.com/mcp",
+        "authentication": "bearerAuth",
+        "tool": {
+          "__rl": true,
+          "value": "folio_table_insert",
+          "mode": "id"
+        },
+        "inputMode": "json",
+        "jsonInput": "={{ { id: $json.tablePageId, rows: [ { issue: $json.issue, link: $json.link, author: $json.author, opened: $json.opened } ] } }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClient",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        -100
+      ],
+      "id": "d0d009b8-e00c-42dc-ace7-9da31e164ab1",
+      "name": "Insert row in Folio",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Folio token"
+        }
+      },
+      "notes": "Needs a Folio token with the write scope. Replace the endpoint with your address (it ends in /mcp).",
+      "notesInFlow": false
+    }
+  ],
+  "connections": {
+    "GitHub issues webhook": {
+      "main": [
+        [
+          {
+            "node": "Only new issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only new issues": {
+      "main": [
+        [
+          {
+            "node": "Map issue to a row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Map issue to a row": {
+      "main": [
+        [
+          {
+            "node": "Insert row in Folio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

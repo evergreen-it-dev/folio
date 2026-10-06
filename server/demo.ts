@@ -26,14 +26,24 @@
  *                                share links, invites, name/username changes.
  *   assertNotDemoAccount(user)   only for the listed demo accounts: changing a
  *                                password — otherwise one visitor could lock
- *                                everybody else out of the shared login.
+ *                                everybody else out of the shared login — and
+ *                                every space-admin action that could break the
+ *                                demo for the next visitor (the shared login may
+ *                                be a space admin, so it can read and edit `.agent`):
+ *                                deleting/renaming a space, space visibility,
+ *                                members and roles, revoking invites, git
+ *                                sync/reset, page permissions, purging the trash.
+ *   assertDemoAgentRootIntact    the same demo accounts may edit `.agent/**` but not
+ *                                delete, move or rename the `.agent` folder itself.
+ *
+ * Request limits for /mcp and the OAuth endpoints (FOLIO_DEMO_MCP_RPM, FOLIO_DEMO_MCP_WRITES_PER_HOUR, size caps) live in demoLimits.ts.
  *
  * Every refusal is a 403 "<what> is disabled in the public demo". Outside demo
  * mode all of it is inert.
  */
 import * as fs from 'node:fs';
 import { z } from 'zod';
-import type { DemoAccount, DemoInfo, User } from '../shared/contracts.js';
+import { AGENT_FOLDER, type DemoAccount, type DemoInfo, type User } from '../shared/contracts.js';
 import { forbidden } from './errors.js';
 
 const demoAccountSchema = z.object({
@@ -126,6 +136,16 @@ export function assertNotDemo(what: string): void {
 /** Refuses (403) an action a shared demo login must not perform. A no-op outside demo mode and for every non-demo user. */
 export function assertNotDemoAccount(user: Pick<User, 'email'>, what: string): void {
   if (isDemoAccountEmail(user.email)) throw forbidden(`${what} is disabled in the public demo`);
+}
+
+/** The `.agent` folder at a space's content root, or its index page. */
+function isAgentRootPath(relPath: string): boolean {
+  return relPath === AGENT_FOLDER || relPath === `${AGENT_FOLDER}/index.md` || relPath === `${AGENT_FOLDER}/README.md`;
+}
+
+/** Refuses (403) removing, moving or renaming the `.agent` folder itself under a shared demo login; its contents stay editable. A no-op outside demo mode and for every non-demo user. */
+export function assertDemoAgentRootIntact(user: Pick<User, 'email'>, relPath: string, what: string): void {
+  if (isAgentRootPath(relPath)) assertNotDemoAccount(user, what);
 }
 
 const DEFAULT_DEMO_MAX_UPLOAD_MB = 5;

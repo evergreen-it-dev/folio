@@ -8,6 +8,7 @@ import type { PageKind } from '@shared/contracts';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { useLocalStorage } from '../hooks';
+import { AgentDemoNote } from '../AgentDemoNote';
 import { useToast } from '../ui/Toast';
 import { Menu, MenuItem } from '../ui/Menu';
 import { TreeRow } from './TreeRow';
@@ -138,6 +139,7 @@ export function AgentSection({ space, activeId, activeFolderPath }: AgentSection
       {open && (
         <div className="flex flex-col gap-0.5">
           <p className="px-3 pb-1 text-[11px] leading-snug text-neutral-400 dark:text-neutral-500">{t('sidebar.agent.about')}</p>
+          <AgentDemoNote className="px-3 pb-1" />
           {children.length === 0 ? (
             <div className="px-3 py-1.5 text-xs text-neutral-400">{t('sidebar.agent.empty')}</div>
           ) : (

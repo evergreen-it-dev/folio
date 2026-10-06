@@ -781,7 +781,8 @@
     "agent": {
       "empty": "No rules pages yet — add the first one with «+».",
       "about": "These pages go into the AI assistant’s context on every request in this space. Visible to admins only.",
-      "hint": "Rules for this space’s AI assistant: added to the context of every request. Admins only."
+      "hint": "Rules for this space’s AI assistant: added to the context of every request. Admins only.",
+      "demoNote": "Shared demo: anyone can edit these rules; they reset daily."
     },
     "move": {
       "failed": "Could not move the page",
@@ -899,7 +900,8 @@
       "confirmTitle": "Disconnect this app?",
       "confirmBody": "\"{{name}}\" will lose access to Folio immediately. You can connect it again later.",
       "failed": "Could not disconnect the app",
-      "from": "via {{host}}"
+      "from": "via {{host}}",
+      "demoNote": "Shared demo account: connections from other visitors are visible here and reset daily."
     },
     "tokenPlaceholder": "<your token>",
     "mcp": {
