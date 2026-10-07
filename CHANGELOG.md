@@ -344,6 +344,21 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   version) or `basic-ftp`. The `nanoid` copy bundled through the Mermaid import
   of whiteboards is raised to 5.1.11 or later. `npm audit` reports no known
   vulnerabilities. Running outside Docker now needs Node.js 22.12 or newer.
+- A second round of dependency updates closes the seven advisories that were
+  still open. `@modelcontextprotocol/sdk` is 1.31 or later (the OAuth client now
+  binds stored credentials to the authorization server that issued them; Folio
+  itself only uses the SDK's server side and in-process client, so nothing
+  changes for it). `@fastify/busboy`, behind multipart uploads, is 3.2.2 (CRLF
+  injection through the filename in `Content-Disposition`), `source-map-js` is
+  1.2.2, and the Express copy of `proxy-addr` that the SDK brings in is 2.0.8.
+  The development-only `shell-quote` (via `concurrently`) is raised with an
+  override, and so is `katex` (via Mermaid, 0.18.2 or later). `sprintf-js` has
+  no fixed version; it was only reachable through the command-line tool of
+  `js-yaml` 3 (inside `gray-matter`), which Folio never runs, so an override now
+  gives that tool a dependency-free `argparse` and the package is gone from the
+  lock file. `npm audit --omit=dev` reports no known vulnerabilities. A reminder
+  for operators: `TRUST_PROXY` takes address lists as written, so write IPv4
+  proxies in plain form (`10.0.0.0/8`), not as a short IPv4-mapped IPv6 prefix.
 - "Copy to…" and "Duplicate" no longer carry over what the person copying
   cannot open. Before, an editor (or a viewer who could edit another space)
   could copy a page together with its children and read, in the copy, a child

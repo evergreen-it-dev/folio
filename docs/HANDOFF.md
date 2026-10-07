@@ -347,6 +347,15 @@ Each of these was a real defect. They are here so that nobody pays twice.
   server port directly.
 - Panels inside a container with hidden overflow get clipped whatever their
   z-index. Render them in a portal with fixed positioning.
+- Dependency advisories: first try a lock-file update (`npm update <pkg>`), then
+  a direct bump, and only then `overrides` in `package.json`. The overrides in
+  place (`nanoid`, `katex`, `shell-quote`, and `argparse` inside `gray-matter`'s
+  `js-yaml` 3) exist because a parent pins an old range or no fix exists; drop
+  each one when its parent catches up and check `npm ls <pkg>` shows no
+  `invalid`. `gray-matter` needs `js-yaml` 3 (`safeLoad`), so it cannot simply
+  be pointed at 4. Fastify's own `@fastify/proxy-addr` accepts a mis-written
+  IPv4-mapped trust subnet the same way as the `proxy-addr` advisory describes;
+  keep `TRUST_PROXY` values in plain IPv4 or full IPv6 form.
 
 **Process**
 
