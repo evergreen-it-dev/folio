@@ -6,25 +6,25 @@ import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import { SmilePlus } from 'lucide-react';
 import {
   REACTION_EMOJIS,
-  clientToScenePoint,
   elementSceneBounds,
-  hitTestReactable,
   indexReactions,
   isReactable,
+  reactionTarget,
   sceneToContainerPoint,
   toggleReaction,
 } from './reactionsModel';
 import { BOARD_LOCAL_ORIGIN } from './boardYdoc';
 import './i18n/register';
 
-/** Hover hit area grown by this many screen pixels, so the pointer can travel from the shape to the corner button. */
-const HOVER_PAD_PX = 10;
-/** The button centre sits this far outside the bottom-right corner, clear of Excalidraw's resize handles. */
-const BUTTON_OFFSET_PX = 18;
+/**
+ * The button centre sits this far outside the bottom-right corner of the element's bounds
+ * (on both axes), which puts it clear of Excalidraw's corner resize handle.
+ */
+const BUTTON_OFFSET_PX = 26;
 /** Chips hang this far below the bottom edge — below the selection frame and its bottom handles too. */
-const CHIPS_GAP_PX = 10;
-/** Grace period before the hover target is dropped, so crossing the gap to the button doesn't hide it. */
-const HOVER_LEAVE_MS = 250;
+const CHIPS_GAP_PX = 18;
+/** Excalidraw's selection colour, so the button reads as part of the selected shape's frame. */
+const SELECTION_COLOR = '#6965db';
 
 export interface BoardReactionsProps {
   api: ExcalidrawImperativeAPI | null;
@@ -32,7 +32,7 @@ export interface BoardReactionsProps {
   /** The board room's Y.Doc and its `reactions` map (reactionsModel.ts); null until the session opens. */
   doc: Y.Doc | null;
   reactions: Y.Map<unknown> | null;
-  /** May this tab add/remove reactions? False for read-only viewers: chips are still shown. */
+  /** May this tab add/remove reactions right now (write permission AND the Edit mode)? Otherwise chips are shown but inert. */
   canReact: boolean;
   /** Stable id stored in `customData.reactions` for this viewer. */
   userId: string;
@@ -41,24 +41,19 @@ export interface BoardReactionsProps {
 }
 
 /**
- * Hover "add reaction" button, picker popup and reaction chips, drawn as an
- * HTML layer over the Excalidraw canvas. Positions are recomputed from
- * `appState` (scroll/zoom/offset) on every Excalidraw change, so everything
- * follows pan, zoom, resize and element moves. Reactions persist as an
- * ordinary element edit (see reactionsModel.ts), which is why this works in
- * both the View and Edit modes: the collab/share save paths are keyed on
- * permission, not on the toolbar mode.
+ * "Add reaction" button (next to the selected shape), picker popup and reaction
+ * chips, drawn as an HTML layer over the Excalidraw canvas. Positions are
+ * recomputed from `appState` (scroll/zoom/offset) on every Excalidraw change,
+ * so everything follows pan, zoom, resize and element moves. The button shows
+ * only for exactly one selected element in the editor (see `reactionTarget`);
+ * chips are always visible but clickable only when `canReact`.
  */
 export function BoardReactions({ api, containerRef, doc, reactions, canReact, userId, names }: BoardReactionsProps) {
   const { t } = useTranslation('diagrams');
   const [, rerender] = useReducer((n: number) => n + 1, 0);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frameRef = useRef<number | null>(null);
-  const pickerForRef = useRef<string | null>(null);
-  pickerForRef.current = pickerFor;
 
   // Live updates: any change to the shared reactions map (local or from a peer) re-renders the chips.
   useEffect(() => {
@@ -87,49 +82,12 @@ export function BoardReactions({ api, containerRef, doc, reactions, canReact, us
     };
   }, [api]);
 
-  const cancelLeave = useCallback(() => {
-    if (leaveTimerRef.current !== null) clearTimeout(leaveTimerRef.current);
-    leaveTimerRef.current = null;
-  }, []);
-
-  // Hover tracking on the whole board container (the canvas is Excalidraw's, so we hit-test scene elements ourselves).
+  // The popup belongs to the selected element: close it as soon as the selection moves elsewhere or goes away.
+  // No deps on purpose: it re-checks on every render, and renders follow every Excalidraw change.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!api || !container) return;
-    const onMove = (event: PointerEvent) => {
-      if (pickerForRef.current) return; // popup open: keep its element as the target
-      if ((event.target as Element | null)?.closest('[data-board-reactions]')) {
-        cancelLeave();
-        return;
-      }
-      const appState = api.getAppState();
-      const point = clientToScenePoint(event.clientX, event.clientY, appState);
-      const hit = hitTestReactable(api.getSceneElements(), point, HOVER_PAD_PX / (appState.zoom.value || 1));
-      if (hit) {
-        cancelLeave();
-        setHoveredId((prev) => (prev === hit.id ? prev : hit.id));
-      } else if (leaveTimerRef.current === null) {
-        leaveTimerRef.current = setTimeout(() => {
-          leaveTimerRef.current = null;
-          setHoveredId(null);
-        }, HOVER_LEAVE_MS);
-      }
-    };
-    const onLeave = () => {
-      if (pickerForRef.current || leaveTimerRef.current !== null) return;
-      leaveTimerRef.current = setTimeout(() => {
-        leaveTimerRef.current = null;
-        setHoveredId(null);
-      }, HOVER_LEAVE_MS);
-    };
-    container.addEventListener('pointermove', onMove);
-    container.addEventListener('pointerleave', onLeave);
-    return () => {
-      container.removeEventListener('pointermove', onMove);
-      container.removeEventListener('pointerleave', onLeave);
-      cancelLeave();
-    };
-  }, [api, containerRef, cancelLeave]);
+    if (!pickerFor || !api || typeof api.getAppState !== 'function') return;
+    if (reactionTarget(api.getSceneElements(), api.getAppState())?.id !== pickerFor) setPickerFor(null);
+  });
 
   // Popup: close on outside press or Escape.
   useEffect(() => {
@@ -165,24 +123,10 @@ export function BoardReactions({ api, containerRef, doc, reactions, canReact, us
   const zoom = appState.zoom.value || 1;
   const elements = api.getSceneElements();
 
-  // Same rule Excalidraw uses to suppress its own hover affordances while the user is mid-gesture.
-  const interacting =
-    appState.cursorButton === 'down' ||
-    appState.isResizing ||
-    appState.isRotating ||
-    appState.selectedElementsAreBeingDragged ||
-    !!appState.editingTextElement ||
-    !!appState.newElement ||
-    !!appState.multiElement ||
-    !!appState.resizingElement ||
-    !!appState.selectionElement;
-  const toolOk = appState.viewModeEnabled || appState.activeTool.type === 'selection' || appState.activeTool.type === 'hand';
-
   const index = reactions ? indexReactions(reactions) : null;
   const withChips = index ? elements.filter((el) => isReactable(el) && index.has(el.id)) : [];
-  const hovered = hoveredId ? elements.find((el) => el.id === hoveredId && isReactable(el)) : undefined;
-  const picker = pickerFor ? elements.find((el) => el.id === pickerFor && isReactable(el)) : undefined;
-  const showButton = !!hovered && canReact && !interacting && toolOk;
+  const target = canReact ? reactionTarget(elements, appState) : null;
+  const picker = target && pickerFor === target.id ? target : undefined;
 
   const anchorOf = (el: ExcalidrawElement) => {
     const b = elementSceneBounds(el);
@@ -249,8 +193,8 @@ export function BoardReactions({ api, containerRef, doc, reactions, canReact, us
         );
       })}
 
-      {showButton && hovered && (() => {
-        const { bottomRight } = anchorOf(hovered);
+      {target && (() => {
+        const { bottomRight } = anchorOf(target);
         if (!inView(bottomRight.x, bottomRight.y)) return null;
         return (
           <button
@@ -259,16 +203,20 @@ export function BoardReactions({ api, containerRef, doc, reactions, canReact, us
             data-reaction-add
             aria-label={t('board.reactions.add')}
             title={t('board.reactions.add')}
-            onClick={() => setPickerFor(hovered.id)}
-            className="pointer-events-auto absolute flex h-[22px] w-[22px] items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-600 shadow-sm hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100"
-            style={{ left: bottomRight.x + BUTTON_OFFSET_PX - 11, top: bottomRight.y + BUTTON_OFFSET_PX - 11 }}
+            onClick={() => setPickerFor((prev) => (prev === target.id ? null : target.id))}
+            className="pointer-events-auto absolute flex h-[22px] w-[22px] items-center justify-center rounded-full border bg-white text-neutral-600 shadow-sm hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100"
+            style={{
+              left: bottomRight.x + BUTTON_OFFSET_PX - 11,
+              top: bottomRight.y + BUTTON_OFFSET_PX - 11,
+              borderColor: SELECTION_COLOR,
+            }}
           >
             <SmilePlus size={14} />
           </button>
         );
       })()}
 
-      {picker && canReact && (() => {
+      {picker && (() => {
         const { bottomRight } = anchorOf(picker);
         const mineSet = new Set([...(index?.get(picker.id) ?? [])].filter(([, ids]) => ids.includes(userId)).map(([e]) => e));
         return (

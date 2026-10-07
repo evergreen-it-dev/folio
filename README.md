@@ -238,11 +238,11 @@ The board above was not drawn by hand. An agent created it through MCP from a
 short description of boxes and arrows; people then keep editing it like any
 other board.
 
-**Reactions.** Point at a shape and a small button appears at its corner:
-pick an emoji (👍 ❤️ 😂 🎉 🤔 👀 🔥 👏) and a counter chip shows under the shape.
+**Reactions.** Select a shape in Edit mode and a small button appears at the
+corner of its selection frame: pick an emoji (👍 ❤️ 😂 🎉 🤔 👀 🔥 👏) and a counter chip shows under the shape.
 Click a chip to add or remove your own; point at it to see who reacted.
 Reactions are live for everyone on the board, and people who can only view it
-see them too. They are kept with the board's live state, not in its SVG file.
+(or are in View mode) see them too but cannot click them. They are kept with the board's live state, not in its SVG file.
 
 ---
 

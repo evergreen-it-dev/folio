@@ -1617,15 +1617,15 @@ export default function BoardCanvas({ pageId, shareToken, shareMode }: BoardCanv
           });
         }}
       />
-      {/* Reactions follow the edit permission, not the View/Edit toggle: they are keys in the
-          room's own Y.Map, written over the same socket (and persisted with the room), so a
-          user who may edit can react in View mode too; read-only viewers only see the chips. */}
+      {/* Reactions are written into the room's own Y.Map over the same socket, so they need the
+          edit permission AND the Edit mode: in View (and for read-only viewers) the chips are
+          shown but inert, and there is no add button. */}
       <BoardReactions
         api={excalidrawApi}
         containerRef={containerRef}
         doc={session?.doc ?? null}
         reactions={session?.reactions ?? null}
-        canReact={canWrite}
+        canReact={canWrite && isEditingNow}
         userId={reactionUserId}
         names={reactionNames}
       />

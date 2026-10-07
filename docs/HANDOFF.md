@@ -94,8 +94,14 @@ people reacting to one shape at once both survive the merge. The scene is never
 touched, so a reaction is neither a scene edit nor an undo step. The map
 travels over the same socket as the scene, is cached offline with the doc and
 is persisted by the room snapshot, which encodes every root of the doc. It is
-not written to the SVG file. A read-only viewer sees the chips and cannot add or
-remove any.
+not written to the SVG file. The add button is not a hover affordance: it shows
+only for exactly one selected reactable element (`reactionTarget` in
+`reactionsModel.ts`; a bound label stands for its container), in Edit mode, with
+the selection tool and no gesture in progress (drag, resize, rotate, text
+editing, drawing), at the lower right corner of the selection frame, and the
+palette closes when the selection goes. `BoardCanvas` passes
+`canReact = canWrite && isEditingNow`: in View mode and for a read-only viewer
+the chips are shown but inert, and there is no add or remove.
 
 The sidebar tree has its own signal. Database triggers on the page tables
 publish through PostgreSQL `LISTEN`/`NOTIFY`; the server listens on a

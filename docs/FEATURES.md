@@ -69,11 +69,11 @@ time the page opens; page files are written atomically; and the text a live
 page held is saved in a backup table before the server replaces all of it (a
 file changed outside, an API or MCP body write, "Take the version from Git").
 
-**Whiteboard reactions.** Pointing at a shape shows a reaction button; the
-palette has eight emoji. Reactions appear as chips with a count under the
+**Whiteboard reactions.** Selecting a single shape in Edit mode shows a reaction
+button at its selection frame; the palette has eight emoji. Reactions appear as chips with a count under the
 shape, click a chip to add or remove yours, and the tooltip names who reacted.
 They sync in real time, two people reacting at once both keep theirs, people
-with the viewer role see them but cannot add any, and they are not part of the
+with the viewer role, or anyone in View mode, see them but cannot add any, and they are not part of the
 board's SVG file or Git history.
 
 ## 4. Offline mode

@@ -6,8 +6,9 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
-- **Emoji reactions on whiteboard shapes.** Point at a shape and a small
-  reaction button appears at its lower right corner; it opens a palette of eight
+- **Emoji reactions on whiteboard shapes.** Select a shape in Edit mode and a
+  small reaction button appears at the lower right corner of the selection
+  frame; it opens a palette of eight
   emoji (👍 ❤️ 😂 🎉 🤔 👀 🔥 👏). A reaction shows up as a chip with a count
   below the shape; click the chip to add or remove yours, and point at it to see
   who reacted. Reactions are stored in their own shared map of the board's live
@@ -15,7 +16,7 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   same shape at the same moment both keep their reaction, and they appear in
   every open tab at once. They do not touch the drawing: no scene edit, no undo
   step, nothing in the board's SVG file or in Git. People who may only view a
-  board see the chips but cannot react.
+  board, and anyone in View mode, see the chips but cannot react.
 - **Optional analytics hook for a demo you run (off by default).** Folio sends
   no telemetry: with no key set, the browser never loads an analytics library
   and the server never opens a connection to anyone. An operator who runs a
@@ -150,6 +151,14 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- **The reaction button on a whiteboard no longer follows the pointer.** The
+  button used to pop up at whatever shape the pointer crossed, which got in the
+  way of drawing and selecting. It now belongs to the selection: select exactly
+  one shape in Edit mode and it appears at the lower right corner of the
+  selection frame; it stays hidden while you drag, resize, rotate, type or draw,
+  and the palette closes when the selection goes away. In View mode, and for
+  people who may only view the board, the chips are still shown but cannot be
+  clicked.
 - **Typed text can no longer be lost between Live edit and Reading.** One
   error raised while the browser saved a local copy of the page used to switch
   the editor's connection to the shared document off for good: from then on

@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import {
-  clientToScenePoint,
-  hitTestReactable,
   indexReactions,
   isReactable,
   parseReactionKey,
+  reactionTarget,
   reactionKey,
   sceneToContainerPoint,
   toggleReaction,
@@ -71,20 +70,64 @@ describe('toggleReaction (Y.Map)', () => {
 });
 
 describe('geometry', () => {
-  it('skips connectors, deleted elements and bound text, and prefers the topmost hit', () => {
+  it('skips connectors, deleted elements and bound text', () => {
     expect(isReactable(rect({ type: 'arrow' }))).toBe(false);
     expect(isReactable(rect({ isDeleted: true }))).toBe(false);
     expect(isReactable(rect({ type: 'text', containerId: 'r1' }))).toBe(false);
-    const below = rect({ id: 'below' });
-    const above = rect({ id: 'above', x: 20, y: 30, width: 20, height: 10 });
-    expect(hitTestReactable([below, above], { x: 25, y: 33 })?.id).toBe('above');
-    expect(hitTestReactable([below], { x: 5, y: 20 })).toBeNull();
-    expect(hitTestReactable([below], { x: 5, y: 20 }, 8)?.id).toBe('below');
+    expect(isReactable(rect({ type: 'text', containerId: null }))).toBe(true);
   });
-  it('maps scene to container pixels and back through scroll, zoom and offsets', () => {
+  it('maps scene to container pixels through scroll, zoom and offsets', () => {
     const vp = { scrollX: -50, scrollY: 10, zoom: { value: 2 }, offsetLeft: 300, offsetTop: 80 };
     expect(sceneToContainerPoint({ x: 100, y: 0 }, vp, { left: 300, top: 80 })).toEqual({ x: 100, y: 20 });
-    const client = { x: 300 + (100 - 50) * 2, y: 80 + 10 * 2 };
-    expect(clientToScenePoint(client.x, client.y, vp)).toEqual({ x: 100, y: 0 });
+  });
+});
+
+describe('reactionTarget (when the add button shows)', () => {
+  const a = rect({ id: 'a' });
+  const b = rect({ id: 'b', x: 300 });
+  const label = rect({ id: 'label', type: 'text', containerId: 'a' });
+  const arrow = rect({ id: 'arr', type: 'arrow' });
+  const free = rect({ id: 'free', type: 'text', containerId: null });
+  const scene = [a, b, label, arrow, free];
+  const state = (over: Record<string, unknown> = {}, ids: string[] = ['a']) => ({
+    selectedElementIds: Object.fromEntries(ids.map((id) => [id, true])),
+    viewModeEnabled: false,
+    activeTool: { type: 'selection' },
+    cursorButton: 'up',
+    ...over,
+  });
+
+  it('is the single selected element, including free text', () => {
+    expect(reactionTarget(scene, state())?.id).toBe('a');
+    expect(reactionTarget(scene, state({}, ['free']))?.id).toBe('free');
+  });
+  it('maps a selected bound label (alone or with its container) to the container', () => {
+    expect(reactionTarget(scene, state({}, ['label']))?.id).toBe('a');
+    expect(reactionTarget(scene, state({}, ['a', 'label']))?.id).toBe('a');
+  });
+  it('is null with no selection, a multi-selection, a stale id, or a non-reactable element', () => {
+    expect(reactionTarget(scene, state({}, []))).toBeNull();
+    expect(reactionTarget(scene, { ...state(), selectedElementIds: { a: false } })).toBeNull();
+    expect(reactionTarget(scene, state({}, ['a', 'b']))).toBeNull();
+    expect(reactionTarget(scene, state({}, ['gone']))).toBeNull();
+    expect(reactionTarget(scene, state({}, ['arr']))).toBeNull();
+  });
+  it('is null in View mode and with any tool other than selection', () => {
+    expect(reactionTarget(scene, state({ viewModeEnabled: true }))).toBeNull();
+    expect(reactionTarget(scene, state({ activeTool: { type: 'hand' } }))).toBeNull();
+    expect(reactionTarget(scene, state({ activeTool: { type: 'rectangle' } }))).toBeNull();
+  });
+  it.each([
+    ['cursorButton', 'down'],
+    ['isResizing', true],
+    ['isRotating', true],
+    ['selectedElementsAreBeingDragged', true],
+    ['editingTextElement', {}],
+    ['newElement', {}],
+    ['multiElement', {}],
+    ['resizingElement', {}],
+    ['selectionElement', {}],
+  ])('is null while a gesture is in progress (%s)', (key, value) => {
+    expect(reactionTarget(scene, state({ [key]: value }))).toBeNull();
   });
 });

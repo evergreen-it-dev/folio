@@ -128,19 +128,60 @@ export function elementSceneBounds(el: Pick<ExcalidrawElement, 'x' | 'y' | 'widt
   return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
 }
 
-/** Topmost reactable element whose bounds (grown by `pad` scene units) contain the point; null if none. Scene arrays are bottom-to-top, so the walk is reversed. */
-export function hitTestReactable<T extends ExcalidrawElement>(
-  elements: readonly T[],
-  point: { x: number; y: number },
-  pad = 0,
-): T | null {
-  for (let i = elements.length - 1; i >= 0; i--) {
-    const el = elements[i];
-    if (!isReactable(el)) continue;
-    const b = elementSceneBounds(el);
-    if (point.x >= b.left - pad && point.x <= b.right + pad && point.y >= b.top - pad && point.y <= b.bottom + pad) return el;
+/** The slice of Excalidraw's `appState` that decides whether the "add reaction" button may show. */
+export interface ReactionSelectionState {
+  selectedElementIds: Readonly<Record<string, boolean>>;
+  viewModeEnabled?: boolean;
+  activeTool: { type: string };
+  cursorButton?: string;
+  isResizing?: boolean;
+  isRotating?: boolean;
+  selectedElementsAreBeingDragged?: boolean;
+  editingTextElement?: unknown;
+  newElement?: unknown;
+  multiElement?: unknown;
+  resizingElement?: unknown;
+  selectionElement?: unknown;
+}
+
+/**
+ * The one element the "add reaction" button belongs to, or null for no button.
+ *
+ * Shown only when exactly one reactable element is selected (bound text counts
+ * as its container), in the editor (not View), with the selection tool and no
+ * gesture in progress (drag, resize, rotate, text editing, drawing a shape).
+ */
+export function reactionTarget<T extends ExcalidrawElement>(elements: readonly T[], appState: ReactionSelectionState): T | null {
+  if (appState.viewModeEnabled) return null;
+  if (appState.activeTool.type !== 'selection') return null;
+  // Same rule Excalidraw uses to suppress its own affordances while the user is mid-gesture.
+  if (
+    appState.cursorButton === 'down' ||
+    appState.isResizing ||
+    appState.isRotating ||
+    appState.selectedElementsAreBeingDragged ||
+    appState.editingTextElement ||
+    appState.newElement ||
+    appState.multiElement ||
+    appState.resizingElement ||
+    appState.selectionElement
+  ) {
+    return null;
   }
-  return null;
+  const selected = Object.keys(appState.selectedElementIds).filter((id) => appState.selectedElementIds[id]);
+  if (selected.length === 0 || selected.length > 2) return null;
+  const byId = new Map(elements.map((el) => [el.id, el] as const));
+  // A selected bound label stands for its container; a container selected together with its label is still one target.
+  const targets = new Set<string>();
+  for (const id of selected) {
+    const el = byId.get(id);
+    if (!el) return null;
+    const containerId = el.type === 'text' ? (el as { containerId?: string | null }).containerId : null;
+    targets.add(containerId && byId.has(containerId) ? containerId : id);
+  }
+  if (targets.size !== 1) return null;
+  const target = byId.get([...targets][0]);
+  return target && isReactable(target) ? target : null;
 }
 
 /** Viewport slice of Excalidraw's appState that scene -> screen mapping needs. */
@@ -168,10 +209,4 @@ export function sceneToContainerPoint(
     x: (point.x + vp.scrollX) * zoom + vp.offsetLeft - containerOrigin.left,
     y: (point.y + vp.scrollY) * zoom + vp.offsetTop - containerOrigin.top,
   };
-}
-
-/** Client pixel -> scene point (inverse of the mapping above, without the container step). */
-export function clientToScenePoint(clientX: number, clientY: number, vp: ReactionViewport): { x: number; y: number } {
-  const zoom = vp.zoom.value || 1;
-  return { x: (clientX - vp.offsetLeft) / zoom - vp.scrollX, y: (clientY - vp.offsetTop) / zoom - vp.scrollY };
 }
