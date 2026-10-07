@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { WebsocketProvider } from 'y-websocket';
 import * as Y from 'yjs';
 import { useAuthOptional } from '../app/auth/AuthProvider';
+import { trackServerAck, type ServerAck } from '../app/collabAck';
 import { attachOfflineSession } from '../app/collabOffline';
 import { resolveAuthedIdentity, useOptionalSessionUser } from '../app/collabIdentity';
 
@@ -34,6 +35,8 @@ export interface CollabSession {
   ytext: Y.Text;
   provider: WebsocketProvider;
   undoManager: Y.UndoManager;
+  /** Whether the server holds everything this tab has (app/collabAck.ts). */
+  ack: ServerAck;
   user: AnonUser;
   /**
    * The page was created offline and the server did not have it when this
@@ -43,7 +46,16 @@ export interface CollabSession {
   startedLocal?: boolean;
 }
 
-export type ConnectionStatus = 'connecting' | 'connected' | 'offline';
+/**
+ * 'unsaved': connected, but the server has not confirmed this tab's edits for
+ * a while — it is refusing them (a read-only connection) or they are not
+ * getting through. The text is still here (and in the local copy); the badge
+ * says so instead of a green dot.
+ */
+export type ConnectionStatus = 'connecting' | 'connected' | 'offline' | 'unsaved';
+
+/** How long connected edits may stay unconfirmed before the badge says they are not saved. */
+export const UNCONFIRMED_WARNING_MS = 6_000;
 
 const ADJECTIVES = [
   'Amber', 'Brisk', 'Calm', 'Copper', 'Dusty', 'Eager', 'Fleet', 'Gentle',
@@ -149,10 +161,28 @@ export function useCollabSession(
     provider.awareness.setLocalStateField('user', user);
     // Tracked origins are wired by y-codemirror.next's undo plugin.
     const undoManager = new Y.UndoManager(ytext, { captureTimeout: 400 });
+    const ack = trackServerAck(provider, doc);
 
-    const offline = shared ? null : attachOfflineSession({ pageId, kind: 'doc', doc, provider, getSpace: () => spaceRef.current });
+    const offline = shared ? null : attachOfflineSession({ pageId, kind: 'doc', doc, provider, ack, getSpace: () => spaceRef.current });
     let cancelled = false;
-    const open = () => setSession({ doc, ytext, provider, undoManager, user, ...(offline?.startedLocal ? { startedLocal: true } : {}) });
+    const open = () => setSession({ doc, ytext, provider, undoManager, ack, user, ...(offline?.startedLocal ? { startedLocal: true } : {}) });
+
+    // Leaving the page (closing the tab, reloading, navigating away from the
+    // app) with edits the server has not confirmed: let the browser ask. The
+    // local copy keeps them either way (collabOffline.ts), but a share-link
+    // guest has none, and nobody should lose text to a reflexive Cmd+W.
+    let editedHere = false;
+    const onLocalEdit = (_update: Uint8Array, origin: unknown) => {
+      if (origin !== provider) editedHere = true;
+    };
+    doc.on('update', onLocalEdit);
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!editedHere || ack.isConfirmed()) return;
+      event.preventDefault();
+      // Older browsers need a returnValue to show the prompt.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
     if (offline) {
       void offline.ready.then(() => {
         if (!cancelled) open();
@@ -164,9 +194,12 @@ export function useCollabSession(
     return () => {
       cancelled = true;
       setSession(null);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      doc.off('update', onLocalEdit);
       // Before the provider goes: it decides from the provider's state
       // whether the on-disk copy is still needed.
       offline?.dispose();
+      ack.dispose();
       undoManager.destroy();
       provider.destroy();
       doc.destroy();
@@ -199,13 +232,40 @@ export function useConnectionStatus(session: CollabSession | null): ConnectionSt
       setStatus('connecting');
       return;
     }
-    const provider = session.provider;
-    const apply = (value: 'connected' | 'disconnected' | 'connecting') =>
-      setStatus(value === 'disconnected' ? 'offline' : value);
-    apply(provider.wsconnected ? 'connected' : provider.wsconnecting ? 'connecting' : 'disconnected');
-    const onStatus = ({ status: next }: { status: 'connected' | 'disconnected' | 'connecting' }) => apply(next);
+    const { provider, ack } = session;
+    let socket: 'connected' | 'disconnected' | 'connecting' = provider.wsconnected ? 'connected' : provider.wsconnecting ? 'connecting' : 'disconnected';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const apply = () => {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      if (socket !== 'connected') {
+        setStatus(socket === 'disconnected' ? 'offline' : 'connecting');
+        return;
+      }
+      // The oldest edit the server has not taken yet, if any. Steady typing
+      // keeps confirming step by step, so this only grows old when the server
+      // really is not accepting what was typed.
+      const since = ack.pendingSince();
+      const left = since === null ? Infinity : UNCONFIRMED_WARNING_MS - (Date.now() - since);
+      if (left <= 0) {
+        setStatus('unsaved');
+        return;
+      }
+      setStatus('connected');
+      if (left !== Infinity) timer = setTimeout(apply, left + 50);
+    };
+    apply();
+    const onStatus = ({ status: next }: { status: 'connected' | 'disconnected' | 'connecting' }) => {
+      socket = next;
+      apply();
+    };
     provider.on('status', onStatus);
-    return () => provider.off('status', onStatus);
+    const offAck = ack.subscribe(apply);
+    return () => {
+      if (timer) clearTimeout(timer);
+      provider.off('status', onStatus);
+      offAck();
+    };
   }, [session]);
 
   return status;

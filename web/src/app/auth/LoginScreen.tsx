@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { DemoInfo } from '@shared/contracts';
+import { track } from '../../analytics';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { LabeledInput } from '../ui/LabeledInput';
@@ -65,7 +66,12 @@ export function LoginScreen({ onDone, google, demo }: LoginScreenProps) {
 
   const login = useMutation({
     mutationFn: (credentials: { email: string; password: string }) => api.login(credentials.email, credentials.password),
-    onSuccess: onDone,
+    onSuccess: (_data, credentials) => {
+      // Only a sign-in as one of the public demo accounts is reported, and only the account's short name.
+      const account = (demo?.accounts ?? []).find((a) => a.email.toLowerCase() === credentials.email.trim().toLowerCase());
+      if (account) track('demo_login', { account: account.email.split('@')[0] ?? 'demo' });
+      onDone();
+    },
   });
   const demoAccounts = demo?.accounts ?? [];
 

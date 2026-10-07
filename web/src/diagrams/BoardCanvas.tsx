@@ -40,6 +40,7 @@ import {
   useBoardConnectionStatus,
   useBoardPeers,
   useBoardSynced,
+  anonUser,
   throttledPointerPublisher,
 } from './boardCollab';
 import {
@@ -77,8 +78,10 @@ import { readStoredViewport, createViewportPersister, type ViewportPersister } f
 import { BoardExportMenu } from './BoardExportMenu';
 import { downloadBlob } from './download';
 import { exportFilename } from './exportFilename';
+import { BoardReactions } from './BoardReactions';
 import { StickyNotePalette, STICKY_NOTE_DRAG_MIME } from './StickyNotePalette';
 import { createStickyNoteElements, screenToSceneCoords, sceneToScreenCoords, type StickyNoteColorId } from './boardStickyNotes';
+import { trackBoardEdit } from '../analytics';
 import './i18n/register';
 
 const AUTOSAVE_DELAY_MS = 1500;
@@ -496,6 +499,18 @@ export default function BoardCanvas({ pageId, shareToken, shareMode }: BoardCanv
   // (BoardEditor.tsx / PageContent.tsx — viewers get StaticBoardView instead,
   // no collab session at all), so presence here only ever covers editors —
   // same pre-existing gap as the board's own peer cursors above.
+  // Emoji reactions (reactionsModel.ts, Y.Map `reactions`): who is reacting, and the names known for tooltips.
+  // A signed-in user reacts under their real id (stable across devices); an anonymous
+  // share-link guest under their per-browser guest identity.
+  const reactionUserId = useMemo(
+    () => session?.user.id ?? sessionUser?.id ?? `guest:${session?.user.name ?? anonUser().name}`,
+    [session, sessionUser],
+  );
+  const reactionNames = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const peer of peers) if (peer.user.id) out[peer.user.id] = peer.user.name;
+    return out;
+  }, [peers]);
   const presencePeople = usePagePresence(session?.awareness ?? null, session?.user ?? null);
   usePublishPagePresence(presencePeople);
 
@@ -1581,11 +1596,13 @@ export default function BoardCanvas({ pageId, shareToken, shareMode }: BoardCanv
               // SAME client (exactly what a drag/resize's own onChange stream
               // produces) needs coalescing into one Y.Doc transaction.
               elementsWriterRef.current?.write(sceneElements);
+              trackBoardEdit(pageId);
             }
             applyLocalBoardFields(session.doc, session.board, { viewBackgroundColor: appState.viewBackgroundColor });
             applyLocalFiles(session.doc, session.files, files as unknown as Record<string, BinaryFileData>);
           } else {
             schedulerRef.current?.notifyChange();
+            trackBoardEdit(pageId);
           }
           // Viewport memory: fires on every scene OR appState change,
           // including plain pan/zoom with zero element edits — exactly what
@@ -1599,6 +1616,18 @@ export default function BoardCanvas({ pageId, shareToken, shareMode }: BoardCanv
             zoom: appState.zoom.value,
           });
         }}
+      />
+      {/* Reactions follow the edit permission, not the View/Edit toggle: they are keys in the
+          room's own Y.Map, written over the same socket (and persisted with the room), so a
+          user who may edit can react in View mode too; read-only viewers only see the chips. */}
+      <BoardReactions
+        api={excalidrawApi}
+        containerRef={containerRef}
+        doc={session?.doc ?? null}
+        reactions={session?.reactions ?? null}
+        canReact={canWrite}
+        userId={reactionUserId}
+        names={reactionNames}
       />
       {/* `top` AND `right` are measured, not a breakpoint (boardChromeLayout.ts):
           our row shares this corner with Excalidraw's library trigger, sits in

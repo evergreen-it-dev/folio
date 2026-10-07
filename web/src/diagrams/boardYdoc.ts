@@ -18,6 +18,10 @@
  *             stays per-browser localStorage instead.
  *   files:    Y.Map<string, BinaryFileData>     — embedded images, keyed by
  *             their content-addressed fileId.
+ *   reactions: Y.Map<string, { at: number }>    — emoji reactions, one key per
+ *             (element, emoji, user): see reactionsModel.ts. CLIENT-ONLY root:
+ *             the server never reads it, but it persists it anyway because the
+ *             room snapshot (ydoc_state) encodes every root of the doc.
  *
  * Pure Yjs — no React, no @excalidraw/excalidraw runtime import (only
  * `import type`, erased at compile time) — so this file is testable with a
@@ -45,6 +49,7 @@ export interface BoardRoots {
   elements: Y.Map<unknown>;
   board: Y.Map<unknown>;
   files: Y.Map<unknown>;
+  reactions: Y.Map<unknown>;
 }
 
 export function boardRoots(doc: Y.Doc): BoardRoots {
@@ -52,6 +57,7 @@ export function boardRoots(doc: Y.Doc): BoardRoots {
     elements: doc.getMap('elements'),
     board: doc.getMap('board'),
     files: doc.getMap('files'),
+    reactions: doc.getMap('reactions'),
   };
 }
 

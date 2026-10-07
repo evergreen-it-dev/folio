@@ -309,7 +309,46 @@ async function persistDocFrontmatter(abs: string, data: FrontmatterFields, body:
   if (data.icon !== undefined) fm.icon = data.icon;
   if (data.cover !== undefined) fm.cover = data.cover;
   const out = matter.stringify(docFileBody(body), fm);
-  await fs.writeFile(abs, out, 'utf8');
+  await writeFileAtomic(abs, out);
+}
+
+/** The name writeFileAtomic gives its temp files: `.<file>.<pid>.<random>.tmp`. */
+const ATOMIC_TEMP_RE = /^\..+\.\d+\.[0-9a-z]+\.tmp$/;
+export function isAtomicTempName(name: string): boolean {
+  return ATOMIC_TEMP_RE.test(name);
+}
+
+/** A temp file older than this cannot belong to a write still in progress. */
+const ORPHAN_TEMP_AGE_MS = 60_000;
+
+/** Removes an orphaned writeFileAtomic temp file — never one young enough to be a write in progress. Never throws. */
+export async function removeOrphanTempFile(abs: string): Promise<void> {
+  try {
+    const stat = await fs.stat(abs);
+    if (Date.now() - stat.mtimeMs < ORPHAN_TEMP_AGE_MS) return;
+    await fs.rm(abs, { force: true });
+  } catch {
+    /* gone already, or unreadable — the next scan tries again */
+  }
+}
+
+/**
+ * Writes `content` to `abs` so that the file is either the old one or the new
+ * one, never half of the new one: a full disk (ENOSPC) or a crash mid-write
+ * used to leave the page's only on-disk copy truncated. The temp file sits in
+ * the same directory (rename is atomic only within a filesystem), is dot-named
+ * and not `.md`, so no scan indexes it, and is removed if anything fails.
+ */
+export async function writeFileAtomic(abs: string, content: string): Promise<void> {
+  const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`);
+  // git.ts excludes this shape from every `git add -A` (ATOMIC_TEMP_PATHSPEC).
+  try {
+    await fs.writeFile(tmp, content, 'utf8');
+    await fs.rename(tmp, abs);
+  } catch (err) {
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    throw err;
+  }
 }
 
 /**
@@ -1209,6 +1248,11 @@ export async function scanSpace(space: string, onProgress?: (progress: ScanProgr
       // other page. A NESTED `.agent` (someone's `notes/.agent/x.md`) is not
       // this folder and stays skipped, same as every other dotfile.
       const isAgentRoot = relDir === '' && name === AGENT_FOLDER;
+      if (dirent.isFile() && isAtomicTempName(name)) {
+        // A writeFileAtomic temp file its process never renamed (crash, kill).
+        await removeOrphanTempFile(path.join(absDir, name));
+        continue;
+      }
       if (!isAgentRoot && (name.startsWith('.') || name === 'assets')) continue;
       const abs = path.join(absDir, name);
       const relPath = relDir ? `${relDir}/${name}` : name;

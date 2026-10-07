@@ -9,6 +9,7 @@ import type { FormSubmitOutcome } from '../../forms/FormRenderer';
 import { api, ApiError } from '../api';
 import { useApiErrorText } from '../errorText';
 import { FormDefinitionEditor } from './FormDefinitionEditor';
+import { track } from '../../analytics';
 import '../i18n/register';
 
 export interface FormPageViewProps {
@@ -68,6 +69,7 @@ export function FormPageView({ pageId, space, markdown, canEdit, shareToken }: F
     const body: SubmitFormBody = { values: values as SubmitFormBody['values'], shareToken };
     try {
       await api.submitForm(pageId, body);
+      track('form_submit', { space_slug: space ?? '' });
       return { ok: true };
     } catch (err) {
       if (err instanceof ApiError) {

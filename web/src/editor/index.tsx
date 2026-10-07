@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
-import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
+import { yUndoManagerKeymap } from 'y-codemirror.next';
+import { trackEdit } from '../analytics';
 import { api } from '../app/api';
 import { useConnectivity } from '../app/offline/connectivity';
 import { usePagePresence, usePublishPagePresence } from '../app/presence';
@@ -17,6 +18,7 @@ import {
   type CollabSession,
   type ConnectionStatus,
 } from './collab';
+import { folioCollab } from './collab-sync';
 import { useEmojiFavorites } from '../emoji';
 import { editorServicesFacet, type EditorServices } from './editor-services';
 import { emojiFavouritesFacet } from './emoji-complete';
@@ -185,6 +187,15 @@ export function PageEditor({
       clearLiveDocText(pageId);
     };
   }, [session, pageId]);
+  // Optional analytics: that this page was edited (once per page), never what was typed.
+  useEffect(() => {
+    if (!session || readOnly) return;
+    const onEdit = (_event: unknown, tr: { local: boolean; origin: unknown }) => {
+      if (tr.local && tr.origin !== 'folio-title-repair') trackEdit('doc', pageId, space);
+    };
+    session.ytext.observe(onEdit);
+    return () => session.ytext.unobserve(onEdit);
+  }, [session, pageId, space, readOnly]);
   const markdown = useDocumentText(session, mode === 'reading');
   const mermaid = useMermaidModal();
   const queryClient = useQueryClient();
@@ -544,7 +555,11 @@ function ConnectionBadge({ status, peers }: { status: ConnectionStatus; peers: n
   // The peer count used to be its own faint span on the row; with the row down
   // to a dot it rides along in the tooltip instead of disappearing.
   const label =
-    status === 'connected' && peers > 0 ? `${title} ${t('status.peers', { count: peers })}` : title;
+    status === 'connected' && peers > 0
+      ? `${title} ${t('status.peers', { count: peers })}`
+      : status === 'unsaved'
+        ? `${title}. ${t('status.unsavedHint')}`
+        : title;
 
   return (
     <span className="folio-editor__status" data-status={status} role="img" aria-label={label} title={label}>
@@ -557,7 +572,15 @@ function ConnectionBadge({ status, peers }: { status: ConnectionStatus; peers: n
         {status === 'offline' ? (
           <path d="M3.2 8.8 8.8 3.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         ) : null}
+        {status === 'unsaved' ? <path d="M6 3.4v3.2M6 8.4v.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /> : null}
       </svg>
+      {/* Not saved is the one state a dot must not carry alone: the person is
+          typing text that is not reaching the server right now. */}
+      {status === 'unsaved' ? (
+        <span className="folio-editor__status-text" aria-hidden="true">
+          {t('status.unsavedShort')}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -611,7 +634,10 @@ function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepa
           modeCompartment.of(livePreviewConfig(false, { space: '', pagePath: '', pageId: '' })),
           emojiCompartment.of(emojiFavouritesFacet.of(emojiFavourites)),
           keymap.of(yUndoManagerKeymap),
-          yCollab(session.ytext, session.provider.awareness, { undoManager: session.undoManager }),
+          // Not y-codemirror's own yCollab: its sync plugin is switched off for
+          // good by the first exception, and the editor then keeps taking text
+          // that never reaches the document (collab-sync.ts).
+          folioCollab(session.ytext, session.provider.awareness, { undoManager: session.undoManager }),
         ],
       }),
       parent,

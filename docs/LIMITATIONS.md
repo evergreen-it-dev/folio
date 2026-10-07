@@ -17,7 +17,9 @@ what is not there.
 - **The public demo is shared and resets daily.** It is at
   <https://demo.foliowiki.online>: one login for everyone, data reset every
   24 hours. Tokens, Git and import, share links, invitations and the AI
-  assistant are turned off there. Don't enter personal data or API keys.
+  assistant are turned off there. Don't enter personal data or API keys. The
+  demo uses the optional analytics hook: anonymous events (page kinds, space
+  slugs), never page content; your own installation sends nothing.
 - **One agent per space.** `.agent` customizes the assistant for a space; a
   space cannot have several differently configured agents.
 
@@ -38,7 +40,11 @@ what is not there.
 5. **Moving a page does not rewrite relative links** in its text.
 6. **Search has no stemming** — a compromise for several languages at once:
    different forms of a word are different words.
-7. **Front matter keeps only Folio's own keys** — `id`, `order`, `status`,
+7. **Whiteboard reactions live in the board's live state, not in its file.**
+   They are saved in the database with the board's real-time snapshot, not in
+   the `.excalidraw.svg` file, so they are not in Git history and do not
+   travel with the repository.
+8. **Front matter keeps only Folio's own keys** — `id`, `order`, `status`,
    `icon`, `cover`. Other keys written by hand are dropped the first time
    Folio rewrites the page: an edit, or the scan that assigns it an `id`.
 

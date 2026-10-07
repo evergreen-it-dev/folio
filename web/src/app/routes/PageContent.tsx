@@ -18,6 +18,7 @@ import { OutlinePanel } from '../outline/OutlinePanel';
 import { PageChrome } from '../page-meta/PageChrome';
 import { PageConflictBanner } from '../git/PageConflictBanner';
 import { AgentDemoNote } from '../AgentDemoNote';
+import { trackPageOpen, type PageKind } from '../../analytics';
 import { StaticBoardView } from './StaticBoardView';
 import { PdfView } from './PdfView';
 import { OfficeView } from './OfficeView';
@@ -140,7 +141,21 @@ export function PageContent({ id }: PageContentProps) {
     wasOffline.current = connectivity === 'offline';
     if (was && connectivity !== 'offline' && !data) void refetch();
   }, [connectivity, data, refetch]);
-  const role = useSpaceRole(data?.space);
+  const spaceRole = useSpaceRole(data?.space);
+  // The space role is not the whole answer: page access (restricted pages,
+  // per-person grants) can make a space editor a viewer of THIS page, and the
+  // collab socket then drops their edits (server/collab.ts makeReadOnly). An
+  // editor that accepted typing the server throws away is how text gets lost,
+  // so the page's own role — the same session.effectivePageRole the socket
+  // uses — caps it once known. Until then (or offline) the space role stands.
+  const pageRoleQuery = useQuery({
+    queryKey: ['my-page-role', id],
+    queryFn: () => api.getMyPageRole(id),
+    enabled: Boolean(data) && !isLocalPage && canEditContent(spaceRole),
+    staleTime: 30_000,
+  });
+  const pageRole = pageRoleQuery.data ? pageRoleQuery.data.role : undefined;
+  const role = pageRole === undefined || canEditContent(pageRole ?? undefined) ? spaceRole : (pageRole ?? undefined);
   const editable = canEditContent(role);
   // The icon and the cover are written through the REST API — not available
   // to a page the server does not have yet (offline mode).
@@ -175,6 +190,20 @@ export function PageContent({ id }: PageContentProps) {
         }
       : null,
   );
+  // Optional analytics (off unless the server enables it): which kind of page was opened, never what is on it.
+  const openedId = data?.id;
+  const openedKind: PageKind | null = !data
+    ? null
+    : data.path === AGENT_FOLDER || data.path.startsWith(`${AGENT_FOLDER}/`)
+      ? 'agent'
+      : data.kind === 'folder'
+        ? null
+        : data.kind;
+  useEffect(() => {
+    if (openedId && openedKind) trackPageOpen(openedKind, routeSpace ?? data?.space ?? '');
+    // Keyed on the page: a background refetch of the same page is not another visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openedId, openedKind]);
   useRecordRecentVisit(data ? { space: data.space, id: data.id, title: data.title, icon: data.icon } : undefined);
 
   if (isLoading) {
@@ -213,7 +242,7 @@ export function PageContent({ id }: PageContentProps) {
     return (
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
-        <div className="min-h-0 flex-1">
+        <div className="ph-mask min-h-0 flex-1">
           <TablePageView pageId={data.id} role={tableRole(role)} space={data.space} onViewState={setTableViewState} />
         </div>
       </div>
@@ -226,7 +255,7 @@ export function PageContent({ id }: PageContentProps) {
     // table branch above makes; FormPageView renders its own small
     // "view table"/"edit form" row above the fields.
     return (
-      <div className="flex h-full flex-col overflow-y-auto">
+      <div className="ph-mask flex h-full flex-col overflow-y-auto">
         <PageConflictBanner space={data.space} pageId={data.id} />
         <FormPageView pageId={data.id} space={data.space} markdown={data.markdown ?? ''} canEdit={editable} />
       </div>
@@ -243,7 +272,7 @@ export function PageContent({ id }: PageContentProps) {
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
         <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={chromeEditable} allowCover={false} compact />
-        <div className="min-h-0 flex-1">
+        <div className="ph-no-capture min-h-0 flex-1">
           {/* Viewers never mount BoardEditor — DEV-PLAN Round 2: "boards render
               the fetched svg statically instead of BoardEditor" for that role. */}
           {editable ? <BoardEditor pageId={data.id} /> : <StaticBoardView svg={data.svg} title={data.title} />}
@@ -260,7 +289,7 @@ export function PageContent({ id }: PageContentProps) {
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
         <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={editable} allowCover={false} compact />
-        <div className="min-h-0 flex-1">
+        <div className="ph-no-capture min-h-0 flex-1">
           <PdfView pageId={data.id} title={data.title} />
         </div>
       </div>
@@ -277,7 +306,7 @@ export function PageContent({ id }: PageContentProps) {
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
         <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={editable} allowCover={false} compact />
-        <div className="min-h-0 flex-1">
+        <div className="ph-no-capture min-h-0 flex-1">
           <OfficeView pageId={data.id} title={data.title} format={officeFormat(data.path) ?? 'docx'} />
         </div>
       </div>
@@ -309,7 +338,7 @@ export function PageContent({ id }: PageContentProps) {
           {data.cover && (
             <PageChrome pageId={data.id} space={data.space} icon={data.icon} cover={data.cover} canEdit={chromeEditable} />
           )}
-          <div className="min-h-0 flex-1">
+          <div className="ph-mask min-h-0 flex-1">
             <PageEditor
               pageId={data.id}
               space={data.space}

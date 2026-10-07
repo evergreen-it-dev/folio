@@ -331,7 +331,7 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
       // Minimizing is a crop to the height of the header, NOT unmounting: the
       // conversation, an unfinished run and unsent text stay in place, and
       // expanding brings everything back as it was.
-      className={`fixed bottom-14 right-2 z-[70] flex w-[440px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl max-md:inset-x-2 max-md:bottom-2 max-md:w-auto md:bottom-2 dark:border-neutral-700 dark:bg-neutral-900 ${
+      className={`ph-no-capture fixed bottom-14 right-2 z-[70] flex w-[440px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl max-md:inset-x-2 max-md:bottom-2 max-md:w-auto md:bottom-2 dark:border-neutral-700 dark:bg-neutral-900 ${
         minimized ? 'h-[52px]' : 'h-[min(88vh,960px)] max-md:h-[min(70vh,720px)]'
       }`}
     >

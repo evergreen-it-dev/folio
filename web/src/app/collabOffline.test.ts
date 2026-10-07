@@ -324,6 +324,50 @@ describe('teardown of a server page', () => {
     expect(isDocDirty('server-page')).toBe(true);
   });
 
+  it('keeps the copy of an edited page that is connected and synced but whose edit the SERVER never confirmed (06.10.2026)', async () => {
+    // `synced` only means the first exchange is done. A read-only connection —
+    // the server drops a viewer's updates — or a dead socket stays "synced"
+    // while what was typed goes nowhere; deleting the copy then lost it.
+    const { doc, provider, session } = attach('server-page');
+    await session.ready;
+    provider.becomeSynced();
+    doc.getText('content').insert(0, 'typed, never acknowledged');
+
+    session.dispose();
+    expect(disk.created[0].clear).not.toHaveBeenCalled();
+    expect(disk.created[0].destroy).toHaveBeenCalledTimes(1);
+    expect(isDocDirty('server-page')).toBe(true);
+  });
+
+  it('deletes the copy of an edited page once the server state vector covers it', async () => {
+    const confirmed = { value: false };
+    const listeners = new Set<() => void>();
+    const ack = {
+      isConfirmed: () => confirmed.value,
+      pendingSince: () => (confirmed.value ? null : 0),
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      whenConfirmed: async () => confirmed.value,
+      probe: () => undefined,
+      dispose: vi.fn(),
+    };
+    const doc = new Y.Doc();
+    const provider = new FakeProvider();
+    const session = attachOfflineSession({ pageId: 'server-page', kind: 'doc', doc, provider: provider as unknown as WebsocketProvider, getSpace: () => 'eng', ack });
+    await session.ready;
+    provider.becomeSynced();
+    doc.getText('content').insert(0, 'typed');
+    confirmed.value = true;
+    for (const listener of listeners) listener();
+
+    session.dispose();
+    expect(disk.created[0].clear).toHaveBeenCalledTimes(1);
+    // The caller's tracker is the caller's to dispose.
+    expect(ack.dispose).not.toHaveBeenCalled();
+  });
+
   it('deletes the copy of a page that was only looked at while offline — nothing in it the server lacks', async () => {
     const { session } = attach('server-page');
     await session.ready;

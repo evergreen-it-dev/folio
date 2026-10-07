@@ -53,4 +53,44 @@ describe('editor extensions', () => {
     const state = EditorState.create({ extensions: [markdownEditorExtensions(), livePreview] });
     expect(state.facet(liveModeFacet)).toBe(false);
   });
+
+  describe('typing a dash under a paragraph', () => {
+    const names = (state: EditorState): string[] => {
+      const out: string[] = [];
+      syntaxTree(state).iterate({ enter: (node) => void out.push(node.name) });
+      return out;
+    };
+    const typeAtEnd = (doc: string, text: string): EditorState => {
+      const state = makeState(true, doc);
+      return state.update({ changes: { from: state.doc.length, insert: text } }).state;
+    };
+    const DOC = '## Heading\n\nDS\nlong paragraph with **bold tail**\n';
+
+    it('does not turn the paragraph above into a setext heading', () => {
+      // `text\n-` is a CommonMark setext h2; the owner typed one `-` on the empty
+      // line under a paragraph and the whole paragraph became a heading.
+      for (const typed of ['-', '--', '---', '=', '==']) {
+        const after = names(typeAtEnd(DOC, typed));
+        expect(after, typed).not.toContain('SetextHeading1');
+        expect(after, typed).not.toContain('SetextHeading2');
+        expect(after.filter((n) => n.endsWith('Heading2')), typed).toEqual(['ATXHeading2']);
+      }
+    });
+
+    it('leaves the neighbouring blocks untouched', () => {
+      const before = names(makeState(true, DOC));
+      const after = names(typeAtEnd(DOC, '-'));
+      expect(after.slice(0, before.length - 1)).toEqual(before.slice(0, before.length - 1));
+      expect(after).toContain('Paragraph');
+    });
+
+    it('keeps the markdown shortcuts working', () => {
+      expect(names(typeAtEnd(DOC, '\n- item'))).toContain('BulletList');
+      expect(names(typeAtEnd(DOC, '\n1. item'))).toContain('OrderedList');
+      expect(names(typeAtEnd(DOC, '\n> quote'))).toContain('Blockquote');
+      expect(names(typeAtEnd(DOC, '\n# Title'))).toContain('ATXHeading1');
+      expect(names(typeAtEnd(DOC, '\n**bold**'))).toContain('StrongEmphasis');
+      expect(names(typeAtEnd(DOC, '\n\n---'))).toContain('HorizontalRule');
+    });
+  });
 });

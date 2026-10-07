@@ -141,6 +141,10 @@ edited as the author.
 
 ![Three people editing one page](docs/images/collab.png)
 
+What you type is not lost between Live edit and Reading: the browser keeps a
+local copy until the server confirms it has your edits. If it cannot confirm
+them, the header says **Not saved** and closing the tab asks first.
+
 ---
 
 ## Works offline
@@ -233,6 +237,12 @@ together in real time and saved as SVG files that render anywhere.
 The board above was not drawn by hand. An agent created it through MCP from a
 short description of boxes and arrows; people then keep editing it like any
 other board.
+
+**Reactions.** Point at a shape and a small button appears at its corner:
+pick an emoji (👍 ❤️ 😂 🎉 🤔 👀 🔥 👏) and a counter chip shows under the shape.
+Click a chip to add or remove your own; point at it to see who reacted.
+Reactions are live for everyone on the board, and people who can only view it
+see them too. They are kept with the board's live state, not in its SVG file.
 
 ---
 
@@ -472,6 +482,13 @@ is one link away on the same screen.
 | Vercel, Netlify and other serverless hosting | not supported — Folio is a long-running server that keeps Git repositories on disk and holds live connections |
 
 Domains, HTTPS, updates and backups: [docs/INSTALL.md](docs/INSTALL.md).
+
+**No telemetry.** A Folio you run sends nothing about its use to anyone: no
+analytics library is loaded and no connection is opened to the Folio authors or
+to a third party. There is one opt-in exception for people who run a public
+demo: set `FOLIO_POSTHOG_KEY` to a PostHog project of your own and Folio sends
+anonymous events (page kinds, space slugs, never content). Without that key
+nothing happens. Details: [docs/INSTALL.md](docs/INSTALL.md#optional-analytics-hook-off-by-default).
 
 ---
 

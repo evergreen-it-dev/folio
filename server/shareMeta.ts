@@ -11,16 +11,11 @@
  * fallback that serves those two routes — there is no server-registered GET
  * for them) calls to rewrite that HTML per request, share routes only.
  *
- * Two notes about the generic tags in web/index.html this builds on, kept
- * here rather than as an HTML comment (that file ships to every visitor, and
- * internal rationale has no business in public page source):
- *  - `lang="uk"` there matches the app's own DEFAULT_LANG
- *    (web/src/i18n/index.ts). It used to be a hardcoded `en` that never
- *    matched what renders; the runtime sets documentElement.lang correctly,
- *    but a preview bot reads the raw HTML without running the SPA's JS.
- *  - No `og:image`: web/public/ holds only favicon.svg, and most preview
- *    consumers (Slack, Telegram, iMessage) ignore or badly render an SVG —
- *    omitting it beats pointing at one. Add a raster image if one is made.
+ * The generic tags this builds on (title, description, og:*, twitter:*,
+ * og:image) are written by pageMeta.ts into every index.html response; this
+ * module then overrides the per-page ones. `lang="uk"` in web/index.html
+ * matches the app's own DEFAULT_LANG (web/src/i18n/index.ts); the runtime
+ * sets documentElement.lang correctly, but a preview bot reads the raw HTML.
  *
  * Title/body are USER CONTENT reaching an HTML attribute — every injected
  * value goes through escapeHtmlAttr. Any failure to resolve the token
@@ -92,27 +87,37 @@ function injectShareMeta(html: string, title: string, description: string, url: 
   const escDescription = escapeHtmlAttr(description);
   const escUrl = escapeHtmlAttr(url);
 
-  // The generic tags these replace are written by hand in web/index.html
-  // with a known, stable shape (double-quoted attributes, property/name
-  // first) — regexes keyed on the attribute, never on the site-level
+  // The generic tags these replace are written by pageMeta.ts (and, in the
+  // tests, by hand) with a known, stable shape (double-quoted attributes,
+  // property/name first) — regexes keyed on the attribute, never on the
   // content they currently hold, so this stays correct if that copy changes.
   let out = html;
   out = replaceTag(out, /<title>[^<]*<\/title>/, `<title>${escTitle} · Folio</title>`);
   out = replaceTag(out, /<meta\s+property="og:title"[^>]*\/>/, `<meta property="og:title" content="${escTitle}" />`);
+  out = replaceTag(out, /<meta\s+name="twitter:title"[^>]*\/>/, `<meta name="twitter:title" content="${escTitle}" />`);
   // Only when there IS an excerpt: a board indexes as unsearchable (storage's
   // rowToEntry maps `body` from `plain_text`, null for boards), and an empty
   // excerpt would otherwise overwrite the site-level description with
   // content="" — a blank preview is strictly worse than the generic one.
   if (escDescription) {
+    out = replaceTag(out, /<meta\s+name="description"[^>]*\/>/, `<meta name="description" content="${escDescription}" />`);
     out = replaceTag(
       out,
       /<meta\s+property="og:description"[^>]*\/>/,
       `<meta property="og:description" content="${escDescription}" />`,
     );
+    out = replaceTag(
+      out,
+      /<meta\s+name="twitter:description"[^>]*\/>/,
+      `<meta name="twitter:description" content="${escDescription}" />`,
+    );
   }
+  // A shared page has no preview image of its own, so the instance image stays
+  // as a small thumbnail ("summary") instead of a large banner.
   out = replaceTag(out, /<meta\s+name="twitter:card"[^>]*\/>/, `<meta name="twitter:card" content="summary" />`);
 
   const ogUrlTag = `<meta property="og:url" content="${escUrl}" />`;
+  if (/<meta\s+property="og:url"[^>]*\/>/.test(out)) return out.replace(/<meta\s+property="og:url"[^>]*\/>/, ogUrlTag);
   const headClose = out.indexOf('</head>');
   if (headClose === -1) return out; // no recognizable <head> — nothing sane to inject into
   return `${out.slice(0, headClose)}    ${ogUrlTag}\n  ${out.slice(headClose)}`;

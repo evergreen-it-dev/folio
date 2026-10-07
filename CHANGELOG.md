@@ -6,6 +6,33 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **Emoji reactions on whiteboard shapes.** Point at a shape and a small
+  reaction button appears at its lower right corner; it opens a palette of eight
+  emoji (👍 ❤️ 😂 🎉 🤔 👀 🔥 👏). A reaction shows up as a chip with a count
+  below the shape; click the chip to add or remove yours, and point at it to see
+  who reacted. Reactions are stored in their own shared map of the board's live
+  document, one entry per shape, emoji and person, so two people reacting to the
+  same shape at the same moment both keep their reaction, and they appear in
+  every open tab at once. They do not touch the drawing: no scene edit, no undo
+  step, nothing in the board's SVG file or in Git. People who may only view a
+  board see the chips but cannot react.
+- **Optional analytics hook for a demo you run (off by default).** Folio sends
+  no telemetry: with no key set, the browser never loads an analytics library
+  and the server never opens a connection to anyone. An operator who runs a
+  public demo can set `FOLIO_POSTHOG_KEY` (and `FOLIO_POSTHOG_HOST`) to send
+  anonymous events to a PostHog project of their own: the kind of page opened
+  or edited, the space slug and the steps of connecting an AI app, never page
+  text, titles, search words, names or e-mail addresses. Visitors are not
+  identified and the visit id lives in the tab's session storage, not in a
+  cookie; the browser's Do Not Track setting turns it off. See
+  `docs/INSTALL.md`.
+- **Link previews.** Links to the instance's front page now carry Open Graph
+  and Twitter card tags, so LinkedIn, Slack, Telegram and the like show a title,
+  a description and a 1200x630 picture. A plain installation gets neutral
+  defaults and a Folio card; the public-demo mode has its own text and card.
+  `FOLIO_OG_TITLE`, `FOLIO_OG_DESCRIPTION` and `FOLIO_OG_IMAGE` (a path under
+  the site or an absolute address) override any of the three. Share links keep
+  showing the shared page's own title and excerpt.
 - **`search` and `fetch` MCP tools for ChatGPT deep research and company
   knowledge.** ChatGPT only accepts two read-only tools of exactly these
   names. `search(query)` returns `{results: [{id, title, url}]}` and
@@ -122,6 +149,38 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   spaces instead of their short addresses.
 
 ### Fixed
+
+- **Typed text can no longer be lost between Live edit and Reading.** One
+  error raised while the browser saved a local copy of the page used to switch
+  the editor's connection to the shared document off for good: from then on
+  the editor kept text on screen that the document never received, and it was
+  gone when you moved to Reading or reloaded. The connection between the
+  editor and the shared text now never switches itself off: after every change
+  it checks that both sides agree and repairs any difference, and when the
+  editor closes it hands over whatever only it had. The local copy is reopened
+  if its storage connection breaks, and it is deleted only after the server has
+  confirmed it holds your edits (checked against the server's own state, not
+  the socket's "synced" flag). If the server does not take your edits the
+  header shows "Not saved", and closing the tab with unconfirmed edits asks
+  first. A page you may only view (page access) now opens read-only instead of
+  an editor whose typing was silently dropped.
+- **The server keeps what a live page holds when a file write fails.** A failed
+  write of a page file is retried with growing pauses and the room's snapshot
+  stays in the database; the next open continues from the newer snapshot instead
+  of the older file. Page files are written atomically (a temporary file, then a
+  rename), and the temporary files are excluded from Git commits and cleaned up
+  if a crash leaves one behind. Carriage returns (Windows line ends) are
+  normalized wherever text enters a live page, which also stops two clients from
+  rewriting the same span and doubling it. When the server itself replaces all
+  of a live page's text (a file changed outside while the page was closed, an
+  API or MCP body write, "Take the version from Git"), the replaced text is
+  first saved in a backup table that is pruned by age. Adds migration 035.
+- **A single `-` under a paragraph stays a dash.** Typing `-` on the line right
+  after a paragraph used to turn the whole paragraph into a heading in the
+  editor, because Markdown treats a line of dashes under text as an
+  underline-style heading. The editor no longer recognises that form while you
+  type; `#` headings, lists, quotes, bold and rules work as before, and Reading
+  mode still renders underline-style headings in existing or imported text.
 
 - The "Ask" and "Agent" mode labels in the assistant panel and on the first-run
   screen are now translated into Ukrainian instead of staying in English.

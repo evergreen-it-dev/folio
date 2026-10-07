@@ -24,6 +24,7 @@ import { saveConfluenceCredentialBodySchema } from '../userConfluenceCredentials
 import type { ConfluenceCredentialInfo } from '../userConfluenceCredentials.js';
 import { recordAudit } from '../audit.js';
 import { assertNotDemo, assertNotDemoAccount, demoInfoFor, isDemoAccountEmail } from '../demo.js';
+import { VISITOR_HEADER, analyticsConfig, rememberVisitor } from '../analytics.js';
 
 
 async function toAuthState(user: User): Promise<AuthState> {
@@ -48,7 +49,10 @@ export function registerPublicAuthRoutes(app: FastifyInstance): void {
       google: isGoogleEnabled(),
       // Public-demo mode only (server/demo.ts); undefined — and so absent from the JSON — everywhere else.
       demo: demoInfoFor(Boolean(user)),
+      // Optional analytics (server/analytics.ts); undefined — and so absent from the JSON — unless the operator switched it on.
+      analytics: analyticsConfig(),
     };
+    if (user) rememberVisitor(request.cookies?.[session.SESSION_COOKIE_NAME], request.headers[VISITOR_HEADER]);
     return state;
   });
 
@@ -80,6 +84,7 @@ export function registerPublicAuthRoutes(app: FastifyInstance): void {
 
     const { token } = await store.createSession(stored.id);
     session.setSessionCookie(reply, token);
+    rememberVisitor(token, request.headers[VISITOR_HEADER]);
     const { passwordHash: _passwordHash, googleSub: _googleSub, ...user } = stored;
     return toAuthState(user);
   });

@@ -3,6 +3,7 @@ import { Plus, Rows3, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TableCellValue, TableColumn, TableDoc, TableRow, TableView } from '@shared/contracts';
 import './i18n/register';
+import { track, trackEdit } from '../analytics';
 import { ViewTabs } from './views/ViewTabs';
 import { clearDraft, isDirty, loadDraft, makeView, saveDraft } from './views/viewDraft';
 import { FilterPanel } from './panels/FilterPanel';
@@ -66,7 +67,7 @@ const LazyGrid = lazy(() => import('./TableGrid'));
  * Controlled when the parent passes `onPatch` (wave 3, CRDT-backed);
  * self-managed otherwise (wave 1 mocks, tests, storybook-ish usage).
  */
-function useDocState(initial: TableDoc, onPatch?: (patch: TablePatch) => void) {
+function useDocState(initial: TableDoc, onPatch?: (patch: TablePatch) => void, pageId?: string) {
   const [local, setLocal] = useState(initial);
   const controlled = Boolean(onPatch);
 
@@ -81,13 +82,16 @@ function useDocState(initial: TableDoc, onPatch?: (patch: TablePatch) => void) {
   const dispatch = useCallback(
     (patches: TablePatch[]) => {
       if (patches.length === 0) return;
+      // Optional analytics: that rows were added or the table was edited, never the values.
+      if (patches.some((patch) => patch.kind === 'rows:create')) track('table_row_add');
+      if (pageId && patches.some((patch) => patch.kind.startsWith('rows:') || patch.kind.startsWith('columns:'))) trackEdit('table', pageId);
       if (onPatch) {
         for (const patch of patches) onPatch(patch);
         return;
       }
       setLocal((previous) => applyPatches(previous, patches));
     },
-    [onPatch],
+    [onPatch, pageId],
   );
 
   return { doc, dispatch };
@@ -104,7 +108,7 @@ export function TablePage({
   onActiveViewChange,
 }: TableEditorProps) {
   const { t } = useTranslation('tables');
-  const { doc, dispatch } = useDocState(incoming, onPatch);
+  const { doc, dispatch } = useDocState(incoming, onPatch, pageId);
 
   const readOnly = !canEdit(role);
   const maySaveViews = canSaveViews(role);

@@ -58,6 +58,24 @@ is present.
 
 Authorship reaches the Git commit: the history shows who changed the page.
 
+**Typed text is protected.** The editor and the shared document are compared
+after every change and any difference is repaired, so text cannot stay on
+screen only. The browser keeps a local copy of the page and deletes it only
+once the server's own state shows that it holds your edits. When it does not,
+the header shows **Not saved** and closing the tab asks for confirmation. A
+page you may only view opens read-only. On the server, a failed write of the
+page file is retried and the newer live state wins over the older file the next
+time the page opens; page files are written atomically; and the text a live
+page held is saved in a backup table before the server replaces all of it (a
+file changed outside, an API or MCP body write, "Take the version from Git").
+
+**Whiteboard reactions.** Pointing at a shape shows a reaction button; the
+palette has eight emoji. Reactions appear as chips with a count under the
+shape, click a chip to add or remove yours, and the tooltip names who reacted.
+They sync in real time, two people reacting at once both keep theirs, people
+with the viewer role see them but cannot add any, and they are not part of the
+board's SVG file or Git history.
+
 ## 4. Offline mode
 
 Folio keeps working when the connection does not.
@@ -244,6 +262,14 @@ history and reading a page at a given commit, working with whiteboards, and a
 full set of operations on data tables. See [MCP.md](MCP.md).
 
 ## 13. Import, export and the rest
+
+**Privacy of the installation.** Folio sends no telemetry. An optional hook for
+a PostHog project of your own (`FOLIO_POSTHOG_KEY`) exists for people running
+a public demo; with no key set, no analytics library is loaded and no
+connection is opened. **Link previews:** the front page carries Open Graph and
+Twitter card tags (title, description, 1200x630 picture), neutral by default
+and set with `FOLIO_OG_TITLE`, `FOLIO_OG_DESCRIPTION` and `FOLIO_OG_IMAGE`.
+See [INSTALL](INSTALL.md).
 
 - **Import from Confluence**: a page or a tree, converting panels into
   callouts, code, checkboxes and images; Confluence **whiteboards** become

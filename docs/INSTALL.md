@@ -93,6 +93,51 @@ All settings live in the `.env` file next to `docker-compose.yml`. Copy
 | `TRUST_PROXY` | off | Set `true` behind a reverse proxy on the same host or Docker network so the sign-in rate limit is per visitor instead of one shared bucket. Only a proxy on a loopback or private address is believed. |
 | `FOLIO_DEMO_MODE` | off | `1` turns on public-demo mode for running your own demo: one-click demo accounts and a banner, and tokens, the assistant, outbound git and import, new spaces, share links and invitations are disabled. See `.env.dev.example`. |
 
+### Link previews
+
+When someone pastes a link to your Folio into LinkedIn, Slack, Telegram or a
+similar app, the app reads the first page the server returns and shows a card.
+Folio writes the card's tags (`og:*` and `twitter:*`) into that page: a neutral
+title and description and a Folio picture by default, or the public-demo text
+and picture when `FOLIO_DEMO_MODE=1`. A share link shows the shared page's own
+title and excerpt instead.
+
+| Setting | What it does |
+|---|---|
+| `FOLIO_OG_TITLE` | Title of the card. |
+| `FOLIO_OG_DESCRIPTION` | Description under the title. |
+| `FOLIO_OG_IMAGE` | Picture, ideally 1200x630: a path under your site (for example `/og/og-folio.png`) or an absolute address. |
+
+Any of them left empty keeps the default. The bundled pictures
+(`web/public/og/`) carry the project's own name and address; point
+`FOLIO_OG_IMAGE` at your own picture if the card should look like your
+installation. Set `PUBLIC_URL` to the public address: the card's links are
+built from it, and behind a proxy the address the server sees may be internal.
+
+### Optional analytics hook (off by default)
+
+Folio sends no telemetry. Nothing in it contacts the Folio authors or anyone
+else about how you use it, and a default install never will.
+
+For people who run a public demo or a showcase instance and want to see how it
+is used, there is an opt-in hook for a [PostHog](https://posthog.com) project
+that you own. It stays off until you set a project key:
+
+| Setting | What it does |
+|---|---|
+| `FOLIO_POSTHOG_KEY` | Your PostHog project token (the public `phc_...` key). Empty means off: the browser never loads the analytics library and the server never opens a connection. |
+| `FOLIO_POSTHOG_HOST` | Ingestion host, for example `https://eu.i.posthog.com`. Default `https://us.i.posthog.com`. |
+
+When it is on, the web app sends anonymous events only: which kind of page was
+opened or edited (document, table, board, form, file), the space slug, whether
+a search found anything, and the steps of an AI-app connection. It never sends
+page text, titles, search words, names or e-mail addresses. Visitors are not
+identified and get no person profile; the visit id is kept in the tab's session
+storage, not in a cookie. Session recordings, if you enable them in PostHog,
+mask all inputs and the content of pages, tables, boards, forms and files. The
+browser's Do Not Track setting turns it off. In PostHog, also enable "Discard
+client IP data" for the project.
+
 ### The secret
 
 Folio encrypts saved git tokens and personal AI keys with `FOLIO_SECRET`. If

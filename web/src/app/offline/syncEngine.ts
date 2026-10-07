@@ -26,6 +26,7 @@
 import { useSyncExternalStore } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import { WebsocketProvider } from 'y-websocket';
+import { trackServerAck } from '../collabAck';
 import * as Y from 'yjs';
 import type { PageMeta } from '@shared/contracts';
 import { ApiError, api } from '../api';
@@ -153,6 +154,7 @@ async function flushDirtyDoc(pageId: string): Promise<boolean> {
   const persistence = persistYDoc(pageId, doc);
   await persistence.whenLoaded;
   const provider = new WebsocketProvider(collabUrl(), pageId, doc, { connect: false });
+  const ack = trackServerAck(provider, doc);
   try {
     const synced = new Promise<boolean>((resolve) => {
       const timeout = setTimeout(() => resolve(false), FLUSH_SYNC_TIMEOUT_MS);
@@ -168,7 +170,12 @@ async function flushDirtyDoc(pageId: string): Promise<boolean> {
       return false;
     }
     await new Promise((resolve) => setTimeout(resolve, FLUSH_SETTLE_MS));
-    if (!provider.wsconnected) {
+    // Connected is not delivered: the copy is deleted only once the server's
+    // own state vector covers it (app/collabAck.ts). A read-only connection —
+    // the server drops a viewer's updates without a word — never confirms, and
+    // the copy stays for the user to see in the unsynced list.
+    const confirmed = provider.wsconnected && (await ack.whenConfirmed(FLUSH_SYNC_TIMEOUT_MS));
+    if (!confirmed || !provider.wsconnected) {
       persistence.destroy();
       return false;
     }
@@ -176,6 +183,7 @@ async function flushDirtyDoc(pageId: string): Promise<boolean> {
     markDocClean(pageId);
     return true;
   } finally {
+    ack.dispose();
     provider.destroy();
     doc.destroy();
   }

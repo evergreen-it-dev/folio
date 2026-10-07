@@ -10,6 +10,16 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
+
+/**
+ * Never staged: server/storage.ts writeFileAtomic's temp files
+ * (`.<file>.<pid>.<random>.tmp`). One only outlives its write when the process
+ * died mid-write, and must not reach a commit then; the next space scan removes it.
+ */
+export const ATOMIC_TEMP_PATHSPEC = ':(exclude,glob)**/.*.tmp';
+// After `add -A` everything else is staged, so "anything to commit" is asked
+// with --untracked-files=no: an excluded temp file alone must not start a
+// commit with nothing in it.
 import type { PageHistoryEntry } from '../shared/contracts.js';
 
 const execFileAsync = promisify(execFile);
@@ -81,8 +91,8 @@ export async function initWithCommit(dir: string, message: string): Promise<void
 
 /** Stages everything and commits if there are changes. Returns whether a commit was made. Committer is always Folio's fixed identity; `author` (a real person, or Folio itself for system commits) is passed via --author, never written to config. */
 export async function commitAll(dir: string, message: string, author: GitIdentity): Promise<boolean> {
-  await execGit(dir, ['add', '-A']);
-  const { stdout } = await execGit(dir, ['status', '--porcelain']);
+  await execGit(dir, ['add', '-A', '--', '.', ATOMIC_TEMP_PATHSPEC]);
+  const { stdout } = await execGit(dir, ['status', '--porcelain', '--untracked-files=no']);
   if (!stdout.trim()) return false;
   await execGit(dir, [
     '-c',
@@ -451,7 +461,7 @@ export async function mergeFetchedRemote(
 
 /** Commits whatever is currently on disk (including unresolved conflict markers) as-is — used right after a conflicted merge. */
 export async function commitConflictState(dir: string): Promise<void> {
-  await execGit(dir, ['add', '-A']);
+  await execGit(dir, ['add', '-A', '--', '.', ATOMIC_TEMP_PATHSPEC]);
   await execGit(dir, ['-c', `user.name=${FOLIO_COMMITTER.name}`, '-c', `user.email=${FOLIO_COMMITTER.email}`, 'commit', '-m', 'merge with conflicts']);
 }
 
@@ -664,8 +674,8 @@ export async function resetToRemote(
 
   await execGit(dir, ['fetch', 'origin'], env);
 
-  await execGit(dir, ['add', '-A']);
-  const { stdout: statusOut } = await execGit(dir, ['status', '--porcelain']);
+  await execGit(dir, ['add', '-A', '--', '.', ATOMIC_TEMP_PATHSPEC]);
+  const { stdout: statusOut } = await execGit(dir, ['status', '--porcelain', '--untracked-files=no']);
   if (statusOut.trim()) {
     await execGit(dir, [
       '-c',

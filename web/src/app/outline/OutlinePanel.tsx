@@ -333,7 +333,7 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
   ) : (
     <nav
       aria-label={showOutline ? t('outline.label') : t('notes.label')}
-      className="hidden w-56 shrink-0 min-[1100px]:block"
+      className="ph-mask hidden w-56 shrink-0 min-[1100px]:block"
     >
       <div className="sticky top-3 max-h-[calc(100vh-4.5rem)] overflow-y-auto pb-6 pl-2 pr-1">
         {/* A section that's away is one click from coming back, without

@@ -14,6 +14,7 @@ import {
   updateUserBodySchema,
 } from '@shared/contracts';
 import type { z } from 'zod';
+import { visitorHeaders } from '../analytics';
 import { getConnectivity, reportRequest } from './offline/connectivity';
 import { sortTreeSiblings } from './sidebar/reorderPages';
 import type {
@@ -558,14 +559,14 @@ export const api = {
   // ---------- auth (round 2) ----------
 
   /** Public. Drives the client auth gate: needsSetup | logged out | logged in. */
-  getAuthState: () => request<AuthState>('/api/auth/state'),
+  getAuthState: () => request<AuthState>('/api/auth/state', { headers: visitorHeaders() }),
 
   /** First-run only (409 once a user exists). The response body isn't relied on — callers re-fetch auth state after. */
   setupInstance: (body: SetupBody) =>
     request<unknown>('/api/auth/setup', { method: 'POST', body: JSON.stringify(body) }),
 
   login: (email: string, password: string) =>
-    request<unknown>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+    request<unknown>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }), headers: visitorHeaders() }),
 
   logout: () => request<unknown>('/api/auth/logout', { method: 'POST' }),
 

@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { track } from '../../analytics';
 import { AssistantRunProvider } from './runState';
 import { AssistantPanel } from './AssistantPanel';
 
@@ -39,6 +40,13 @@ function readStoredOpen(): boolean {
 
 export function AssistantHost({ children }: { children: ReactNode }) {
   const [open, setOpenState] = useState<boolean>(readStoredOpen);
+
+  // Optional analytics: the panel being opened by the person (not restored on load).
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (open && !wasOpen.current) track('assistant_panel_open');
+    wasOpen.current = open;
+  }, [open]);
 
   const setOpen = useCallback((next: boolean) => {
     setOpenState(next);

@@ -44,6 +44,7 @@ import {
   isDocDirty,
 } from './offline';
 import { hasIndexedDb } from './offline/db';
+import { trackServerAck, type ServerAck } from './collabAck';
 
 /**
  * How long a SERVER page's socket waits for the on-disk copy to load. Reading
@@ -68,6 +69,12 @@ export interface OfflineSessionOptions {
    * and the edit is then simply not recorded.
    */
   getSpace: () => string | undefined;
+  /**
+   * The session's server-acknowledgement tracker (app/collabAck.ts), when the
+   * caller already has one; otherwise this module makes its own and disposes
+   * it with the session.
+   */
+  ack?: ServerAck;
 }
 
 export interface OfflineSession {
@@ -134,7 +141,12 @@ function cleanWhenReady(pageId: string, stillWanted: () => boolean): void {
   });
 }
 
-export function attachOfflineSession({ pageId, kind, doc, provider, getSpace }: OfflineSessionOptions): OfflineSession {
+export function attachOfflineSession({ pageId, kind, doc, provider, getSpace, ack: givenAck }: OfflineSessionOptions): OfflineSession {
+  // `synced` is not "the server has it": y-websocket never acknowledges an
+  // edit, so a dead socket or a read-only connection keeps reading as synced
+  // while what was typed goes nowhere. Only the server's own state vector
+  // covering this doc is (06.10.2026).
+  const ack = givenAck ?? trackServerAck(provider, doc);
   // Read ONCE. The registry entry disappears the moment the page reaches the
   // server, and nothing about this session may tear down because of that.
   const startedLocal = isLocalPageId(pageId);
@@ -170,12 +182,14 @@ export function attachOfflineSession({ pageId, kind, doc, provider, getSpace }: 
   };
   doc.on('update', onUpdate);
 
-  /** Connected AND synced: the server has everything this tab has — the edits are no longer at risk. */
-  const onSync = (): void => {
-    if (!provider.wsconnected || !provider.synced) return;
-    cleanWhenReady(pageId, () => !disposed && provider.wsconnected && provider.synced);
+  /** Connected and CONFIRMED: the server has everything this tab has — the edits are no longer at risk. */
+  const serverHasAll = (): boolean => provider.wsconnected && provider.synced && ack.isConfirmed();
+  const onConfirmed = (): void => {
+    if (!serverHasAll()) return;
+    cleanWhenReady(pageId, () => !disposed && serverHasAll());
   };
-  provider.on('sync', onSync);
+  provider.on('sync', onConfirmed);
+  const offAck = ack.subscribe(onConfirmed);
 
   let loaded = false;
   // The server has created the page: this is a server page from now on. The
@@ -221,11 +235,15 @@ export function attachOfflineSession({ pageId, kind, doc, provider, getSpace }: 
       if (disposed) return;
       disposed = true;
       doc.off('update', onUpdate);
-      provider.off('sync', onSync);
+      provider.off('sync', onConfirmed);
+      offAck();
       unsubscribe();
       releaseOpen();
+      const syncedNow = serverHasAll();
+      if (!givenAck) ack.dispose();
       if (!persistence) return;
-      // Connected and synced at this very moment, and not a local page: the
+      // Connected and confirmed at this very moment (collabAck.ts — the server's
+      // own state vector covers this doc), and not a local page: the
       // server holds everything, and a copy left behind is worse than none —
       // the day the server's history of this page is rebuilt, a stale copy
       // merges into it as a second, unrelated document (ydocPersistence.ts).
@@ -242,7 +260,6 @@ export function attachOfflineSession({ pageId, kind, doc, provider, getSpace }: 
       // that was already dead (it reads as connected until its timeout), so
       // they were never listed as unsynced. Listing them now is what lets the
       // sync engine deliver them even if this page is never opened again.
-      const syncedNow = provider.wsconnected && provider.synced;
       const nothingToLose = !edited && !dirtyAtOpen && !isDocDirty(pageId);
       if (local) {
         persistence.destroy();

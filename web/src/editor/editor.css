@@ -267,8 +267,15 @@ html[data-width='wide'] .folio-editor {
 .folio-editor__status[data-status='connecting'] .folio-editor__dot {
   animation: folio-editor-pulse 1.2s ease-in-out infinite;
 }
-.folio-editor__status[data-status='offline'] {
+.folio-editor__status[data-status='offline'],
+.folio-editor__status[data-status='unsaved'] {
   color: var(--folio-ed-danger);
+}
+.folio-editor__status-text {
+  margin-left: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 @keyframes folio-editor-pulse {

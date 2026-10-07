@@ -260,3 +260,52 @@ describe('useCollabSession offline mode', () => {
     expect(isDocDirty('page-late')).toBe(true);
   });
 });
+
+describe('unconfirmed edits (content-loss fix, 06.10.2026)', () => {
+  it('leaving the page asks first while an edit is unconfirmed, and not for a page only looked at', async () => {
+    stubAuthFetch(null);
+    const { result, unmount } = renderHook(() => useCollabSession('page-unload', 'ws://x/collab', { share: 'tok' }), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+
+    const untouched = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(untouched);
+    expect(untouched.defaultPrevented).toBe(false);
+
+    act(() => result.current!.ytext.insert(0, 'typed, not confirmed'));
+    const pending = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(pending);
+    expect(pending.defaultPrevented).toBe(true);
+
+    unmount();
+    const afterUnmount = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(afterUnmount);
+    expect(afterUnmount.defaultPrevented).toBe(false);
+  });
+
+  it('the badge says "unsaved" once a connected edit stays unconfirmed past the warning delay', async () => {
+    stubAuthFetch(null);
+    const { result } = renderHook(
+      () => {
+        const session = useCollabSession('page-badge', 'ws://x/collab', { share: 'tok' });
+        return { session, status: useConnectionStatus(session) };
+      },
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.session).not.toBeNull());
+    const provider = providers.created[providers.created.length - 1] as unknown as { wsconnected: boolean; emit: (e: string, v: unknown) => void };
+    act(() => {
+      provider.wsconnected = true;
+      provider.emit('status', { status: 'connected' });
+    });
+    expect(result.current.status).toBe('connected');
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      act(() => result.current.session!.ytext.insert(0, 'refused by the server'));
+      expect(result.current.status).toBe('connected');
+      act(() => vi.advanceTimersByTime(6_200));
+      expect(result.current.status).toBe('unsaved');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

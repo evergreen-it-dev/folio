@@ -15,6 +15,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiTokenScope, User } from '../../shared/contracts.js';
+import { captureServerEvent, clientNameProp } from '../analytics.js';
 import { recordAudit } from '../audit.js';
 import * as authStore from '../auth/store.js';
 import * as session from '../auth/session.js';
@@ -295,6 +296,7 @@ export async function registerOAuthRoutes(app: FastifyInstance, opts: OAuthRoute
         requestedScopes: scopes,
         resource,
       });
+      captureServerEvent('oauth_connect_started', request.cookies?.[session.SESSION_COOKIE_NAME], { client_name: clientNameProp(client.clientName) });
       return reply.status(200).headers(CONSENT_HEADERS).send(
         renderConsentPage({
           lang: pickLang(user.lang),
@@ -336,6 +338,11 @@ export async function registerOAuthRoutes(app: FastifyInstance, opts: OAuthRoute
         resource: pending.resource,
       });
       recordAudit(user.id, 'oauth.consent_granted', pending.clientId, { scopes: granted });
+      const approvedClient = await store.getClient(pending.clientId);
+      captureServerEvent('oauth_connect_approved', request.cookies?.[session.SESSION_COOKIE_NAME], {
+        client_name: clientNameProp(approvedClient?.clientName ?? 'unknown'),
+        write: granted.includes('write'),
+      });
       return redirectToClient(reply, pending.redirectUri, issuer, { code, state: pending.state });
     });
 

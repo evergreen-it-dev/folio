@@ -14,7 +14,10 @@
     "connecting": "connecting",
     "offline": "offline",
     "title": "Collaboration: {{state}}",
-    "peers": "· {{count}} more"
+    "peers": "· {{count}} more",
+    "unsaved": "changes not saved",
+    "unsavedShort": "Not saved",
+    "unsavedHint": "The server has not confirmed your latest changes. They are kept in this browser — do not close the tab. If this does not clear up, you may not be allowed to edit this page."
   },
   "readonly": "Read-only",
   "loadingPage": "Loading page…",

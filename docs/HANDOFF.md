@@ -24,7 +24,7 @@ server process, PostgreSQL, Redis, and a directory of Git repositories.
 | Storage | Holds | Can it be rebuilt? |
 |---|---|---|
 | Git repositories (`data/repos/<space>/`) | All page content | It is the source |
-| PostgreSQL | Accounts, access rights, sessions, tokens, the search index, page order for file pages, collaborative-editing snapshots, trash records, notifications | The index — yes, by scanning the files. The rest — no |
+| PostgreSQL | Accounts, access rights, sessions, tokens, the search index, page order for file pages, collaborative-editing snapshots (and with them whiteboard reactions), backups of live text the server replaced, trash records, notifications | The index — yes, by scanning the files. The rest — no |
 | Redis | Rate limits, locks, presence | Transient by design |
 | Asset store (local disk or S3) | Uploaded images and attachments, addressed by content hash | No |
 
@@ -50,9 +50,52 @@ One Yjs document per open page, in a room named by the page id, over
 loads the file into the document when the room opens, writes it back to the
 file about 800 ms after a change, and stores a snapshot in PostgreSQL.
 
-Viewers get a connection whose updates the server discards. A write made by
-an agent goes through the live document when the room is open, so it appears
-in every open tab at once.
+Viewers get a connection whose updates the server discards, and a page the
+person may only view (page access) opens read-only instead of in an editor
+whose typing would be dropped. A write made by an agent goes through the live
+document when the room is open, so it appears in every open tab at once.
+
+**Typed text must reach the server, and the browser must know it did.**
+
+- *Editor to document.* `web/src/editor/collab-sync.ts` replaces
+  y-codemirror's sync plugin. It never throws, compares the editor with the
+  `Y.Text` after every change and repairs any difference, and hands the
+  `Y.Text` whatever only the editor had when the view goes away. CodeMirror
+  switches a plugin off for good when it throws once; an earlier plugin did
+  exactly that and left text on screen that the document never saw.
+- *Local copy.* The page's IndexedDB copy is reopened and rewritten in full
+  when its connection breaks (another tab may delete it). It is deleted only
+  after the server has acknowledged the edits: `web/src/app/collabAck.ts` reads
+  the server's state vector from its sync replies and counts a doc as saved when
+  that vector covers it, never on y-websocket's `synced` flag. Only this tab's
+  own updates count, including what the doc already held when tracking began;
+  pure deletes are invisible in state vectors, so a fresh sync step 1 after them
+  confirms them. Unconfirmed edits turn the header badge into "Not saved" and
+  `beforeunload` asks before the tab closes.
+- *Server.* A failed write of the page file keeps the room's state in
+  `ydoc_state`, is retried with backoff while the room is open, and the next
+  open resumes the newer snapshot instead of the older file.
+  `ydoc_state.file_body_sha256` records the hash of the body the room last
+  wrote; a file that still hashes to it has not changed, so a differing
+  snapshot is newer and wins (a NULL hash keeps the old rule: the file wins).
+  Files are written atomically (temporary file, then rename); the temporary
+  files are excluded from every `git add -A` and orphans are removed by a scan.
+  A live room never holds `\r`: CRLF and CR become LF wherever text enters a
+  `Y.Text`. Before the server replaces all of a live room's text (a file changed
+  while closed, a REST or MCP body write, "Take the version from Git") the old
+  text goes to `page_text_backups` (migration 035, no foreign key on purpose, so
+  a backup outlives its page; pruned by age at boot and daily).
+
+**Whiteboard reactions** (`web/src/diagrams/reactionsModel.ts`,
+`BoardReactions.tsx`) live in a dedicated root of the board's `Y.Doc`,
+`reactions: Y.Map`, one key per reaction: `<elementId>|<emoji>|<userId>`.
+Adding is a `set`, removing a `delete`; because each triple owns its key, two
+people reacting to one shape at once both survive the merge. The scene is never
+touched, so a reaction is neither a scene edit nor an undo step. The map
+travels over the same socket as the scene, is cached offline with the doc and
+is persisted by the room snapshot, which encodes every root of the doc. It is
+not written to the SVG file. A read-only viewer sees the chips and cannot add or
+remove any.
 
 The sidebar tree has its own signal. Database triggers on the page tables
 publish through PostgreSQL `LISTEN`/`NOTIFY`; the server listens on a
@@ -103,6 +146,28 @@ answer 403, and uploads are capped. Demo accounts may be space administrators fo
 off by default) lets `request.ip` come from `X-Forwarded-For`, but only from a
 proxy on a loopback or private address; without it the sign-in rate limit is
 one bucket for all visitors behind a proxy.
+
+**Link previews** (`server/pageMeta.ts`): link-preview bots read the raw HTML
+and never run the app's JavaScript, so `index.html` is rewritten per request
+(`/`, `/index.html` and the SPA fallback) with `description`, `og:*`,
+`twitter:*` and the page title. A plain instance gets neutral defaults and
+`/og/og-folio.png`; demo mode gets its own text and `/og/og-demo.png`;
+`FOLIO_OG_TITLE`, `FOLIO_OG_DESCRIPTION` and `FOLIO_OG_IMAGE` override each.
+Every value reaches an HTML attribute and is escaped. Share links
+(`server/shareMeta.ts`) run on top and replace title, description and URL with
+the shared page's own.
+
+**Optional analytics** (`server/analytics.ts`, `web/src/analytics/`) is off
+unless `FOLIO_POSTHOG_KEY` is set, and then it is the operator's own PostHog
+project. Without a key `GET /api/auth/state` carries no analytics block, the
+browser never loads the library, and the server never opens a connection.
+Only event names, page kinds and space slugs are sent, never page content,
+titles, search words, names or e-mail addresses; there is no identify call, no
+person profile, no cookie (the id is in `sessionStorage`), and Do Not Track
+turns it off. Session replay masks inputs and page content. The two OAuth
+consent steps are server-rendered pages without scripts, so the server reports
+them itself with the same anonymous id. Anything new that is sent must be
+added to this list and to `docs/INSTALL.md`.
 
 ### Agents
 
@@ -183,6 +248,15 @@ one bucket for all visitors behind a proxy.
   operations are cookie-only.
 - Page content is data, not instructions.
 - Migrations are forward-only.
+- The link between the editor and the `Y.Text` never throws and never stays
+  switched off. Any exception in a document `update` handler (a local-storage
+  provider, for instance) must be caught where it is raised.
+- A local copy of a page is deleted only after the server has acknowledged the
+  edits by state vector. "The socket says synced" is not an acknowledgement.
+- A live room's text is never replaced without saving the old text first.
+- A live room never holds a carriage return.
+- A default install sends nothing to anyone. Analytics stays opt-in, behind a
+  key the operator sets.
 
 ## Lessons that cost something
 
@@ -196,9 +270,24 @@ Each of these was a real defect. They are here so that nobody pays twice.
   state may have arrived before the subscription was committed.
 - Compare a file with the document body through one normalizing function. A
   trailing newline once made every reopened page look changed.
+- A reaction, a cursor, anything a person adds to a shared object, gets its own
+  key in a shared map. A field on the shared object is last-writer-wins and
+  loses one of two simultaneous writers.
+- `Y.Text` positions and the editor's can differ when the text contains `\r`;
+  two clients then rewrite the same span and double it. Normalize on entry.
+- A write that fails must leave the next attempt something to work from: keep
+  the state, retry with backoff, and let the newer state win on the next open.
+- An exception inside a `Y.Doc` `update` handler (a local-storage provider
+  writing to a closed connection, for example) escapes into the editor binding
+  and, in CodeMirror, switches that plugin off for good. A test for this layer
+  makes the persistence provider fail and then checks that the text still
+  arrives.
 
 **Editor**
 
+- A line of dashes under a paragraph is a Markdown underline-style heading, so
+  typing a single `-` re-parsed the whole paragraph as a heading. The editor's
+  parser drops that heading form; Reading mode still renders it.
 - jsdom does not reproduce `contenteditable`, focus, selection or layout. A
   green unit test proves little here; look in a real browser.
 - A test that types instantly passes on code that fails at human speed. Tests
@@ -276,6 +365,11 @@ Each of these was a real defect. They are here so that nobody pays twice.
   search by content.
 - Moving a page does not rewrite relative links inside it.
 - Offline mode does not cover data tables, forms, uploads or templates.
+- Reactions exist on whiteboard shapes only, not on documents, tables or
+  comments, and live in the database, not in the board's file or in Git.
+- The "Not saved" badge reports that the server has not confirmed the latest
+  edits; it cannot tell a dropped connection from a role that does not allow
+  editing, so its hint mentions both.
 - Assets are not carried along when a space's repository is moved.
 - OAuth: signing in with Google during the consent step returns to `/`, so the
   person repeats "Connect"; its rate limits live in process memory, not Redis;

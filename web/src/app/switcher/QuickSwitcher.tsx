@@ -18,6 +18,7 @@ import { useRecents } from '../recents';
 import type { RecentPage } from '../recents';
 import { HelpModal } from '../help/HelpModal';
 import { fuzzyFilter } from './fuzzy';
+import { track } from '../../analytics';
 import '../i18n/register';
 
 export interface QuickSwitcherProps {
@@ -97,6 +98,19 @@ export function QuickSwitcher({ space, onClose }: QuickSwitcherProps) {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Optional analytics: one `search` event per use of the switcher, when it closes, with only whether the last
+  // finished search found anything. Never the words typed.
+  const lastSearch = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (trimmed && searchData) lastSearch.current = searchData.hits.length > 0;
+  }, [trimmed, searchData]);
+  useEffect(
+    () => () => {
+      if (lastSearch.current !== null) track('search', { has_results: lastSearch.current });
+    },
+    [],
+  );
 
   function go(to: string) {
     onClose();
@@ -303,7 +317,7 @@ export function QuickSwitcher({ space, onClose }: QuickSwitcherProps) {
           />
         </div>
 
-        <div ref={listRef} id="folio-switcher-list" role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        <div ref={listRef} id="folio-switcher-list" role="listbox" className="ph-mask min-h-0 flex-1 overflow-y-auto p-1.5">
           {recentEntries.length > 0 && (
             <Section label={t('switcher.recent')}>
               {recentEntries.map((entry) => {

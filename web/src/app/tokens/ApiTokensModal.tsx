@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -12,6 +12,7 @@ import { Modal } from '../ui/Modal';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { LabeledInput } from '../ui/LabeledInput';
 import { buildMcpJson, buildMcpSnippet, scopeLabel } from './mcpSnippet';
+import { track } from '../../analytics';
 import '../i18n/register';
 
 export interface ApiTokensModalProps {
@@ -128,6 +129,9 @@ function ConnectedApps() {
   const queryClient = useQueryClient();
   const showToast = useToast();
   const [disconnecting, setDisconnecting] = useState<OAuthConnectionInfo | null>(null);
+  useEffect(() => {
+    track('connected_apps_view');
+  }, []);
   // Cache only (as DemoBanner): `demo` is present in /api/auth/state only on a public-demo instance.
   const { data: authState } = useQuery({ queryKey: ['auth', 'state'], queryFn: api.getAuthState, enabled: false });
   const connections = useQuery({ queryKey: CONNECTIONS_QUERY_KEY, queryFn: api.listOAuthConnections, retry: false });

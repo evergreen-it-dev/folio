@@ -34,6 +34,11 @@
         "orange": "Orange sticky note"
       }
     },
+    "reactions": {
+      "add": "Add reaction",
+      "pick": "Pick a reaction",
+      "you": "You"
+    },
     "reload": "Retry",
     "loadFailed": "Couldn't load the board — saving is disabled",
     "sessionExpired": "Session expired — please log in again",

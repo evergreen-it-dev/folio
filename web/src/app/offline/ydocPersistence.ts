@@ -40,17 +40,83 @@ const NOOP: YDocPersistence = {
   destroy: () => undefined,
 };
 
+/** How many times one session reopens its database after losing the connection, before it gives up on local storage. */
+export const MAX_REOPENS = 5;
+
+interface StoreUpdateInternals {
+  _storeUpdate: (update: Uint8Array, origin: unknown) => void;
+}
+
 export function persistYDoc(pageId: string, doc: Y.Doc): YDocPersistence {
   if (!hasIndexedDb()) return NOOP;
   let persistence: IndexeddbPersistence;
+  let done = false;
+  let reopens = 0;
+
+  /**
+   * y-indexeddb writes every update from inside the doc's own 'update' event,
+   * and throws there when its connection is gone: another tab deleting this
+   * page's database (its session closed after syncing — collabOffline.ts)
+   * makes lib0 close every other connection to it, and Safari drops idle
+   * connections on its own. An exception in that event escapes the
+   * transaction that caused it — the editor's sync binding among them — and
+   * was how typed text stopped reaching the document at all (06.10.2026,
+   * editor/collab-sync.ts). So the write is guarded, and a lost connection is
+   * replaced: a fresh IndexeddbPersistence stores the doc's whole current
+   * state as soon as it opens, the update that failed included.
+   */
+  const guard = (instance: IndexeddbPersistence): void => {
+    const internals = instance as unknown as StoreUpdateInternals;
+    const store = internals._storeUpdate;
+    doc.off('update', store);
+    const safeStore = (update: Uint8Array, origin: unknown) => {
+      try {
+        store(update, origin);
+      } catch (error) {
+        replace(instance, error);
+      }
+    };
+    // y-indexeddb's destroy() unregisters whatever this property holds.
+    internals._storeUpdate = safeStore;
+    doc.on('update', safeStore);
+  };
+
+  const open = (): IndexeddbPersistence => {
+    const instance = new IndexeddbPersistence(yPersistName(pageId), doc);
+    guard(instance);
+    return instance;
+  };
+
+  const replace = (broken: IndexeddbPersistence, error: unknown): void => {
+    if (broken !== persistence || done) return;
+    // eslint-disable-next-line no-console
+    console.warn(`[offline] lost the local copy's connection for page ${pageId}; reopening:`, error);
+    void broken.destroy().catch(() => undefined);
+    if (reopens >= MAX_REOPENS) {
+      done = true;
+      // Editing goes on (the server copy is unaffected), but nothing more is
+      // kept in this browser for this page while the session lasts.
+      // eslint-disable-next-line no-console
+      console.error(`[offline] gave up keeping a local copy of page ${pageId} after ${MAX_REOPENS} reopen attempts; edits now rely on the server alone`);
+      return;
+    }
+    reopens += 1;
+    try {
+      persistence = open();
+    } catch (reopenError) {
+      done = true;
+      // eslint-disable-next-line no-console
+      console.warn(`[offline] could not reopen local storage for page ${pageId}:`, reopenError);
+    }
+  };
+
   try {
-    persistence = new IndexeddbPersistence(yPersistName(pageId), doc);
+    persistence = open();
   } catch (error) {
     // eslint-disable-next-line no-console
     console.warn(`[offline] could not open local storage for page ${pageId}:`, error);
     return NOOP;
   }
-  let done = false;
   const whenLoaded = persistence.whenSynced.then(
     () => undefined,
     (error) => {

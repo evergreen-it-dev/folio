@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { SpaceRole, User } from '@shared/contracts';
 import { api, UNAUTHORIZED_EVENT } from '../api';
+import { initAnalytics } from '../../analytics';
 import { reconcileLanguageFromProfile } from '../../i18n';
 import { resolveSpaceRole } from './roles';
 import { SetupScreen } from './SetupScreen';
@@ -89,6 +90,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // user's saved profile preference the first time it's seen — see
   // reconcileLanguageFromProfile's own doc comment for why this is a no-op
   // in every other case.
+  // Optional analytics: the server offers a key only when the operator switched it on (server/analytics.ts).
+  const analytics = data?.analytics;
+  useEffect(() => {
+    initAnalytics(analytics);
+  }, [analytics]);
+
   const profileLang = data?.user?.lang;
   useEffect(() => {
     reconcileLanguageFromProfile(profileLang);

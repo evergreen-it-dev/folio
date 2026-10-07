@@ -42,6 +42,7 @@ import { startPeriodicFetchForAllSpaces, stopAllPeriodicFetch, flushAllPendingSy
 import { stopGitTreeCache } from './gitTree.js';
 import { shouldServeSpaFallback, spaStaticOptions } from './spaFallback.js';
 import { matchShareRoute, renderShareIndexHtml } from './shareMeta.js';
+import { renderIndexHtml } from './pageMeta.js';
 import { publicUrlOrOrigin } from './publicUrl.js';
 import { runBootScan } from './bootScan.js';
 import { demoMaxUploadBytes, isDemoMode } from './demo.js';
@@ -97,23 +98,24 @@ app.setNotFoundHandler(async (request, reply) => {
     return;
   }
   const indexPath = path.join(spaFallbackRoot, 'index.html');
-  // /share/:token(/p/:pageId) is the ONE ordinary SPA route needing more than
-  // a static file read — see shareMeta.ts. Every other fallback (the vast
-  // majority of hits: `/`, every authenticated client route, ...) keeps the
-  // exact sync Buffer read this always did; matchShareRoute is a single
-  // regex test, so a non-share 404/route never pays for the DB lookup below.
+  // Every index.html response carries the link-preview meta (pageMeta.ts), a
+  // cheap string rewrite. /share/:token(/p/:pageId) is the ONE route that also
+  // needs a DB lookup (shareMeta.ts); matchShareRoute is a single regex test,
+  // so a non-share route never pays for it.
   const pathname = request.url.split('?')[0];
+  const requestOrigin = `${request.protocol}://${request.hostname}`;
+  const indexHtml = renderIndexHtml(fs.readFileSync(indexPath, 'utf8'), requestOrigin, pathname);
   const shareMatch = matchShareRoute(pathname);
   if (!shareMatch) {
-    reply.type('text/html').send(fs.readFileSync(indexPath));
+    reply.type('text/html').send(indexHtml);
     return;
   }
   // Share links are unlisted, not public — same header the JSON share
   // endpoint sets (routes.ts's registerPublicShareRoutes), now also on the
   // HTML a preview bot/crawler actually fetches for these routes.
   reply.header('X-Robots-Tag', 'noindex');
-  const origin = publicUrlOrOrigin(`${request.protocol}://${request.hostname}`);
-  const html = await renderShareIndexHtml(fs.readFileSync(indexPath, 'utf8'), pathname, `${origin}${request.url}`);
+  const origin = publicUrlOrOrigin(requestOrigin);
+  const html = await renderShareIndexHtml(indexHtml, pathname, `${origin}${request.url}`);
   reply.type('text/html').send(html);
 });
 
@@ -244,6 +246,20 @@ async function main(): Promise<void> {
   // the fallback only runs from the not-found handler.
   if (process.env.NODE_ENV === 'production') {
     const distRoot = path.resolve(import.meta.dirname, '../web/dist');
+    // `/` and `/index.html` are the one static file that must be rewritten per
+    // request (link-preview meta, pageMeta.ts): answer them here, before the
+    // static plugin's own routes are registered below.
+    app.addHook('onRequest', async (request, reply) => {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return;
+      const pathname = request.url.split('?')[0];
+      if (pathname !== '/' && pathname !== '/index.html') return;
+      const html = renderIndexHtml(
+        fs.readFileSync(path.join(distRoot, 'index.html'), 'utf8'),
+        `${request.protocol}://${request.hostname}`,
+        '/',
+      );
+      return reply.header('Cache-Control', 'no-cache').type('text/html; charset=utf-8').send(html);
+    });
     await app.register(fastifyStatic, spaStaticOptions(distRoot));
     spaFallbackRoot = distRoot;
   }

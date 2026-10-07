@@ -531,6 +531,16 @@ export interface AuthState {
    * Public-demo mode (server/demo.ts, FOLIO_DEMO_MODE=1): present ONLY then — absent on every ordinary instance. On the login screen it lists the demo accounts to sign in as; for an authenticated session `accounts` is empty (the header banner needs only the reset interval).
    */
   demo?: DemoInfo;
+  /**
+   * Optional product analytics (server/analytics.ts): present ONLY when the operator set FOLIO_POSTHOG_KEY. Absent on every ordinary instance, which then never loads or contacts anything.
+   */
+  analytics?: AnalyticsConfig;
+}
+
+/** PostHog project token (a public "phc_" key) and ingestion host, handed to the web app by GET /api/auth/state. */
+export interface AnalyticsConfig {
+  key: string;
+  host: string;
 }
 
 /** One public demo account, shown as a card on the login screen. The password is public by design — it is only ever served while demo mode is on. */

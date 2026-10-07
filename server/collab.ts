@@ -20,6 +20,7 @@
  */
 import { createRequire } from 'node:module';
 import * as fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import * as Y from 'yjs';
 import * as WS from 'ws';
@@ -174,7 +175,10 @@ export function createDebouncedWriter(fn: () => void | Promise<void>, ms: number
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = undefined;
-        void run();
+        run().catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error('[collab] debounced write failed:', err);
+        });
       }, ms);
     },
     flush,
@@ -302,9 +306,21 @@ async function ensureDocSeeded(docName: string): Promise<void> {
  * in normal operation — this is a defense-in-depth backstop, not the
  * primary fix) can be both unseeded AND shorter than the file.
  */
-export async function persistDoc(docName: string, ydoc: Y.Doc): Promise<void> {
-  const current = await storage.getEntry(docName);
-  if (!current) return; // page deleted; nothing to persist to
+export async function persistDoc(docName: string, ydoc: Y.Doc): Promise<boolean> {
+  let current: storage.PageIndexEntry | undefined;
+  try {
+    current = await storage.getEntry(docName);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[collab] could not look up page ${docName} to persist it:`, err);
+    // Same rule as a failed file write: the room state must not live only in this process.
+    await storeSnapshot(docName, ydoc).catch((snapErr) => {
+      // eslint-disable-next-line no-console
+      console.error(`[collab] ALSO failed to store the snapshot of page ${docName}; its latest text is only in memory:`, snapErr);
+    });
+    return false;
+  }
+  if (!current) return true; // page deleted; nothing to persist to
   // Round 26: a table page's body is not a Y.Text at all — it is the six-root
   // structured Y.Doc above, serialized through shared/tables. Everything below
   // this branch is the ORIGINAL doc-kind path, unchanged.
@@ -315,7 +331,7 @@ export async function persistDoc(docName: string, ydoc: Y.Doc): Promise<void> {
       // eslint-disable-next-line no-console
       console.error(`[collab] failed to persist table ${docName}:`, err);
     }
-    return;
+    return true;
   }
   if (isBoardEntry(current)) {
     try {
@@ -324,9 +340,9 @@ export async function persistDoc(docName: string, ydoc: Y.Doc): Promise<void> {
       // eslint-disable-next-line no-console
       console.error(`[collab] failed to persist board ${docName}:`, err);
     }
-    return;
+    return true;
   }
-  if (current.kind !== 'doc') return;
+  if (current.kind !== 'doc') return true;
   try {
     const newBody = ydoc.getText('content').toString();
     if (!isDocSeeded(docName)) {
@@ -341,7 +357,7 @@ export async function persistDoc(docName: string, ydoc: Y.Doc): Promise<void> {
             `If this page genuinely has no meaningful prior content, this is a false trip worth investigating ` +
             `(isDocSeeded should have been true by now).`,
         );
-        return;
+        return true;
       }
     }
     // File first, snapshot second: if the snapshot write fails, the file (the
@@ -351,8 +367,22 @@ export async function persistDoc(docName: string, ydoc: Y.Doc): Promise<void> {
     // write would look, to bindState, like the FILE needs to "catch up" to it —
     // silently regressing content that was really just never written.
     const titleBefore = current.title ?? null;
-    await storage.writeDocBody(docName, newBody);
-    await storeSnapshot(docName, ydoc); // same cadence as the file write
+    try {
+      await storage.writeDocBody(docName, newBody);
+    } catch (err) {
+      // The file write failed: the room's text must not live only in this
+      // process. Store the snapshot anyway, WITHOUT moving its file marker —
+      // bindState then knows the file is older than the snapshot and keeps the
+      // snapshot (see docFileWins). The caller retries the whole write.
+      // eslint-disable-next-line no-console
+      console.error(`[collab] failed to write page ${docName} to its file — keeping the room state in ydoc_state and retrying:`, err);
+      await storeSnapshot(docName, ydoc).catch((snapErr) => {
+        // eslint-disable-next-line no-console
+        console.error(`[collab] ALSO failed to store the snapshot of page ${docName}; its latest text is only in memory:`, snapErr);
+      });
+      return false;
+    }
+    await storeSnapshot(docName, ydoc, storage.docFileBody(newBody)); // same cadence as the file write
     gitSync.noteActivity(current.space); // starts/resets the ~90s quiet-period auto-commit
     // Title edited in the H1 (the usual way a new page gets its name): follow
     // with the slug while it is still the auto-derived one — see maybeAutoRenameSlug.
@@ -360,9 +390,88 @@ export async function persistDoc(docName: string, ydoc: Y.Doc): Promise<void> {
     if (titleAfter && titleAfter !== titleBefore) {
       void maybeAutoRenameSlug(docName, titleBefore, titleAfter, gitSync.authorFor(current.space));
     }
+    return true;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(`[collab] failed to persist page ${docName}:`, err);
+    return false;
+  }
+}
+
+/**
+ * A doc room's text never holds a carriage return. CodeMirror normalizes
+ * "\r\n" to "\n" in every editor, so a "\r" in the Y.Text puts each editor's
+ * positions out of step with the document from that character on: remote
+ * edits land in the wrong place, and the editor's own consistency repair
+ * (web/src/editor/collab-sync.ts) then rewrites the span — with two clients at
+ * once, that doubled the page (review of 54d4e76). Every path that puts text
+ * into a doc room goes through this.
+ */
+export function normalizeEol(text: string): string {
+  return text.includes('\r') ? text.replace(/\r\n?/g, '\n') : text;
+}
+
+/**
+ * Removes every "\r" a room already holds (a snapshot stored before
+ * normalizeEol existed) — one character at a time, as ordinary deletes, never
+ * a whole-text replace: a client reconnecting with the old characters merges
+ * these like any concurrent edit (deleting the same character twice is a no-op).
+ * A lone "\r" becomes "\n", the way an editor reads it.
+ */
+export function stripCarriageReturns(ytext: Y.Text): void {
+  const text = ytext.toString();
+  if (!text.includes('\r')) return;
+  ytext.doc!.transact(() => {
+    for (let i = text.length - 1; i >= 0; i--) {
+      if (text[i] !== '\r') continue;
+      ytext.delete(i, 1);
+      if (text[i + 1] !== '\n') ytext.insert(i, '\n');
+    }
+  });
+}
+
+/** sha256 of a body as written to a page's file — ydoc_state.file_body_sha256. */
+export function fileBodyHash(fileBody: string): string {
+  return createHash('sha256').update(fileBody, 'utf8').digest('hex');
+}
+
+/**
+ * Should the page's FILE replace a resumed room's text? Only when the file
+ * changed after this room last wrote it — an external edit, a git pull/merge or
+ * reset applied while the room was closed. A file that still hashes to the
+ * marker stored with the snapshot is exactly what the room last wrote; if the
+ * snapshot's text differs from it, the snapshot is the newer one (its file
+ * write failed — persistDoc) and replacing it would throw away real typing.
+ * No marker (a snapshot from before 06.10.2026): the file wins, as it always did.
+ */
+export function docFileWins(fileBody: string, marker: string | null | undefined): boolean {
+  return !marker || fileBodyHash(normalizeEol(fileBody)) !== marker;
+}
+
+/** How many backups one page keeps, and for how long (page_text_backups). */
+const BACKUPS_PER_PAGE = 50;
+const BACKUP_RETENTION = '30 days';
+
+/**
+ * Keeps `body` — a room's whole text, right before the server replaces all of
+ * it — in page_text_backups. Never throws: a failed backup is logged, and the
+ * caller's own operation goes on as it did before backups existed. Empty text
+ * is not kept (nothing to lose).
+ */
+export async function backupRoomText(pageId: string, reason: string, body: string): Promise<void> {
+  if (!body.trim()) return;
+  try {
+    await query('INSERT INTO page_text_backups (page_id, reason, body) VALUES ($1, $2, $3)', [pageId, reason, body]);
+    await query(
+      `DELETE FROM page_text_backups
+        WHERE page_id = $1
+          AND (created_at < now() - $2::interval
+               OR id NOT IN (SELECT id FROM page_text_backups WHERE page_id = $1 ORDER BY created_at DESC, id DESC LIMIT $3))`,
+      [pageId, BACKUP_RETENTION, BACKUPS_PER_PAGE],
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[collab] failed to back up the text of page ${pageId} before "${reason}":`, err);
   }
 }
 
@@ -372,8 +481,16 @@ export async function persistDoc(docName: string, ydoc: Y.Doc): Promise<void> {
  * from before this migration, or a page that's never been opened live).
  */
 export async function loadSnapshot(pageId: string): Promise<Uint8Array | undefined> {
-  const row = await queryOne<{ snapshot: Buffer }>('SELECT snapshot FROM ydoc_state WHERE page_id = $1', [pageId]);
-  return row ? new Uint8Array(row.snapshot) : undefined;
+  return (await loadSnapshotRow(pageId))?.snapshot;
+}
+
+/** loadSnapshot plus the snapshot's file marker (see docFileWins). */
+export async function loadSnapshotRow(pageId: string): Promise<{ snapshot: Uint8Array; fileBodySha256: string | null } | undefined> {
+  const row = await queryOne<{ snapshot: Buffer; file_body_sha256: string | null }>(
+    'SELECT snapshot, file_body_sha256 FROM ydoc_state WHERE page_id = $1',
+    [pageId],
+  );
+  return row ? { snapshot: new Uint8Array(row.snapshot), fileBodySha256: row.file_body_sha256 } : undefined;
 }
 
 /**
@@ -381,19 +498,23 @@ export async function loadSnapshot(pageId: string): Promise<Uint8Array | undefin
  * compact MERGED snapshot (not an ever-growing update log), so a plain
  * upsert here is enough — no GC/compaction machinery needed.
  */
-export async function storeSnapshot(pageId: string, ydoc: Y.Doc): Promise<void> {
+export async function storeSnapshot(pageId: string, ydoc: Y.Doc, writtenFileBody?: string): Promise<void> {
   // yEngineFor, not the plain ESM `Y` import directly — see its doc comment up top.
   // Encoding via the WRONG copy's encodeStateAsUpdate silently produces bytes
   // inconsistent with the doc's actual internal structure.
-  await upsertSnapshotRow(pageId, yEngineFor(ydoc).encodeStateAsUpdate(ydoc));
+  await upsertSnapshotRow(pageId, yEngineFor(ydoc).encodeStateAsUpdate(ydoc), writtenFileBody === undefined ? undefined : fileBodyHash(writtenFileBody));
 }
 
-/** The one upsert every snapshot write goes through — storeSnapshot (a live room's own state) and storeClientSnapshot (a client's, below). */
-async function upsertSnapshotRow(pageId: string, snapshot: Uint8Array): Promise<void> {
+/**
+ * The one upsert every snapshot write goes through — storeSnapshot (a live room's own state) and storeClientSnapshot (a client's, below).
+ * `fileMarker`: the hash of the body just written to the file alongside this snapshot; `undefined` keeps the row's current marker (the file did not change).
+ */
+async function upsertSnapshotRow(pageId: string, snapshot: Uint8Array, fileMarker?: string): Promise<void> {
   await query(
-    `INSERT INTO ydoc_state (page_id, snapshot, updated_at) VALUES ($1, $2, now())
-     ON CONFLICT (page_id) DO UPDATE SET snapshot = EXCLUDED.snapshot, updated_at = now()`,
-    [pageId, Buffer.from(snapshot)],
+    `INSERT INTO ydoc_state (page_id, snapshot, updated_at, file_body_sha256) VALUES ($1, $2, now(), $3)
+     ON CONFLICT (page_id) DO UPDATE SET snapshot = EXCLUDED.snapshot, updated_at = now(),
+       file_body_sha256 = CASE WHEN $4 THEN EXCLUDED.file_body_sha256 ELSE ydoc_state.file_body_sha256 END`,
+    [pageId, Buffer.from(snapshot), fileMarker ?? null, fileMarker !== undefined],
   );
 }
 
@@ -2107,6 +2228,7 @@ export async function editBoardScene(id: string, scene: ExcalidrawScene): Promis
 export async function bindState(docName: string, ydoc: Y.Doc): Promise<void> {
   const entry = await storage.getEntry(docName);
   const ytext = ydoc.getText('content');
+  let snapshotAheadOfFile = false;
 
   if (isTableEntry(entry)) {
     // Round 26 table branch. Same three guarantees as the doc branch below —
@@ -2117,18 +2239,31 @@ export async function bindState(docName: string, ydoc: Y.Doc): Promise<void> {
     // Round 29 board branch — see the "BOARD COLLAB" section below.
     await bindBoardState(docName, ydoc, entry);
   } else if (entry && entry.kind === 'doc') {
-    const snapshot = await loadSnapshot(docName).catch((err) => {
+    const row = await loadSnapshotRow(docName).catch((err) => {
       // eslint-disable-next-line no-console
       console.error(`[collab] failed to load snapshot for ${docName}:`, err);
       return undefined;
     });
+    const snapshot = row?.snapshot;
 
     if (snapshot) {
       // yEngineFor, not the plain ESM `Y` import directly — see its doc comment up top.
       // Applying via the WRONG copy silently corrupts the doc (length bookkeeping
       // updates, but toString() reads back empty or duplicated).
       yEngineFor(ydoc).applyUpdate(ydoc, snapshot);
-      const fileBody = await storage.readFreshDocBody(docName).catch(() => entry.body ?? '');
+      const hadCarriageReturns = ytext.toString().includes('\r');
+      stripCarriageReturns(ytext);
+      // Stored once the writer exists (below): the cleaned text goes to the snapshot and the file.
+      if (hadCarriageReturns) snapshotAheadOfFile = true;
+      // An unreadable file is NOT an empty or an index-cached one: the
+      // reconcile below would replace the restored text with whatever stood in
+      // for it. Nothing is reconciled until the file can be read.
+      const rawFileBody = await storage.readFreshDocBody(docName).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error(`[collab] could not read the file of ${docName} on open; keeping the stored room state:`, err);
+        return undefined;
+      });
+      const fileBody = rawFileBody === undefined ? undefined : normalizeEol(rawFileBody);
       // Compared against what persisting this text WOULD write (docFileBody: the
       // same text with a trailing newline guaranteed), not the raw Y.Text. A page
       // typed to the end without a final "\n" has a file that is "different" by
@@ -2138,7 +2273,14 @@ export async function bindState(docName: string, ydoc: Y.Doc): Promise<void> {
       // page connecting its own doc for the first time is exactly that) merges the
       // replacement in next to its edits: the doubling, from a difference that
       // was never real.
-      if (fileBody !== storage.docFileBody(ytext.toString())) {
+      if (fileBody !== undefined && fileBody !== storage.docFileBody(ytext.toString()) && !docFileWins(fileBody, row?.fileBodySha256)) {
+        // The snapshot is newer than the file (the file still holds exactly what
+        // this room last wrote): keep it, and write it out as soon as the writer exists.
+        // eslint-disable-next-line no-console
+        console.warn(`[collab] ${docName}: stored room state is newer than its file; keeping it and rewriting the file`);
+        snapshotAheadOfFile = true;
+      } else if (fileBody !== undefined && fileBody !== storage.docFileBody(ytext.toString())) {
+        await backupRoomText(docName, 'file changed while the room was closed', ytext.toString());
         // The file changed while the server was down (external edit, git pull/merge
         // applied straight to disk while nothing was live to see it as a Yjs update).
         // Apply the difference as a REAL EDIT on top of the restored doc — never a
@@ -2153,22 +2295,67 @@ export async function bindState(docName: string, ydoc: Y.Doc): Promise<void> {
         });
       }
     } else if (ytext.length === 0) {
-      const body = await storage.readFreshDocBody(docName).catch(() => entry.body ?? '');
+      const body = normalizeEol(await storage.readFreshDocBody(docName).catch(() => entry.body ?? ''));
       // Re-check length: bindState is async, and a concurrent update could have raced ahead of us.
       if (ytext.length === 0 && body) {
         ydoc.transact(() => ytext.insert(0, body));
       }
-      await storeSnapshot(docName, ydoc).catch((err) => {
+      await storeSnapshot(docName, ydoc, ytext.length > 0 ? storage.docFileBody(ytext.toString()) : undefined).catch((err) => {
         // eslint-disable-next-line no-console
         console.error(`[collab] failed to store initial snapshot for ${docName}:`, err);
       });
     }
   }
 
-  const writer = createDebouncedWriter(() => persistDoc(docName, ydoc), WRITE_DEBOUNCE_MS);
+  // A failed write is retried — with a growing pause — instead of waiting for
+  // the next keystroke, which may never come. Only while THIS room is the open
+  // one: a closed room's retry would write its old state over a newer room's
+  // file and snapshot, or over a fresh git pull. A closed room needs no retry —
+  // its snapshot was stored on the failure, without moving the file marker, so
+  // the next open resumes it and rewrites the file (snapshotAheadOfFile).
+  let failures = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  const writer = createDebouncedWriter(async () => {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = undefined;
+    const ok = await persistDoc(docName, ydoc);
+    if (ok) {
+      failures = 0;
+      return;
+    }
+    failures += 1;
+    if (failures > PERSIST_MAX_RETRIES) {
+      // eslint-disable-next-line no-console
+      console.error(`[collab] giving up writing page ${docName} after ${failures} attempts; its state stays in ydoc_state`);
+      // The next edit starts a fresh round of attempts.
+      failures = 0;
+      return;
+    }
+    if (!isOpenRoom(docName, ydoc)) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      if (isOpenRoom(docName, ydoc)) writer.schedule();
+    }, Math.min(persistRetryBaseMs * 2 ** (failures - 1), PERSIST_RETRY_MAX_MS));
+    retryTimer.unref?.();
+  }, WRITE_DEBOUNCE_MS);
   writers.set(docName, writer);
   ydoc.on('update', () => writer.schedule());
+  if (snapshotAheadOfFile) writer.schedule();
 }
+
+/** True while `ydoc` is the room y-websocket serves for `docName` — not one already closed (and maybe replaced). */
+function isOpenRoom(docName: string, ydoc: Y.Doc): boolean {
+  return docs.get(docName) === ydoc;
+}
+
+/** Retry cadence for a failed doc write-back (persistDoc returned false). */
+let persistRetryBaseMs = 2_000;
+/** Tests only. */
+export function setPersistRetryBaseMsForTests(ms: number): void {
+  persistRetryBaseMs = ms;
+}
+const PERSIST_RETRY_MAX_MS = 60_000;
+const PERSIST_MAX_RETRIES = 8;
 
 /**
  * Flushes the debounced writer immediately, which — since it's the SAME
@@ -2191,6 +2378,20 @@ async function writeState(docName: string, _ydoc: Y.Doc): Promise<void> {
 /** Registers the persistence hooks with y-websocket. Call once at server boot. */
 export function initCollab(): void {
   setPersistence({ bindState, writeState });
+  // page_text_backups is pruned per page on insert; a page nobody touches
+  // again keeps its rows, so everything past retention also goes at boot and daily.
+  void pruneTextBackups();
+  setInterval(() => void pruneTextBackups(), 24 * 60 * 60 * 1000).unref();
+}
+
+/** Deletes every page_text_backups row older than the retention period. Never throws. */
+export async function pruneTextBackups(): Promise<void> {
+  try {
+    await query('DELETE FROM page_text_backups WHERE created_at < now() - $1::interval', [BACKUP_RETENTION]);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[collab] failed to prune old page text backups:', err);
+  }
 }
 
 /**
@@ -2239,13 +2440,15 @@ export async function reconcileLiveRoomsAfterReset(pageIds: readonly string[]): 
           await writers.get(id)?.flush();
         }
       } else if (entry && entry.kind === 'doc') {
-        const body = await storage.readFreshDocBody(id);
+        const body = normalizeEol(await storage.readFreshDocBody(id));
         const ytext = ydoc.getText('content');
         if (body !== ytext.toString()) {
+          const before = ytext.toString();
           ydoc.transact(() => {
             ytext.delete(0, ytext.length);
             ytext.insert(0, body);
           });
+          await backupRoomText(id, 'reset to the version from Git', before);
         }
       }
     } catch (err) {
@@ -2367,7 +2570,7 @@ export function reconcileLiveRoomAfterMerge(entry: storage.PageIndexEntry, raw: 
       }
     });
   } else if (entry.kind === 'doc') {
-    const body = storage.splitLeadingFrontmatter(raw).body;
+    const body = normalizeEol(storage.splitLeadingFrontmatter(raw).body);
     const text = fork.getText('content');
     if (body === storage.docFileBody(text.toString())) return;
     fork.transact(() => setYText(text, body));
@@ -2392,7 +2595,8 @@ export function getLiveText(id: string): string | undefined {
  * write; we additionally patch the in-memory index synchronously so the
  * caller's response (and any immediate GET/search) reflects it right away.
  */
-export async function applyMarkdownUpdate(id: string, markdown: string, overrideIcon?: string | null, overrideCover?: string | null): Promise<void> {
+export async function applyMarkdownUpdate(id: string, rawMarkdown: string, overrideIcon?: string | null, overrideCover?: string | null): Promise<void> {
+  const markdown = normalizeEol(rawMarkdown);
   const doc = docs.get(id);
   if (!doc) return;
   const entry = await storage.getEntry(id);
@@ -2412,10 +2616,15 @@ export async function applyMarkdownUpdate(id: string, markdown: string, override
 
   const ytext = doc.getText('content');
   if (ytext.toString() !== markdown) {
+    // A REST/MCP body write replaces the whole live text — including whatever
+    // someone typed into the room after the caller read the page. Captured
+    // before, stored after: no await between reading the text and replacing it.
+    const before = ytext.toString();
     doc.transact(() => {
       ytext.delete(0, ytext.length);
       ytext.insert(0, markdown);
     });
+    await backupRoomText(id, 'body replaced through the API', before);
   }
   if (entry) await storage.patchEntryContent(entry, markdown);
 }
@@ -2428,7 +2637,9 @@ export async function applyMarkdownUpdate(id: string, markdown: string, override
  * correctly with concurrent typing instead of stomping it); otherwise
  * straight to the file.
  */
-export async function editDocBody(id: string, markdown: string, overrideIcon?: string | null, overrideCover?: string | null): Promise<PageMeta> {
+export async function editDocBody(id: string, rawMarkdown: string, overrideIcon?: string | null, overrideCover?: string | null): Promise<PageMeta> {
+  // Normalized for the file too: the next room opened on it is seeded from it.
+  const markdown = normalizeEol(rawMarkdown);
   if (isDocLive(id)) {
     await applyMarkdownUpdate(id, markdown, overrideIcon, overrideCover);
     return storage.toPageMeta(await storage.requireEntry(id));
@@ -2463,7 +2674,7 @@ export async function applyH1Rename(id: string, title: string): Promise<boolean>
 
   if (entry.kind !== 'doc') return false;
   const ytext = doc.getText('content');
-  const updated = storage.replaceFirstH1(ytext.toString(), title);
+  const updated = storage.replaceFirstH1(ytext.toString(), normalizeEol(title));
   doc.transact(() => {
     ytext.delete(0, ytext.length);
     ytext.insert(0, updated);

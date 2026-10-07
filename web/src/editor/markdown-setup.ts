@@ -24,6 +24,7 @@ import {
   tooltips,
 } from '@codemirror/view';
 import { tags as t } from '@lezer/highlight';
+import type { MarkdownConfig } from '@lezer/markdown';
 import {
   fenceLanguages,
   folioAddToOptions,
@@ -39,6 +40,17 @@ import { t as translate } from './i18n';
 import { mentionCompletions } from './mentions';
 import { pasteLinkOverSelection } from './paste-link';
 import { wikilinkCompletions } from './wikilink';
+
+/**
+ * No setext headings (`text` over `---` / `===`) while editing. The first `-`
+ * typed on the line right under a paragraph is a valid CommonMark setext h2
+ * underline, so the parser re-read the whole paragraph above it as a heading
+ * the moment one dash was typed (`-` is also the start of `- ` / `---`, so it
+ * is typed constantly). ATX `#` headings are the only ones this editor writes;
+ * the reading view (remark) still understands setext in pasted or imported
+ * markdown. Without the block, `---` is a thematic break and `-` plain text.
+ */
+export const noSetextHeadings: MarkdownConfig = { remove: ['SetextHeading'] };
 
 const folioHighlight = HighlightStyle.define([
   { tag: t.heading1, fontSize: '1.65em', fontWeight: '650', lineHeight: '1.3' },
@@ -163,7 +175,7 @@ export function markdownEditorExtensions(): Extension {
     // merely STARTS with a URL, refuses a selection with formatting in it and
     // writes a `)` into the target unescaped. `pasteLinkOverSelection` below
     // does the same job by the rules in format.ts, shared with table cells.
-    markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [FolioHighlight], pasteURLAsLink: false }),
+    markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [FolioHighlight, noSetextHeadings], pasteURLAsLink: false }),
     syntaxHighlighting(folioHighlight),
     folioTheme,
     EditorView.lineWrapping,

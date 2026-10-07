@@ -39,6 +39,12 @@ services:
       CURSOR_AGENT_MODEL: ${CURSOR_AGENT_MODEL:-auto}
       CURSOR_AGENT_WORKSPACE_ROOT: /app/data/assistant/workspaces
       CURSOR_AGENT_STATE_DIR: /app/data/assistant/state
+      # Optional; empty means the built-in defaults (see docs/INSTALL.md).
+      FOLIO_OG_TITLE: ${FOLIO_OG_TITLE:-}
+      FOLIO_OG_DESCRIPTION: ${FOLIO_OG_DESCRIPTION:-}
+      FOLIO_OG_IMAGE: ${FOLIO_OG_IMAGE:-}
+      FOLIO_POSTHOG_KEY: ${FOLIO_POSTHOG_KEY:-}
+      FOLIO_POSTHOG_HOST: ${FOLIO_POSTHOG_HOST:-}
     entrypoint: ['/sbin/tini', '--', '/bin/sh', '-c']
     command:
       - |

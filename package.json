@@ -84,6 +84,7 @@
     "i18next": "^26.4.0",
     "lucide-react": "^1.31.0",
     "mermaid": "^11.4.0",
+    "posthog-js": "^1.436.1",
     "react": "^19.2.0",
     "react-datasheet-grid": "^4.11.6",
     "react-dom": "^19.2.0",
