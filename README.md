@@ -174,8 +174,10 @@ both at home.
 ![The editor with a diagram, a checklist and a callout](docs/images/editor.png)
 
 - Callouts, checklists, tables with merged cells and colors, code blocks,
-  collapsible sections, highlights.
-- Paste from Excel and Google Docs keeps tables and formatting.
+  collapsible sections, highlights, `++underline++`, and coloured status
+  tags like `:status[Done]{color=green}`.
+- Paste from Excel and Google Docs keeps tables and formatting; copying out of
+  Live edit keeps it too.
 - `[[` links a page, `@` mentions a person, `/` inserts anything.
 - `::pagetree` puts a live tree of child pages right into the text.
 - Outline and notes panel, backlinks, page icons and covers, templates,

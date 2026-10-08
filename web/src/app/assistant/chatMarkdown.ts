@@ -1,6 +1,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import { remarkUnderline } from '@shared/underline';
 import remarkRehype from 'remark-rehype';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
@@ -49,6 +50,7 @@ export function renderChatMarkdown(markdown: string, options: { allLinksNewTab?:
   const file = unified()
     .use(remarkParse)
     .use(remarkGfm)
+    .use(remarkUnderline)
     .use(remarkRehype)
     .use(rehypeSanitize, defaultSchema)
     .use(rehypeChatLinkTargets, { allLinksNewTab: options.allLinksNewTab })

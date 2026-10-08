@@ -72,8 +72,8 @@ describe('the strip', () => {
     mount('hello');
     // The floating selection bar, reused verbatim: six inline formats, the
     // link and the quote.
-    // …plus the highlight colour chevron (24.09.2026).
-    expect(toolbar()!.querySelectorAll('.cm-folio-format__btn')).toHaveLength(9);
+    // …plus the highlight colour chevron (24.09.2026) and the status tag.
+    expect(toolbar()!.querySelectorAll('.cm-folio-format__btn')).toHaveLength(10);
     for (const id of TOOLBAR_PRIMARY) expect(commandButton(id), id).toBeTruthy();
   });
 

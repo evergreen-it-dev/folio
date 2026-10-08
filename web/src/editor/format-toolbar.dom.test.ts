@@ -7,7 +7,7 @@
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LINK_KEY, formatCommand, linkCommand, quoteCommand, highlightColorCommand } from './format-toolbar';
+import { LINK_KEY, formatCommand, isFormatActive, linkCommand, quoteCommand, highlightColorCommand } from './format-toolbar';
 import { livePreview, livePreviewConfig } from './live-preview';
 import { markdownEditorExtensions } from './markdown-setup';
 
@@ -73,7 +73,7 @@ describe('commands', () => {
   it('writes every inline format the toolbar offers', () => {
     expect(write('x', (v) => formatCommand('bold')(v))).toBe('**x**');
     expect(write('x', (v) => formatCommand('italic')(v))).toBe('*x*');
-    expect(write('x', (v) => formatCommand('underline')(v))).toBe('<ins>x</ins>');
+    expect(write('x', (v) => formatCommand('underline')(v))).toBe('++x++');
     expect(write('x', (v) => formatCommand('strike')(v))).toBe('~~x~~');
     expect(write('x', (v) => formatCommand('code')(v))).toBe('`x`');
     expect(write('x', (v) => formatCommand('highlight')(v))).toBe('==x==');
@@ -127,6 +127,28 @@ describe('commands', () => {
     expect(view.state.doc.toString()).toBe('> one\n> two');
     quoteCommand(view);
     expect(view.state.doc.toString()).toBe('one\ntwo');
+  });
+});
+
+describe('live preview of ++underline++', () => {
+  it('hides the marks, underlines the text, and the button state follows the tree', () => {
+    const view = mount('a ++u++ and **++b++** z', 6, 6);
+    const text = view.contentDOM.textContent ?? '';
+    expect(text).not.toContain('+');
+    expect(text).not.toContain('*');
+    expect([...view.contentDOM.querySelectorAll('.cm-md-ins')].map((el) => el.textContent)).toEqual(['u', 'b']);
+    expect(isFormatActive(view.state, 'underline')).toBe(true);
+    const outside = mount('a ++u++ and', 0, 0);
+    expect(isFormatActive(outside.state, 'underline')).toBe(false);
+  });
+
+  it('puts ++ INSIDE bold when the selection starts on the hidden ** (the crossing the <ins> button wrote)', () => {
+    const doc = '**Goal #1** rest';
+    const view = mount(doc, 0, '**Goal #1'.length);
+    formatCommand('underline')(view);
+    expect(view.state.doc.toString()).toBe('**++Goal #1++** rest');
+    formatCommand('underline')(view);
+    expect(view.state.doc.toString()).toBe(doc);
   });
 });
 

@@ -57,6 +57,11 @@ const PATHS = {
   underline: ['M6 4v6a6 6 0 0 0 12 0V4', 'M4 20h16'],
   strike: ['M4 12h16', 'M17 7a4 4 0 0 0-5-2c-2.6 0-4.3 1.3-4.3 3 0 1.4 1.1 2.3 2.8 3', 'M7 17a4.2 4.2 0 0 0 5 2c2.6 0 4.3-1.3 4.3-3'],
   highlight: ['m9 11-5 5v3h5l3-3', 'm21 11-4.5 4.5a1.8 1.8 0 0 1-2.6 0l-4.4-4.4a1.8 1.8 0 0 1 0-2.6L14 4z'],
+  // The status tag (status-widget.ts): lucide's `tag`, a price-label outline with its hole.
+  tag: [
+    'M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z',
+    'M7.5 7.5h.01',
+  ],
   more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
   // Round 25 — the pinned command toolbar and the button that unpins it.
   pin: PIN,

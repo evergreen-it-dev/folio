@@ -39,6 +39,18 @@ describe('search (real PG: tsvector/simple + unaccent + pg_trgm)', () => {
     expect(hits.some((h) => h.title === 'Roadmap Alpha')).toBe(true);
   });
 
+  it('indexes a status tag as its text: found by the label, never by the colour attribute, snippet without the syntax', async () => {
+    const meta = await storage.createPage({ space: spaceASlug, parentPath: '', title: 'Status Index Page', kind: 'doc' });
+    await storage.writeDocBody(meta.id, '# Status Index Page\n\nVerdict: :status[Zanzibar]{color=purple} for now\n');
+    const byLabel = await searchPages('Zanzibar', { userId: memberId });
+    const hit = byLabel.find((h) => h.id === meta.id);
+    expect(hit).toBeDefined();
+    expect(hit!.snippet).not.toContain(':status');
+    expect(hit!.snippet).not.toContain('color=');
+    const byAttribute = await searchPages('purple', { userId: memberId });
+    expect(byAttribute.some((h) => h.id === meta.id)).toBe(false);
+  });
+
   it('a non-member sees NO hits from a space they cannot see — filtered in-query, not post-filtered', async () => {
     const hits = await searchPages('Roadmap', { userId: outsiderId });
     expect(hits.some((h) => h.space === spaceASlug)).toBe(false);

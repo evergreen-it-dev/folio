@@ -50,7 +50,7 @@ describe('R23 export — DOCX', () => {
     const meta = await storage.createPage({ space, parentPath: '', title: `Docx Basics ${Date.now()}`, kind: 'doc' });
     await storage.writeDocBody(
       meta.id,
-      ['# Title', '', 'Some **bold** and *italic* text.', '', '- first', '- second', '', '1. one', '2. two', '', '> quoted', '', '```', 'code line', '```'].join('\n'),
+      ['# Title', '', 'Some **bold** and *italic* and ++under++ text.', '', '- first', '- second', '', '1. one', '2. two', '', '> quoted', '', '```', 'code line', '```'].join('\n'),
     );
     const entry = await storage.requireEntry(meta.id);
     const { markdown } = await assembleMarkdown(singlePage(entry), { baseUrl: BASE });
@@ -63,10 +63,27 @@ describe('R23 export — DOCX', () => {
     expect(documentXml).toContain('Heading1');
     expect(documentXml).toContain('<w:b/>'); // bold run
     expect(documentXml).toContain('<w:i/>'); // italic run
+    expect(documentXml).toContain('<w:u w:val="single"/>'); // ++underline++ run
     expect(documentXml).toContain('first');
     expect(documentXml).toContain('one');
     expect(documentXml).toContain('quoted');
     expect(documentXml).toContain('code line');
+
+    await storage.deletePage(meta.id);
+  }, 60_000);
+
+  it('a status tag becomes a shaded, capitalised run — never the raw :status[…] syntax', async () => {
+    const meta = await storage.createPage({ space, parentPath: '', title: `Docx Status ${Date.now()}`, kind: 'doc' });
+    await storage.writeDocBody(meta.id, '# Docx Status\n\nLevel: :status[Selected]{color=green} and :status[Plain]\n');
+    const entry = await storage.requireEntry(meta.id);
+    const { markdown } = await assembleMarkdown(singlePage(entry), { baseUrl: BASE });
+
+    const { documentXml } = await openDocx(await renderDocx({ markdown, entry, baseUrl: BASE }));
+    expect(documentXml).not.toContain(':status[');
+    expect(documentXml).toContain('Selected');
+    expect(documentXml).toContain('w:fill="e3fcef"'); // green lozenge background
+    expect(documentXml).toContain('w:fill="dfe1e6"'); // grey default
+    expect(documentXml).toContain('<w:caps/>');
 
     await storage.deletePage(meta.id);
   }, 60_000);

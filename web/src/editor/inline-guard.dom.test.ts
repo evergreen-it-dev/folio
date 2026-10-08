@@ -51,6 +51,7 @@ describe('Backspace right after a folded construct eats its last character, mark
     ['*em*', '*em*', '*e*'],
     ['~~strike~~', '~~strike~~', '~~strik~~'],
     ['`code`', '`code`', '`cod`'],
+    ['++ins++', '++ins++', '++in++'],
     ['<ins>ins</ins>', '<ins>ins</ins>', '<ins>in</ins>'],
     ['<mark>mark</mark>', '<mark>mark</mark>', '<mark>mar</mark>'],
   ];
@@ -92,6 +93,14 @@ describe('Enter at the folded boundary never splits the markup in half', () => {
   });
 });
 
+describe('Enter inside an underline closes and reopens it, like bold', () => {
+  it('++ab++ with the caret between a and b becomes two complete pairs', () => {
+    const view = mount('++ab++', 3);
+    press(view, 'Enter');
+    expect(view.state.doc.toString()).toBe('++a++\n++b++');
+  });
+});
+
 describe('mid-text editing is untouched', () => {
   it('Backspace inside the visible text of a bold span deletes one character, not the whole thing', () => {
     const doc = 'x**bold**y';
@@ -127,7 +136,8 @@ describe('a space typed at the folded edge of a format lands outside it', () => 
     ['strikethrough', '~~', '~~'],
     ['highlight', '==', '=='],
     ['coloured highlight', '==', '=={.green}'],
-    ['underline', '<ins>', '</ins>'],
+    ['underline', '++', '++'],
+    ['legacy underline', '<ins>', '</ins>'],
     ['legacy highlight', '<mark>', '</mark>'],
     ['link', '[', '](https://example.com)'],
   ];
@@ -175,7 +185,15 @@ describe('a space typed at the folded edge of a format lands outside it', () => 
     type(end, ' ');
     expect(end.state.doc.toString()).toBe('***both*** b');
 
-    // An underline around bold: one of them a syntax node, the other a tag pair.
+    // `++` and `**` nest as two syntax nodes, in either order.
+    const plus = mount('a ++**both**++', 'a ++**'.length);
+    type(plus, ' ');
+    expect(plus.state.doc.toString()).toBe('a  ++**both**++');
+    const inner = mount('a **++both++**', 'a **++'.length);
+    type(inner, ' ');
+    expect(inner.state.doc.toString()).toBe('a  **++both++**');
+
+    // A legacy underline around bold: one of them a syntax node, the other a tag pair.
     const mixed = mount('a<ins>**both**</ins>', 'a<ins>**'.length);
     type(mixed, ' ');
     expect(mixed.state.doc.toString()).toBe('a <ins>**both**</ins>');

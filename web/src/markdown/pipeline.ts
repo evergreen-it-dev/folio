@@ -10,6 +10,7 @@ import rehypeStringify from 'rehype-stringify';
 import { remarkAlerts } from './alerts';
 import { remarkGlossaryTerms } from './glossaryTerms';
 import { remarkDirectiveFallback } from './directiveFallback';
+import { remarkStatus } from './status';
 import { rehypeRelativeLinks } from './relativeLinks';
 import { rehypeFolioPageLinks } from './rehypeFolioLinks';
 import type { FolioPageLinksOptions } from './rehypeFolioLinks';
@@ -25,6 +26,7 @@ import { rehypeCollapsibleSections } from './collapsibleSections';
 import { rehypeMentions } from './mentions';
 import type { MentionLookup } from './mentions';
 import { rehypeHighlight } from '@shared/highlight';
+import { remarkUnderline } from '@shared/underline';
 import { folioSanitizeSchema } from './sanitizeSchema';
 
 export interface RenderOptions {
@@ -63,7 +65,10 @@ export interface RenderOptions {
  * this into hast) -> remarkDirective
  * (round 13: parses `::name{attrs}` syntax into leafDirective/
  * containerDirective mdast nodes — doesn't render anything itself, see its
- * own docs) -> remarkDirectiveFallback (sets sanitized fallback text for any
+ * own docs) -> remarkStatus (`:status[Text]{color=green}` -> a coloured
+ * `<span class="folio-status …">`, see status.ts; before the fallback, which
+ * would otherwise hand every undeclared text directive back as raw source)
+ * -> remarkDirectiveFallback (sets sanitized fallback text for any
  * directive still in the tree at this point; ::pagetree is normally already
  * gone by here, see that plugin's own comment) -> remark-rehype
  * (allowDangerousHtml, so inline HTML survives as raw nodes) -> rehype-raw
@@ -129,6 +134,8 @@ export function renderMarkdownToHtml(
   const file = unified()
     .use(remarkParse)
     .use(remarkGfm)
+    // `++underline++` (shared/underline.ts) — a delimiter pair like `~~`, so it nests with `**`.
+    .use(remarkUnderline)
     // The owner (17.09): "why is it in one line in reading?" — in markdown a
     // single line break is by the standard NOT a break: the paragraph is glued
     // into one line, and a page typed line by line in Live edit became one
@@ -138,6 +145,7 @@ export function renderMarkdownToHtml(
     .use(remarkAlerts)
     .use(remarkGlossaryTerms)
     .use(remarkDirective)
+    .use(remarkStatus)
     .use(remarkDirectiveFallback)
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)

@@ -33,14 +33,16 @@ be written in that language too.
    (headings, lists, code, quotes, tables, strikethrough, autolinks,
    task lists, footnotes) + the Folio extensions listed below. Do not invent
    other constructs (there are no KaTeX formulas, no `::toc`/`::include`/
-   `::status`/`::embed`/`:::plugin` — none of them is implemented in the
-   engine, even if it turned up in somebody's draft before; the only working
-   directive is `::pagetree`, see §2).
+   `::embed`/`:::plugin` — none of them is implemented in the engine, even
+   if it turned up in somebody's draft before; the only working directives
+   are `::pagetree` and the inline `:status[...]`, see §2).
 4. **No `<script>`, `<style>`, `<iframe>`, `style="..."` or other scripted
    HTML constructs** — the sanitizer cuts them out completely; the text
    inside an unknown tag can be lost altogether. Of "raw" HTML only these
    are deliberately allowed: `<details><summary>`, `<mark>`, `<u>`, the
    usual table tags (`<table>`, `<colgroup>`, `<col>` and so on) and `<br>`.
+   Do not write `<ins>`/`<u>`/`<mark>` yourself — Folio has markdown for all
+   of them (see "Text formatting" below).
 
 ## 2. Syntax cheat sheet
 
@@ -63,6 +65,17 @@ be written in that language too.
 code in a fenced block
 ​```
 ```
+
+### Text formatting
+
+```
+**bold**  *italic*  ~~strike~~  ++underline++  ==highlight==  ==green highlight=={.green}
+```
+
+`++underline++` is Folio's markdown underline (two plus signs, no spaces
+inside the marks); it nests with the others in any order, e.g. `**++both++**`.
+Never underline with HTML tags (`<ins>`, `<u>`): a tag pair can cross a `**`
+pair and break the line.
 
 ### Callout blocks (GFM alerts)
 
@@ -159,9 +172,20 @@ not invent a file name).
 ::pagetree{depth=2}
 ```
 
-The only directive that really works. `depth` is 1..5, 2 by default. It
-shows the child pages of the current page. No other `::directive` is
-rendered — do not use them.
+`depth` is 1..5, 2 by default. It shows the child pages of the current page.
+No other block `::directive` is rendered — do not use them.
+
+### A status tag (coloured badge)
+
+```
+Release: :status[Done]{color=green}
+```
+
+An inline badge like Confluence's status lozenge. `color` is one of `grey`
+(the default, may be left out), `blue`, `green`, `yellow`, `red`, `purple`;
+anything else renders grey. Write the text as it should read — it is shown in
+capitals automatically. Keep it short (one or two words) and put no markdown
+inside the brackets.
 
 ## 3. Typical templates
 
@@ -255,9 +279,9 @@ What it changes/what we risk.
   work as in-app navigation. Always a relative path.
 - **`# TODO` or an empty heading instead of the real title of the page** —
   the title of the page is taken exactly from it.
-- **Directives other than `::pagetree`** (`::toc`, `::include`, `::status`,
-  `::embed`, `:::plugin`) — they are not implemented and show up as service
-  fallback text or a service wrapper, not as intended.
+- **Directives other than `::pagetree` and `:status[...]`** (`::toc`,
+  `::include`, `::embed`, `:::plugin`) — they are not implemented and show up
+  as service fallback text or a service wrapper, not as intended.
 - **KaTeX formulas (`$...$`, `$$...$$`)** — not implemented in the current
   renderer; the text stays with the dollar signs, do not count on the math
   being rendered.

@@ -34,6 +34,8 @@ import { unified } from 'unified';
 import * as storage from '../storage.js';
 import type { PageIndexEntry } from '../storage.js';
 import { rehypeHighlight } from '../../shared/highlight.js';
+import { remarkUnderline } from '../../shared/underline.js';
+import { STATUS_COLORS, STATUS_PALETTE, remarkStatusInText } from '../../shared/status.js';
 import { escapeHtml, readSpaceExportAssets, renderHeaderFooterTemplate } from './css.js';
 
 // ---------------------------------------------------------------------------
@@ -43,6 +45,11 @@ import { escapeHtml, readSpaceExportAssets, renderHeaderFooterTemplate } from '.
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
+  // `++underline++` -> <ins> (shared/underline.ts).
+  .use(remarkUnderline)
+  // shared/status.ts: `:status[Text]{color=…}` -> a coloured `<span class="folio-status …">`
+  // (this pipeline has no remark-directive, so the tag is still plain text here).
+  .use(remarkStatusInText)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
   // shared/highlight.ts: `==text==`/`==text=={.token}` -> `<mark
@@ -194,6 +201,8 @@ mark.folio-hl-purple { background-color: #e5dbff; }
 mark.folio-hl-red { background-color: #ffdeeb; }
 mark.folio-hl-orange { background-color: #ffe8cc; }
 mark.folio-hl-gray { background-color: #e9ecef; }
+.folio-status { display: inline-block; padding: 0 0.4em; border-radius: 3px; font-size: 0.75em; font-weight: 700; line-height: 1.5; text-transform: uppercase; white-space: nowrap; }
+${STATUS_COLORS.map((c) => `.folio-status--${c} { background-color: ${STATUS_PALETTE[c].bg}; color: ${STATUS_PALETTE[c].fg}; }`).join('\n')}
 pre { background: #f4f4f5; padding: 0.7em 0.9em; border-radius: 5px; overflow: hidden; white-space: pre-wrap; word-break: break-word; break-inside: avoid; }
 pre code { background: none; padding: 0; }
 blockquote { border-left: 3px solid #d4d4d8; padding-left: 0.9em; color: #52525b; }

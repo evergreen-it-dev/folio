@@ -37,6 +37,8 @@ import { ulid } from 'ulidx';
 import * as matterNS from 'gray-matter';
 import type { ConfluenceSource, ImportJob } from '../shared/contracts.js';
 import { translitSlug } from './translit.js';
+import { resolveStatusColor, serializeStatus, statusClassNames, type StatusColor } from '../shared/status.js';
+import { AGENT_FOLDER } from './agentPath.js';
 import * as storage from './storage.js';
 import * as assets from './assets.js';
 import * as git from './git.js';
@@ -939,37 +941,60 @@ function unwrapCommentMarkers(document: DomDocument): void {
 /**
  * The `status` macro's COLOUR is the whole point of it — a row of lozenges
  * where one is green and the rest grey says "this is the one", and
- * `<strong>TEXT</strong>` for all of them says nothing at all (the real
+ * `<strong>TEXT</strong>` for all of them says nothing at all (the earlier
  * symptom: `**STARTER GROWTH SCALE STRATEGIC**`, with no way to tell which
- * segment was selected). Confluence writes the colour as an `aui-lozenge-*`
- * class, which 38 of the 39 lozenges across the fixtures carry, so it maps
- * to a coloured dot in front of the label. Grey — the macro's default, and
- * the one lozenge with no colour class — deliberately gets no dot: it is the
- * absence of a highlight, and marking it would drown out the ones that mean
- * something.
+ * segment was selected; the dot-prefixed `**🟢 TEXT**` that followed kept the
+ * colour but not the look). A lozenge now becomes Folio's own status tag,
+ * `:status[Text]{color=green}` (shared/status.ts), which renders as the same
+ * coloured badge. Confluence writes the colour as an `aui-lozenge-*` class;
+ * grey — the macro's default, and the lozenge with no colour class — is the tag
+ * without attributes.
  *
- * A dot rather than one of Folio's own `folio-bg-*` tokens: those tokens are
- * table-cell classes, and this lozenge is usually mid-sentence, where nothing
- * carries a class through to the rendered markdown.
+ * The step here only builds a `<span class="folio-status folio-status--…">`;
+ * turning it into the directive is a turndown rule (`folio-status`), because
+ * that is where the surrounding markdown is known. A table frozen as raw HTML
+ * keeps the span itself, which the reading view renders identically (a
+ * directive inside an HTML block would never be parsed).
+ *
+ * Both shapes the macro can arrive in are handled: the rendered lozenge
+ * (`span.status-macro` / `span.aui-lozenge`, what export_view carries) and the
+ * storage-format macro (`ac:structured-macro ac:name="status"` with `title` and
+ * `colour` parameters), for HTML that has not been rendered.
  */
-const LOZENGE_COLOR_DOT: [string, string][] = [
-  ['aui-lozenge-error', '🔴'],
-  ['aui-lozenge-removed', '🔴'],
-  ['aui-lozenge-success', '🟢'],
-  ['aui-lozenge-moved', '🟡'],
-  ['aui-lozenge-current', '🔵'],
-  ['aui-lozenge-complete', '🔵'],
-  ['aui-lozenge-new', '🟣'],
+const LOZENGE_CLASS_COLOR: [string, StatusColor][] = [
+  ['aui-lozenge-error', 'red'],
+  ['aui-lozenge-removed', 'red'],
+  ['aui-lozenge-success', 'green'],
+  ['aui-lozenge-moved', 'yellow'],
+  ['aui-lozenge-current', 'blue'],
+  ['aui-lozenge-complete', 'blue'],
+  ['aui-lozenge-new', 'purple'],
 ];
+
+function makeStatusSpan(document: DomDocument, label: string, color: StatusColor): DomElement {
+  const span = document.createElement('span');
+  span.setAttribute('class', statusClassNames(color).join(' '));
+  span.textContent = label;
+  return span;
+}
 
 function convertStatusLozenges(document: DomDocument): void {
   for (const el of Array.from(document.querySelectorAll('span.status-macro, span.aui-lozenge'))) {
     const tokens = classTokenSet(el);
-    const dot = LOZENGE_COLOR_DOT.find(([cls]) => tokens.has(cls))?.[1];
+    const color = LOZENGE_CLASS_COLOR.find(([cls]) => tokens.has(cls))?.[1] ?? 'grey';
     const label = (el.textContent || '').trim();
-    const strong = document.createElement('strong');
-    strong.textContent = dot ? `${dot} ${label}` : label;
-    el.replaceWith(strong);
+    el.replaceWith(label ? makeStatusSpan(document, label, color) : '');
+  }
+  // Storage-format macros: `<ac:parameter ac:name="title">` / `…name="colour">`.
+  for (const el of Array.from(document.querySelectorAll('*'))) {
+    if (el.nodeName.toLowerCase() !== 'ac:structured-macro' || el.getAttribute('ac:name') !== 'status') continue;
+    const params = new Map<string, string>();
+    for (const param of Array.from(el.querySelectorAll('*'))) {
+      if (param.nodeName.toLowerCase() !== 'ac:parameter') continue;
+      params.set((param.getAttribute('ac:name') || '').toLowerCase(), (param.textContent || '').trim());
+    }
+    const label = params.get('title') ?? '';
+    el.replaceWith(label ? makeStatusSpan(document, label, resolveStatusColor(params.get('colour') ?? params.get('color'))) : '');
   }
 }
 
@@ -1508,6 +1533,9 @@ function sanitizeForCleanTable(table: DomElement): void {
     const names = Array.from(el.attributes).map((a) => a.name); // snapshot -- attributes is a live collection
     for (const name of names) {
       const lower = name.toLowerCase();
+      // A status tag's classes ARE its colour — the one class that survives
+      // (see convertStatusLozenges; the raw-HTML table is where it ends up).
+      if (lower === 'class' && el.nodeName === 'SPAN' && classTokenSet(el).has('folio-status')) continue;
       if (STRIP_ATTR_EXACT.has(lower) || STRIP_ATTR_PREFIXES.some((p) => lower.startsWith(p))) {
         el.removeAttribute(name);
       }
@@ -2059,6 +2087,23 @@ export function buildTurndownService(): TurndownService {
   // every export_view; this is the net for any other entry point.
   td.remove(['style', 'script']);
 
+  // Underline is `++text++` (shared/underline.ts), never an HTML tag pair:
+  // `<u>`, `<ins>` and the `text-decoration: underline` span Confluence also
+  // writes all become that. Turndown converts the children first and the rule
+  // wraps the result, so the pair follows the DOM nesting — `<u><strong>x
+  // </strong></u>` is `++**x**++` and `<strong><u>x</u></strong>` is
+  // `**++x++**`; the two can never cross, which `<ins>**x</ins>**` could.
+  // (Before this rule an underline was dropped and its text came through plain.)
+  td.addRule('folio-underline', {
+    filter: (node) =>
+      node.nodeName === 'U' ||
+      node.nodeName === 'INS' ||
+      (node.nodeName === 'SPAN' && /text-decoration(?:-line)?\s*:[^;]*\bunderline\b/i.test(node.getAttribute('style') ?? '')),
+    // The content arrives trimmed (turndown moves the padding outside). A pair
+    // around a block (several paragraphs) is no inline span: leave it bare.
+    replacement: (content) => (content.trim() && !content.includes('\n') ? `++${content}++` : content),
+  });
+
   // Round 16: a table preprocessConfluenceDom already classified complex and
   // fully sanitized must ALWAYS come out as that already-clean HTML,
   // regardless of what turndown-plugin-gfm's own `tables` rule would have
@@ -2069,6 +2114,17 @@ export function buildTurndownService(): TurndownService {
   // (rules.array), which turndown always checks before either gfm's own
   // `table` rule or its `.keep()` entries, so this wins regardless of
   // registration order.
+  // A lozenge convertStatusLozenges rebuilt as `span.folio-status--<colour>`
+  // becomes Folio's status tag. The replacement is returned as is — turndown
+  // escapes text nodes, not what a rule produces.
+  td.addRule('folio-status', {
+    filter: (node) => node.nodeName === 'SPAN' && classTokenSet(node).has('folio-status'),
+    replacement: (_content, node) => {
+      const color = [...classTokenSet(node)].find((c) => c.startsWith('folio-status--'))?.slice('folio-status--'.length);
+      return serializeStatus(node.textContent || '', color);
+    },
+  });
+
   td.addRule('folio-raw-table', {
     filter: (node) => node.nodeName === 'TABLE' && node.getAttribute(TABLE_RAW_MARKER) === '1',
     replacement: (_content, node) => {
@@ -2451,6 +2507,76 @@ export function assignPaths(rootId: string, pagesById: Map<string, PathAssignabl
   return rel;
 }
 
+/** Is a repo-relative path inside the internal `.agent` folder? (Not user-facing content.) */
+function isAgentPath(relPath: string): boolean {
+  return relPath === AGENT_FOLDER || relPath.startsWith(`${AGENT_FOLDER}/`);
+}
+
+/**
+ * Picks the directory the imported ROOT page (and, below it, its whole
+ * subtree) lands in.
+ *
+ * Bug fixed: importing into an existing space with the default target (the
+ * space root, targetPath '') wrote the Confluence root to the space's own
+ * `index.md` — the SPACE HOME page. The sidebar deliberately never lists the
+ * root index.md in the tree (it has its own "Space home" row, see
+ * web/src/app/sidebar/treeUtils.ts getTopLevelNodes), so the imported page
+ * silently vanished from the tree and the space's previous home was
+ * overwritten. The same happens for any chosen folder that already has its
+ * own `index.md` (its page gets replaced instead of getting a child).
+ *
+ * The root may take over `<baseDir>/index.md` only when that cannot clobber or
+ * hide anything: an EMPTY space (just the placeholder home, as in the "new
+ * space" mode) or a target directory that has no page of its own yet.
+ * Otherwise the root goes into its own sub-directory `<baseDir>/<slug>/` (a
+ * normal visible tree node). A re-import of a root that already lives in such
+ * a sub-directory of `baseDir` updates it in place.
+ */
+export async function chooseRootBaseDir(
+  spaceSlug: string,
+  targetPath: string,
+  rootId: string,
+  rootTitle: string,
+  priorMap: Record<string, string>,
+): Promise<string> {
+  const base = (targetPath ?? '').replace(/^\/+|\/+$/g, '');
+  const prefix = base ? `${base}/` : '';
+
+  // Re-import of a root that an earlier run already placed in its own sub-directory of `base`.
+  const prior = priorMap[rootId];
+  if (prior && prior.endsWith('/index.md')) {
+    const priorDir = prior.slice(0, -'/index.md'.length);
+    if (path.posix.dirname(priorDir) === (base || '.') && (await storage.getEntryIdByExactPath(spaceSlug, prior))) return priorDir;
+  }
+
+  let occupied: boolean;
+  if (base) {
+    occupied = (await storage.getEntryIdByExactPath(spaceSlug, `${prefix}index.md`)) !== undefined;
+  } else {
+    const entries = await storage.listEntries(spaceSlug);
+    occupied = entries.some((e) => e.relPath !== 'index.md' && !isAgentPath(e.relPath) && !e.relPath.startsWith('_templates/'));
+  }
+  if (!occupied) return base;
+
+  const spaceDir = storage.getSpaceDir(spaceSlug);
+  const exists = async (rel: string): Promise<boolean> => {
+    try {
+      await fs.stat(path.join(spaceDir, rel));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const stem = translitSlug(rootTitle) || 'confluence-import';
+  for (let n = 1; ; n++) {
+    const slug = n === 1 ? stem : `${stem}-${n}`;
+    const dir = `${prefix}${slug}`;
+    if ((await exists(dir)) || (await exists(`${dir}.md`))) continue;
+    if ((await storage.getEntryIdByExactPath(spaceSlug, `${dir}/index.md`)) || (await storage.getEntryIdByExactPath(spaceSlug, `${dir}.md`))) continue;
+    return dir;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Job registry + orchestration
 // ---------------------------------------------------------------------------
@@ -2823,7 +2949,11 @@ async function runImportJob(jobId: string, source: ConfluenceSource, editorIdent
   const pathAssignable = new Map<string, PathAssignable>(
     [...pages.values()].map((p) => [p.id, { id: p.id, title: p.title, children: p.children }]),
   );
-  const relPaths = assignPaths(rootId, pathAssignable, source.targetPath);
+  // Links to content imported by PREVIOUS jobs into this same space resolve
+  // through the persisted map; this job's own pages (below) win over it.
+  const priorMap = await readConfluenceMap(spaceSlug);
+  const rootBaseDir = await chooseRootBaseDir(spaceSlug, source.targetPath, rootId, root.title, priorMap);
+  const relPaths = assignPaths(rootId, pathAssignable, rootBaseDir);
 
   // Global filename-tail -> asset index (mirrors the hands-run script's
   // "search downloaded attachments by filename tail, preferring the current
@@ -2840,10 +2970,6 @@ async function runImportJob(jobId: string, source: ConfluenceSource, editorIdent
 
   const td = buildTurndownService();
   const spaceDir = storage.getSpaceDir(spaceSlug);
-  // Links to content imported by PREVIOUS jobs into this same space resolve
-  // through the persisted map; this job's own pages (below) win over it.
-  const priorMap = await readConfluenceMap(spaceSlug);
-
   for (const [id, page] of pages) {
     const relPath = relPaths.get(id);
     if (!relPath) continue;

@@ -42,6 +42,24 @@ visual editor), an image, a link, a quote, **callouts** (`> [!NOTE]`, `tip`,
 `important`, `warning`), a collapsible details block, emoji, a divider, and
 `::pagetree` — a live tree of child pages right in the text.
 
+**Text formatting** — toolbar buttons and hotkeys: `**bold**`, `*italic*`,
+`~~strike~~`, `==highlight==` (with a colour: `==text=={.green}`), `++underline++`.
+Underline is markdown rather than an HTML tag pair, so it nests with bold and
+italic in any order; old `<ins>`/`<u>` on existing pages still render underlined.
+
+**Status tags** — a small coloured badge inside a sentence, like a Confluence
+status lozenge: `:status[Done]{color=green}`. Six colours (grey, blue, green,
+yellow, red, purple; grey is the default). Insert one from the toolbar, the
+selection bar or the `/` menu, and click it to change the text or the colour.
+The text is stored as typed and shown in capitals. Tags work in table cells,
+are found by search under their text, are drawn as badges in PDF and DOCX
+export, and arrive from a Confluence import as the same tag.
+
+**Copy and paste** — copying or cutting in Live edit keeps the formatting: the
+clipboard holds the selection as Markdown (plain text) and as rendered HTML, so
+a pasted result keeps bold, links, highlights and status tags in Slack, Google
+Docs or mail. Pasting such HTML into Folio turns it back into Markdown.
+
 Also in the editor: pasting from Excel and Google Docs keeps tables and
 formatting; `[[` picks a page (an ordinary relative link is written to disk,
 not a private dialect); `@` mentions a person; an outline panel on the right;
@@ -272,7 +290,8 @@ and set with `FOLIO_OG_TITLE`, `FOLIO_OG_DESCRIPTION` and `FOLIO_OG_IMAGE`.
 See [INSTALL](INSTALL.md).
 
 - **Import from Confluence**: a page or a tree, converting panels into
-  callouts, code, checkboxes and images; Confluence **whiteboards** become
+  callouts, code, checkboxes, status macros (as status tags), underline and
+  images; the imported root never replaces the space's home page; Confluence **whiteboards** become
   Excalidraw boards.
 - **File upload**: images, and also pdf/docx/xlsx/pptx — they become pages in
   the tree.

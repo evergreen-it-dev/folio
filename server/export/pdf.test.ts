@@ -57,6 +57,19 @@ describe('R23 export — print document + PDF', () => {
     await storage.deletePage(meta.id);
   });
 
+  it('prints a status tag as a coloured badge span, not as raw :status[…] text', async () => {
+    const html = await markdownToHtml('Level: :status[Must have]{color=red} and :status[Plain]\n');
+    expect(html).toContain('<span class="folio-status folio-status--red">Must have</span>');
+    expect(html).toContain('<span class="folio-status folio-status--grey">Plain</span>');
+    expect(html).not.toContain(':status[');
+
+    const meta = await storage.createPage({ space, parentPath: '', title: `Print Status ${Date.now()}`, kind: 'doc' });
+    const entry = await storage.requireEntry(meta.id);
+    const doc = await buildPrintDocument({ markdown: '# T\n\n:status[x]{color=blue}\n', entry, baseUrl: BASE });
+    expect(doc.html).toContain('.folio-status--blue { background-color: #deebff; color: #0747a6; }');
+    await storage.deletePage(meta.id);
+  });
+
   it('tags a wide table so the stylesheet can shrink it (the documented wide-table strategy)', async () => {
     const header = `| ${['a', 'b', 'c', 'd', 'e', 'f', 'g'].join(' | ')} |`;
     const sep = `| ${['---', '---', '---', '---', '---', '---', '---'].join(' | ')} |`;

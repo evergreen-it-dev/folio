@@ -26,7 +26,8 @@ import { PagetreeWidget } from './pagetree-widget';
 import { MermaidWidget } from './mermaid-widgets';
 import { resolveAssetSrc } from './paths';
 import { TableWidget, tableCellRescue } from './table-widget';
-import { CalloutLabelWidget, ImageWidget, TaskCheckboxWidget } from './widgets';
+import { StatusWidget } from './status-widget';
+import { BulletWidget, CalloutLabelWidget, ImageWidget, TaskCheckboxWidget } from './widgets';
 
 export interface PageContext {
   space: string;
@@ -61,9 +62,15 @@ function inlineDecoration(spec: InlineSpec, lang: string): Range<Decoration> | n
     case 'mark':
       return Decoration.mark({ class: spec.cls }).range(spec.from, spec.to);
     case 'line':
-      return Decoration.line({ class: spec.cls }).range(spec.pos);
+      return Decoration.line(spec.style ? { class: spec.cls, attributes: { style: spec.style } } : { class: spec.cls }).range(
+        spec.pos,
+      );
+    case 'bullet':
+      return Decoration.replace({ widget: new BulletWidget(spec.level) }).range(spec.from, spec.to);
     case 'task':
       return Decoration.replace({ widget: new TaskCheckboxWidget(spec.checked) }).range(spec.from, spec.to);
+    case 'status':
+      return Decoration.replace({ widget: new StatusWidget(spec.label, spec.color, lang) }).range(spec.from, spec.to);
     case 'callout':
       // Carries the language for the same reason the block widgets do: the
       // label is translated text baked into the widget's DOM (round 22).
@@ -171,6 +178,10 @@ function buildInlineDecorations(view: EditorView): InlineDecorations {
     const deco = inlineDecoration(spec, lang);
     if (!deco) continue;
     ranges.push(deco);
+    // 'bullet' is the list marker's glyph: same story, the caret must not rest
+    // inside the `-` it replaces.
+    // 'status' is the badge of a `:status[…]` tag: one atom, the caret steps
+    // over it and Backspace/Delete remove the whole tag (editing is the popover).
     // 'hide' ranges are the folded markers link-guard.ts/block-nav.ts guard;
     // 'callout' is the `[!NOTE]` label widget — not hidden (it renders an
     // icon + name), but just as much a trap: without this, the caret can
@@ -178,7 +189,7 @@ function buildInlineDecorations(view: EditorView): InlineDecorations {
     // text, which looks exactly like "on the label" (see block-nav.ts for the
     // rest of that fix — this alone only keeps the caret off the label
     // itself, not off the whole line it sits on).
-    if (spec.kind === 'hide' || spec.kind === 'callout') atomicRanges.push(deco);
+    if (spec.kind === 'hide' || spec.kind === 'callout' || spec.kind === 'bullet' || spec.kind === 'status') atomicRanges.push(deco);
   }
   return { decorations: Decoration.set(ranges, true), atomic: Decoration.set(atomicRanges, true) };
 }

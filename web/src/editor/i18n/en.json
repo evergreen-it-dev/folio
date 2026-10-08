@@ -100,7 +100,8 @@
     "highlightColor": "Highlight colour",
     "highlightNone": "No highlight",
     "quote": "Quote",
-    "link": "Link"
+    "link": "Link",
+    "status": "Status"
   },
   "toolbar": {
     "aria": "Command toolbar",
@@ -346,11 +347,29 @@
     "pagetree": {
       "name": "Page tree",
       "description": "Child pages of this page as a list"
+    },
+    "status": {
+      "name": "Status",
+      "description": "A coloured status badge, like a Confluence lozenge"
     }
   },
   "pagetree": {
     "placeholder": "Page tree (depth {{depth}})",
     "badge": "TREE",
     "editHint": "Page tree — edit it in the source"
+  },
+  "statusTag": {
+    "edit": "Edit status",
+    "text": "Status text",
+    "color": "Status colour",
+    "defaultText": "Status",
+    "colors": {
+      "grey": "Grey",
+      "blue": "Blue",
+      "green": "Green",
+      "yellow": "Yellow",
+      "red": "Red",
+      "purple": "Purple"
+    }
   }
 }

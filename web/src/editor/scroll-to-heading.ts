@@ -18,6 +18,7 @@ import { EditorView } from '@codemirror/view';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import { remarkUnderline } from '@shared/underline';
 import { visit } from 'unist-util-visit';
 import type { Root, Heading as MdHeading, Text, InlineCode } from 'mdast';
 import { stripFrontmatter } from '../markdown/frontmatter';
@@ -45,7 +46,7 @@ export function headingPositions(markdown: string): HeadingPosition[] {
   // stripFrontmatter only ever removes a prefix, so the difference in length is
   // exactly how far every offset below has to be shifted back.
   const shift = markdown.length - body.length;
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(body) as Root;
+  const tree = unified().use(remarkParse).use(remarkGfm).use(remarkUnderline).parse(body) as Root;
   const dedupe = createSlugDeduper();
   const out: HeadingPosition[] = [];
 

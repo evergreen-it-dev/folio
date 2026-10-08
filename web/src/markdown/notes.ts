@@ -1,6 +1,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import { remarkUnderline } from '@shared/underline';
 import { visit } from 'unist-util-visit';
 import type { Root, Blockquote, ListItem, Paragraph, PhrasingContent, Text, InlineCode } from 'mdast';
 import { stripFrontmatter } from './frontmatter';
@@ -105,7 +106,7 @@ function calloutPreview(node: Blockquote): { type: AlertType; text: string } | n
 export function extractNotes(markdown: string): NoteEntry[] {
   const body = stripFrontmatter(markdown);
   const shift = markdown.length - body.length;
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(body) as Root;
+  const tree = unified().use(remarkParse).use(remarkGfm).use(remarkUnderline).parse(body) as Root;
   const out: NoteEntry[] = [];
 
   visit(tree, (node) => {

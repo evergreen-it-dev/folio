@@ -688,7 +688,7 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
           .string()
           .optional()
           .describe(
-            'Initial body markdown (doc only); omit for a blank starter page (just the title as an H1). A page\'s title is the first "# Heading" of its body: if your markdown does not open with one, "# <title>" is added above it, so you can send body text only. If it does open with an H1, that heading is kept as is and becomes the page title (the `title` argument then only names the file) — the reply shows the resulting title. A leading front matter block with icon/cover is applied as page metadata. Ignored for "table".',
+            'Initial body markdown (doc only); omit for a blank starter page (just the title as an H1). A page\'s title is the first "# Heading" of its body: if your markdown does not open with one, "# <title>" is added above it, so you can send body text only. If it does open with an H1, that heading is kept as is and becomes the page title (the `title` argument then only names the file) — the reply shows the resulting title. A leading front matter block with icon/cover is applied as page metadata. Underline is `++text++` (no `<ins>`/`<u>` tags). Ignored for "table".',
           ),
         columns: z.array(tableColumnSchema.omit({ id: true }).extend({ id: tableColumnSchema.shape.id.optional() })).optional().describe('Table only: starter column schema. Column `id` is auto-derived from `name` when omitted.'),
       },
@@ -739,7 +739,7 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
       annotations: WRITE_OVERWRITES,
       title: 'Update a page',
       description:
-        "Replaces a document page's body markdown. Routes through the same live-collaborative-doc-aware path the web editor's own save uses, so it merges safely with anyone editing the page at the same moment instead of overwriting their changes. Does NOT support data tables — a table has no single body to replace; use folio_table_insert/folio_table_update/folio_table_add_column instead. Requires a write-scoped token.",
+        "Replaces a document page's body markdown. Routes through the same live-collaborative-doc-aware path the web editor's own save uses, so it merges safely with anyone editing the page at the same moment instead of overwriting their changes. Underline is written `++text++`, never `<ins>`/`<u>`. Does NOT support data tables — a table has no single body to replace; use folio_table_insert/folio_table_update/folio_table_add_column instead. Requires a write-scoped token.",
       inputSchema: { id: z.string().describe('Page id'), markdown: z.string().describe('New body markdown') },
     },
     async ({ id, markdown }) => {

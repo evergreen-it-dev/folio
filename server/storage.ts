@@ -37,6 +37,7 @@ import { deriveFieldsFromColumns, isFormParseError, parseFormFile, serializeForm
 import { decodeScenePayload, extractScenePayload } from './confluenceWhiteboard.js';
 import { AGENT_FOLDER } from './agentPath.js';
 import { serverText } from './serverText.js';
+import { stripStatusDirectives } from '../shared/status.js';
 
 // gray-matter is CJS (`export =`). `import * as matterNS` typechecks and runs fine
 // under tsx/Node, but under Vite/Vitest's esbuild-based CJS interop the callable
@@ -605,7 +606,10 @@ async function upsertPagesIndexRow(entry: PageIndexEntry, fileMtime: Date, fileS
   // PageIndexEntry.body's doc comment. Boards still index as unsearchable (null).
   // Round FORMS: a form's body is its title/description/field labels (indexFormFile) —
   // small, but enough that a form shows up for its own field names in search.
-  const plainText = entry.kind === 'doc' || entry.kind === 'table' || entry.kind === 'form' ? (entry.body ?? '') : null;
+  // A document's `:status[Done]{color=green}` tags are indexed (and shown in
+  // snippets) as their text: the attributes are not words anyone searches for.
+  const plainText =
+    entry.kind === 'doc' ? stripStatusDirectives(entry.body ?? '') : entry.kind === 'table' || entry.kind === 'form' ? (entry.body ?? '') : null;
   const sql = `INSERT INTO pages_index (id, space_slug, path, kind, title, sort_order, status, icon, cover, updated_at, plain_text, is_index, file_mtime, file_size, tsv)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
        setweight(to_tsvector('simple', unaccent($5)), 'A') ||
@@ -2472,7 +2476,7 @@ export async function patchEntryContent(entry: PageIndexEntry, newBody: string):
        title = $2, updated_at = $3, plain_text = $4,
        tsv = setweight(to_tsvector('simple', unaccent($2)), 'A') || setweight(to_tsvector('simple', unaccent(coalesce($4, ''))), 'B')
      WHERE id = $1`,
-    [entry.id, title, updatedAt, newBody],
+    [entry.id, title, updatedAt, entry.kind === 'doc' ? stripStatusDirectives(newBody) : newBody],
   );
   entry.body = newBody;
   entry.title = title;

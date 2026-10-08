@@ -15,6 +15,7 @@ import { showToast } from './toast';
 import {
   convertClipboardHtml,
   htmlHasRichFormatting,
+  isFolioClipboardHtml,
   looksLikeMarkdown,
   type ConvertedClipboardHtml,
 } from './html-paste';
@@ -275,6 +276,8 @@ export function assetUploads(upload: AssetUploader = uploadAsset): Extension {
       // says, the user wants the raw text. And in live mode, text that already
       // reads as markdown must be pasted verbatim — turndown would escape it.
       if (!view.state.facet(liveModeFacet)) return false;
+      // Copied out of Folio's own Live edit: `text/plain` IS the markdown.
+      if (isFolioClipboardHtml(html) && (event.clipboardData?.getData('text/plain') ?? '') !== '') return false;
       // Google Docs' plain-text list/link markup also "looks like markdown",
       // but its HTML twin carries real formatting (links, bold, lists…) that
       // plain text can't — only skip the HTML conversion when the HTML has

@@ -6,8 +6,8 @@
  * every other popup here so the editor's scroll container cannot clip it), and
  * over a selection inside a table cell's `<textarea>` it is the same DOM,
  * mounted next to the field by hand. The edits themselves are pure — see
- * format.ts, which also explains why underline is `<ins>` and highlight is
- * `<mark>`.
+ * format.ts, which also explains why underline is `++text++` (it used to be an
+ * `<ins>` tag pair that could cross a `**` pair) and highlight is `==text==`.
  */
 import { EditorSelection, Prec, StateField, type EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, showTooltip, type Command, type KeyBinding, type Tooltip } from '@codemirror/view';
@@ -29,9 +29,10 @@ import { createIcon, type IconName } from './icons';
 import { t } from './i18n';
 import { languageChangedEffect } from './i18n-reload';
 import { openMenu, type MenuEntry } from './popup-menu';
+import { insertStatus } from './status-widget';
 
 /** Everything the bar can offer: the toggles, plus the two block-ish commands. */
-type BarCommand = InlineFormat | 'quote' | 'link';
+type BarCommand = InlineFormat | 'quote' | 'link' | 'status';
 
 const ICONS: Record<BarCommand, IconName> = {
   bold: 'bold',
@@ -42,6 +43,7 @@ const ICONS: Record<BarCommand, IconName> = {
   highlight: 'highlight',
   quote: 'quote',
   link: 'link',
+  status: 'tag',
 };
 
 const HOTKEYS: Record<BarCommand, string> = {
@@ -54,6 +56,7 @@ const HOTKEYS: Record<BarCommand, string> = {
   quote: '',
   // NOT ⌘K: that one opens the quick switcher app-wide. See LINK_KEY below.
   link: '⇧K',
+  status: '',
 };
 
 function modLabel(): string {
@@ -82,6 +85,12 @@ export interface FormatBarOptions {
   onQuote?(): void;
   /** Round 28: wrap the selection in a markdown link. Both hosts get it. */
   onLink?(): void;
+  /**
+   * Wrap the selection in a status tag (or insert one). Offered by the
+   * CodeMirror hosts only: a table cell keeps its own inline grammar and does
+   * not render a tag, so its bar leaves this out.
+   */
+  onStatus?(): void;
   /**
    * The colour chevron beside the highlight button (the owner, 24.09.2026:
    * "give highlight a choice of color"). `highlightColor` answers which swatch
@@ -120,6 +129,7 @@ export function buildFormatBar({
   onFormat,
   onQuote,
   onLink,
+  onStatus,
   onHighlightColor,
   highlightColor,
 }: FormatBarOptions): HTMLElement {
@@ -177,12 +187,13 @@ export function buildFormatBar({
   }
   // Separated from the toggles above: these two write a construct rather than
   // switching one on and off, and the divider is what says so.
-  if (onLink || (quote && onQuote)) {
+  if (onLink || onStatus || (quote && onQuote)) {
     const sep = document.createElement('span');
     sep.className = 'cm-folio-format__sep';
     bar.appendChild(sep);
   }
   if (onLink) add('link', onLink, false);
+  if (onStatus) add('status', onStatus, false);
   if (quote && onQuote) add('quote', onQuote, false);
   return bar;
 }
@@ -337,6 +348,7 @@ function tooltipsFor(state: EditorState): readonly Tooltip[] {
           onFormat: (kind) => formatCommand(kind)(view),
           onQuote: () => quoteCommand(view),
           onLink: () => linkCommand(view),
+          onStatus: () => void insertStatus(view),
           onHighlightColor: (pick) => highlightColorCommand(pick)(view),
           highlightColor: () => highlightColorOf(view.state),
         }),

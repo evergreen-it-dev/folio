@@ -38,6 +38,14 @@ describe('editor extensions', () => {
     expect(names).toContain('Strikethrough');
   });
 
+  it('parses ++underline++ as an Underline node nested with bold', () => {
+    const state = makeState(true, '**++both++** and ++u++ but not C++\n');
+    const names: string[] = [];
+    syntaxTree(state).iterate({ enter: (node) => void names.push(node.name) });
+    expect(names.filter((name) => name === 'Underline')).toHaveLength(2);
+    expect(names).toContain('StrongEmphasis');
+  });
+
   it('builds the block-widget field over an /expand block with a table inside', () => {
     // The whole stack, not just the spec computation: creating the state runs
     // blockWidgets' `create`, so a decoration set this document cannot express

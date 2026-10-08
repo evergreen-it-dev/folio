@@ -1,6 +1,7 @@
 import { Text } from '@codemirror/state';
 import { GFM, parser } from '@lezer/markdown';
 import { FolioHighlight } from './highlight-syntax';
+import { FolioUnderline } from './underline-syntax';
 import { describe, expect, it } from 'vitest';
 import {
   CALLOUT_TYPES,
@@ -18,7 +19,7 @@ import {
   type Span,
 } from './live-decorations';
 
-const md = parser.configure([GFM, FolioHighlight]);
+const md = parser.configure([GFM, FolioHighlight, FolioUnderline]);
 
 /** Build the (doc, tree) snapshot the decoration computation works from. */
 function snapshot(source: string, cursor: number | Span = 0) {
@@ -37,6 +38,10 @@ const inline = (source: string, cursor: number | Span = 0, live = true): InlineS
 const blocks = (source: string, cursor: number | Span = 0, live = true): BlockSpec[] =>
   computeBlockSpecs({ ...snapshot(source, cursor), live });
 
+/** The text each mark of class `cls` covers. */
+const markedText = (specs: InlineSpec[], source: string, cls: string): string[] =>
+  specs.flatMap((spec) => (spec.kind === 'mark' && spec.cls === cls ? [source.slice(spec.from, spec.to)] : []));
+
 const hidden = (specs: InlineSpec[], source: string): string[] =>
   specs.filter((s) => s.kind === 'hide').map((s) => source.slice(s.from, s.to));
 
@@ -45,6 +50,86 @@ describe('touches', () => {
     expect(touches([{ from: 4, to: 4 }], 0, 4)).toBe(true);
     expect(touches([{ from: 4, to: 4 }], 4, 8)).toBe(true);
     expect(touches([{ from: 4, to: 4 }], 5, 8)).toBe(false);
+  });
+});
+
+describe('list decorations (live)', () => {
+  const bullets = (src: string, live = true) =>
+    inline(src, 0, live).filter((s): s is Extract<InlineSpec, { kind: 'bullet' }> => s.kind === 'bullet');
+  const lines = (src: string) =>
+    inline(src).filter((s): s is Extract<InlineSpec, { kind: 'line' }> => s.kind === 'line' && /cm-md-li/.test(s.cls));
+
+  it('replaces each bullet marker (with its indent and trailing space) by depth from the tree', () => {
+    const src = '- a\n  - b\n    - c\n      - d\n- e\n';
+    const found = bullets(src);
+    expect(found.map((b) => b.level)).toEqual([0, 1, 2, 3, 0]);
+    // The range covers the indentation, the marker and the space after it — and
+    // never reaches the item's text.
+    expect(found.map((b) => src.slice(b.from, b.to))).toEqual(['- ', '  - ', '    - ', '      - ', '- ']);
+  });
+
+  it('takes the depth from list nesting, not from the number of spaces', () => {
+    // Two-space and three-space indents are both just "one level deeper".
+    expect(bullets('- a\n  - b\n').map((b) => b.level)).toEqual([0, 1]);
+    expect(bullets('- a\n   - b\n').map((b) => b.level)).toEqual([0, 1]);
+    // An ordered list counts as a level for the bullets inside it.
+    expect(bullets('1. a\n   - b\n').map((b) => b.level)).toEqual([1]);
+  });
+
+  it('treats -, * and + alike', () => {
+    expect(bullets('- a\n\n* b\n\n+ c\n')).toHaveLength(3);
+  });
+
+  it('gives every item line a depth variable, and its wrapped source lines too', () => {
+    const src = '- a\n  - b\n    more of b\n';
+    expect(lines(src)).toEqual([
+      { kind: 'line', pos: 0, cls: 'cm-md-li', style: '--cm-li-depth:1' },
+      { kind: 'line', pos: 4, cls: 'cm-md-li', style: '--cm-li-depth:2' },
+      { kind: 'line', pos: 10, cls: 'cm-md-li-cont', style: '--cm-li-depth:2' },
+    ]);
+    // The continuation line's own indentation is folded; the padding replaces it.
+    expect(hidden(inline(src), src)).toEqual(['    ']);
+  });
+
+  it('keeps ordered numbers as text, only folding the indent and widening the marker', () => {
+    const src = '1. a\n   1. b\n';
+    const specs = inline(src);
+    expect(specs.some((s) => s.kind === 'bullet')).toBe(false);
+    expect(hidden(specs, src)).toEqual(['   ']);
+    expect(specs).toContainEqual({ kind: 'mark', from: 8, to: 11, cls: 'cm-md-list-num' });
+    expect(lines(src).map((l) => l.style)).toEqual(['--cm-li-depth:1', '--cm-li-depth:2']);
+  });
+
+  it('drops the marker of a task item (the checkbox is the marker) but keeps the checkbox', () => {
+    const src = '- [ ] open\n  - [x] done\n';
+    const specs = inline(src);
+    expect(specs.some((s) => s.kind === 'bullet')).toBe(false);
+    expect(hidden(specs, src)).toEqual(['- ', '  - ']);
+    expect(specs.filter((s) => s.kind === 'task')).toHaveLength(2);
+    expect(lines(src).map((l) => l.style)).toEqual(['--cm-li-depth:1', '--cm-li-depth:2']);
+  });
+
+  it('does not depend on where the caret is', () => {
+    const src = '- a\n  - b\n';
+    expect(inline(src, 0)).toEqual(inline(src, 7));
+  });
+
+  it('leaves source mode alone', () => {
+    const specs = inline('- a\n  - b\n1. c\n', 0, false);
+    expect(specs.some((s) => s.kind === 'bullet' || s.kind === 'hide')).toBe(false);
+    expect(specs.some((s) => s.kind === 'line' && /cm-md-li/.test(s.cls))).toBe(false);
+    expect(specs.some((s) => s.kind === 'mark' && s.cls === 'cm-md-list-num')).toBe(false);
+  });
+
+  it('does not indent lists that sit inside a quote', () => {
+    const specs = inline('> - a\n');
+    expect(specs.some((s) => s.kind === 'line' && /cm-md-li/.test(s.cls))).toBe(false);
+  });
+
+  it('shows an empty item as a bullet, and a lone dash under a paragraph as plain text', () => {
+    expect(bullets('- a\n\n-\n')).toHaveLength(2);
+    // No setext heading and no list: this dash is just a character.
+    expect(bullets('para\n-\n')).toEqual([]);
   });
 });
 
@@ -73,6 +158,37 @@ describe('computeInlineSpecs', () => {
       marks.filter((spec) => spec.cls === cls).map((spec) => src.slice(spec.from, spec.to));
     expect(styled('cm-md-ins')).toEqual(['u']);
     expect(styled('cm-md-mark')).toEqual(['h']);
+  });
+
+  it('folds ++underline++ marks like ** and underlines what is between', () => {
+    const src = 'a ++u++ b';
+    expect(hidden(inline(src), src)).toEqual(['++', '++']);
+    expect(markedText(inline(src), src, 'cm-md-ins')).toEqual(['u']);
+  });
+
+  it('folds every marker of ++ nested with ** in either order', () => {
+    for (const src of ['**++x++**', '++**x**++', '*++x++*', '~~++x++~~', '**a ++b++ c**']) {
+      expect(hidden(inline(src), src).join('')).toMatch(/^[*~+]+$/);
+      expect(markedText(inline(src), src, 'cm-md-ins')).toHaveLength(1);
+    }
+    const src = '**++x++**';
+    expect(hidden(inline(src), src)).toEqual(['**', '++', '++', '**']);
+  });
+
+  it('leaves C++ and a lone plus as text', () => {
+    for (const src of ['C++ and C++', 'a + b', 'i++ ; j++']) expect(hidden(inline(src), src)).toEqual([]);
+  });
+
+  it('keeps ++ markers visible (dimmed) in source mode', () => {
+    const src = 'a ++u++ b';
+    expect(hidden(inline(src, 0, false), src)).toEqual([]);
+    expect(inline(src, 0, false).some((spec) => spec.kind === 'mark' && spec.cls === 'cm-md-ins')).toBe(true);
+  });
+
+  it('folds BOTH legacy tags and the ** markers of a crossed <ins>**x</ins>** (data written by the old toolbar)', () => {
+    const src = '<ins>**Ongoing Goal #1</ins>** more';
+    expect(hidden(inline(src), src).sort()).toEqual(['**', '**', '</ins>', '<ins>'].sort());
+    expect(markedText(inline(src), src, 'cm-md-ins')).toEqual(['**Ongoing Goal #1']);
   });
 
   it('folds ==highlight== marks and colours the text by the {.token} attribute', () => {

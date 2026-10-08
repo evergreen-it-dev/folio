@@ -11,10 +11,16 @@
  * `markdown/sanitizeSchema.ts` lets through in reading mode.
  *
  * - bold `**`, italic `*`, strike `~~`, code `` ` `` — plain GFM.
- * - underline `<ins>` — markdown has no underline at all. `<u>` is NOT in the
- *   sanitizer's allowed tag list, `<ins>` is (verified against
- *   node_modules/hast-util-sanitize's defaultSchema), and GitHub renders `<ins>`
- *   underlined. So `<ins>` it is.
+ * - underline `++text++` — markdown has no underline at all. It used to be the
+ *   HTML pair `<ins>…</ins>`, and a tag pair knows nothing about the `**` pair
+ *   around it: `<ins>**x</ins>**` (two pairs that cross) came out of the
+ *   button whenever a selection started on a hidden `**`, and no renderer can
+ *   show that (the owner, 08.10.2026: "HTML tags in markdown are evil").
+ *   `++` is a delimiter pair like `~~`, which the parser nests and never
+ *   crosses (shared/underline.ts and underline-syntax.ts). Pages written
+ *   before keep their `<ins>`/`<u>` pairs: they are READ as underline runs
+ *   (`FormatRun.legacy`) and replaced by `++` the moment the button touches
+ *   them, never written.
  * - highlight `==text==`, with an optional colour `==text=={.green}` (the
  *   owner, 24.09.2026: "<mark> is html syntax, redo it as
  *   markdown-friendly" plus a colour choice). `==` is what Obsidian, Typora and
@@ -43,7 +49,7 @@ export interface InlineMarks {
 export const INLINE_MARKS: Record<InlineFormat, InlineMarks> = {
   bold: { open: '**', close: '**' },
   italic: { open: '*', close: '*' },
-  underline: { open: '<ins>', close: '</ins>' },
+  underline: { open: '++', close: '++' },
   strike: { open: '~~', close: '~~' },
   code: { open: '`', close: '`' },
   highlight: { open: '==', close: '==' },
@@ -105,12 +111,14 @@ export interface FormatRun {
   close: string;
   /** Highlight only: the palette token the run carries, if any. */
   color?: BgToken;
+  /** Underline only: written as `<ins>`/`<u>` rather than `++` (a page from before `++`). */
+  legacy?: boolean;
 }
 
 export const HIGHLIGHT_COLORS = BG_TOKENS;
 const HIGHLIGHT_ATTR = /^\{\.([a-z]+)\}/;
 
-/** `<ins>`/`<u>` for underline, `<mark>` for the legacy highlight. */
+/** `<ins>`/`<u>` for the legacy underline, `<mark>` for the legacy highlight. */
 const HTML_TAGS: Partial<Record<InlineFormat, string[]>> = {
   underline: ['ins', 'u'],
   highlight: ['mark'],
@@ -125,7 +133,7 @@ const HTML_TAGS: Partial<Record<InlineFormat, string[]>> = {
  * (`<ins>…</ins>`, `<mark>…</mark>`) pair by tag name.
  */
 export function runsOf(text: string, format: InlineFormat): FormatRun[] {
-  const runs: FormatRun[] = [];
+  const runs: FormatRun[] = format === 'underline' ? plusRuns(text) : [];
   const { open } = INLINE_MARKS[format];
   const symmetric = format !== 'underline';
   if (symmetric) {
@@ -180,7 +188,9 @@ export function runsOf(text: string, format: InlineFormat): FormatRun[] {
   if (tags) {
     const re = new RegExp(`<(\\/?)(${tags.join('|')})\\s*>`, 'gi');
     const stack: { from: number; to: number; name: string }[] = [];
-    for (let m = re.exec(text); m; m = re.exec(text)) {
+    // A tag inside inline code is code, not a marker (same length, so offsets agree).
+    const scanned = format === 'underline' ? maskCode(text) : text;
+    for (let m = re.exec(scanned); m; m = re.exec(scanned)) {
       const name = m[2].toLowerCase();
       if (!m[1]) {
         stack.push({ from: m.index, to: m.index + m[0].length, name });
@@ -198,6 +208,7 @@ export function runsOf(text: string, format: InlineFormat): FormatRun[] {
             outerTo: m.index + m[0].length,
             open: text.slice(start.from, start.to),
             close: m[0],
+            ...(format === 'underline' ? { legacy: true } : {}),
           });
         }
         break;
@@ -221,7 +232,10 @@ export function formatActiveIn(text: string, from: number, to: number, format: I
   const start = Math.max(0, Math.min(from, text.length));
   const end = Math.max(start, Math.min(to, text.length));
   const sel = start === end ? { from: start, to: end } : trimRange(text, start, end);
-  return runAround(runsOf(text, format), sel.from, sel.to) !== null;
+  const runs = runsOf(text, format);
+  if (runAround(runs, sel.from, sel.to) !== null) return true;
+  // Underline can also be several runs side by side (`++a++ ++b++`), all of it selected.
+  return format === 'underline' && sel.from < sel.to && underlineCovers(text, runs, sel.from, sel.to);
 }
 
 /** Back over whitespace from `pos`, no further than `floor`. */
@@ -283,6 +297,7 @@ export function inlineFormatEdit(
   to: number,
   format: InlineFormat,
 ): FormatEdit {
+  if (format === 'underline') return underlineEdit(text, from, to);
   const { open, close } = INLINE_MARKS[format];
   const start = Math.max(0, Math.min(from, text.length));
   const end = Math.max(start, Math.min(to, text.length));
@@ -353,6 +368,348 @@ export function inlineFormatEdit(
     ],
     selection: { from: inner.from + open.length, to: inner.to + open.length },
   };
+}
+
+/* ------------------------------------------------------------- underline -- */
+
+const FLANK_PUNCTUATION = /[!-/:-@[-`{-~¡§«¶·»¿‐-‧‰-⁞⸀-⹿]/;
+
+/** `text` with the inside of inline code spans blanked (same length), so a `++` in code is not a marker. */
+function maskCode(text: string): string {
+  let out = text;
+  for (const span of inlineSpans(text)) {
+    if (span.kind !== 'code') continue;
+    out =
+      out.slice(0, span.from) +
+      out.slice(span.from, span.to).replace(/[^`]/g, 'x') +
+      out.slice(span.to);
+  }
+  return out;
+}
+
+/**
+ * The `++text++` runs of `text`, found with the same flanking rules as the
+ * parser (underline-syntax.ts): a pair opens only before a non-space, closes
+ * only after a non-space, exactly two plus signs, so `C++ and C++`, `a + b`
+ * and `++ x ++` are not runs.
+ */
+function plusRuns(text: string): FormatRun[] {
+  const scan = maskCode(text);
+  const runs: FormatRun[] = [];
+  const openers: { from: number; to: number }[] = [];
+  for (let i = 0; i < scan.length; ) {
+    if (scan[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (scan[i] !== '+') {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < scan.length && scan[j] === '+') j++;
+    if (j - i !== 2) {
+      i = j;
+      continue;
+    }
+    const before = i > 0 ? scan[i - 1] : '';
+    const after = j < scan.length ? scan[j] : '';
+    const sBefore = before === '' || /\s/.test(before);
+    const sAfter = after === '' || /\s/.test(after);
+    const pBefore = FLANK_PUNCTUATION.test(before);
+    const pAfter = FLANK_PUNCTUATION.test(after);
+    const canOpen = !sAfter && (!pAfter || sBefore || pBefore);
+    const canClose = !sBefore && (!pBefore || sAfter || pAfter);
+    const opener = canClose ? openers.pop() : undefined;
+    if (opener) {
+      if (i > opener.to) {
+        runs.push({
+          outerFrom: opener.from,
+          innerFrom: opener.to,
+          innerTo: i,
+          outerTo: j,
+          open: '++',
+          close: '++',
+        });
+      }
+    } else if (canOpen) {
+      openers.push({ from: i, to: j });
+    }
+    i = j;
+  }
+  return runs;
+}
+
+/** `***x***` — bold and italic in one, which neither `**` nor `*` pairing reports. */
+function tripleRuns(text: string): FormatRun[] {
+  const runs: FormatRun[] = [];
+  let opener: { from: number; to: number } | null = null;
+  for (let i = 0; i < text.length; ) {
+    if (text[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (text[i] !== '*') {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < text.length && text[j] === '*') j++;
+    if (j - i === 3) {
+      if (!opener) opener = { from: i, to: j };
+      else {
+        if (i > opener.to) {
+          runs.push({ outerFrom: opener.from, innerFrom: opener.to, innerTo: i, outerTo: j, open: '***', close: '***' });
+        }
+        opener = null;
+      }
+    }
+    i = j;
+  }
+  return runs;
+}
+
+/** Formats an underline may sit inside or around, but never cross. */
+export function containerRuns(text: string): FormatRun[] {
+  return [
+    ...runsOf(text, 'bold'),
+    ...runsOf(text, 'italic'),
+    ...runsOf(text, 'strike'),
+    ...runsOf(text, 'highlight'),
+    ...tripleRuns(text),
+  ];
+}
+
+/** Two runs that overlap without one holding the other: the shape `<ins>**x</ins>**` has. */
+function crosses(a: FormatRun, b: FormatRun): boolean {
+  return (
+    (a.outerFrom < b.outerFrom && b.outerFrom < a.outerTo && a.outerTo < b.outerTo) ||
+    (b.outerFrom < a.outerFrom && a.outerFrom < b.outerTo && b.outerTo < a.outerTo)
+  );
+}
+
+/**
+ * Whether every visible character of `[from, to)` is underlined: each one is
+ * whitespace, part of an underline marker, or inside some run's text. The
+ * button then takes the underline off; anything else puts it on.
+ */
+function underlineCovers(text: string, runs: readonly FormatRun[], from: number, to: number): boolean {
+  // Markers of other formats (`**` hidden in live mode) are not visible text either.
+  const others = containerRuns(text);
+  let any = false;
+  for (let i = from; i < to; i++) {
+    if (/\s/.test(text[i])) continue;
+    if (runs.some((run) => run.innerFrom <= i && i < run.innerTo)) {
+      any = true;
+      continue;
+    }
+    if (runs.some((run) => run.outerFrom <= i && i < run.outerTo)) continue; // a marker
+    if (others.some((run) => i < run.innerFrom && i >= run.outerFrom || i >= run.innerTo && i < run.outerTo)) continue;
+    return false;
+  }
+  return any;
+}
+
+/** Position `pos` after `changes` (ascending, non-overlapping) have been applied; `assoc` > 0 lands after text inserted exactly there. */
+function mapPos(changes: readonly TextChange[], pos: number, assoc: 1 | -1): number {
+  let delta = 0;
+  for (const change of changes) {
+    if (change.from > pos) break;
+    const grow = change.insert.length - (change.to - change.from);
+    if (change.to <= pos) {
+      // A pure insert exactly at `pos` is before it only when asked to be.
+      if (change.from === change.to && change.from === pos && assoc < 0) break;
+      delta += grow;
+      continue;
+    }
+    // `pos` is inside a replaced range: it collapses onto the start of what replaced it.
+    return change.from + delta + (assoc > 0 ? change.insert.length : 0);
+  }
+  return pos + delta;
+}
+
+/** Sort, and fuse changes that touch (an insert at the edge of a deleted marker becomes one replacement). */
+export function tidyChanges(changes: TextChange[]): TextChange[] {
+  const sorted = [...changes].sort((a, b) => a.from - b.from || a.to - b.to);
+  const out: TextChange[] = [];
+  for (const change of sorted) {
+    const last = out[out.length - 1];
+    if (last && change.from <= last.to) {
+      out[out.length - 1] = {
+        from: last.from,
+        to: Math.max(last.to, change.to),
+        insert: last.insert + change.insert,
+      };
+    } else out.push({ ...change });
+  }
+  return out;
+}
+
+/**
+ * Pieces of `[from, to)` an underline may wrap without crossing another
+ * format: a run the range holds whole, or that holds the range, is fine;
+ * one it only partly overlaps cuts the range at the run's markers, so
+ * `**a b** c` with `b c` selected becomes `**a ++b++** ++c++`.
+ */
+function underlineSegments(from: number, to: number, containers: readonly FormatRun[]): [number, number][] {
+  for (const run of containers) {
+    if (!(run.outerFrom < to && from < run.outerTo)) continue;
+    const holdsAll = from <= run.outerFrom && run.outerTo <= to;
+    const insideText = run.innerFrom <= from && to <= run.innerTo;
+    if (holdsAll || insideText) continue;
+    const pieces: [number, number][] = [
+      [from, Math.min(to, run.outerFrom)],
+      [Math.max(from, run.innerFrom), Math.min(to, run.innerTo)],
+      [Math.max(from, run.outerTo), to],
+    ];
+    return pieces.flatMap(([a, b]) => (a < b ? underlineSegments(a, b, containers) : []));
+  }
+  return [[from, to]];
+}
+
+/**
+ * The pieces `++` pairs go around to underline `[from, to)`: widened over any
+ * inline code span or link the range touches (those are wrapped whole, never
+ * cut), then cut at the markers of every other format that is only partly
+ * inside it, and trimmed so padding stays outside the marks.
+ */
+export function underlineWrapSegments(
+  text: string,
+  from: number,
+  to: number,
+  containers: readonly FormatRun[] = containerRuns(text),
+): { from: number; to: number }[] {
+  let a = from;
+  let b = to;
+  const opaque = inlineSpans(text);
+  for (let moved = true; moved; ) {
+    moved = false;
+    for (const span of opaque) {
+      if (!(span.from < b && a < span.to)) continue;
+      if (a > span.from || b < span.to) {
+        a = Math.min(a, span.from);
+        b = Math.max(b, span.to);
+        moved = true;
+      }
+    }
+  }
+  return underlineSegments(a, b, containers)
+    .map(([x, y]) => trimRange(text, x, y))
+    .filter((seg) => seg.from < seg.to);
+}
+
+/**
+ * Toggle underline over `[from, to)`.
+ *
+ * Off when everything selected is already underlined (a part of a run is cut
+ * out of it, a whole run loses its markers — `<ins>` tags of a page from
+ * before `++` included); on otherwise, merging any underline the selection
+ * touches into one. Never crosses another format: see `underlineSegments`,
+ * and a selection that starts on a hidden `**` (what dragging over bold in
+ * live mode gives) still produces `**++text++**`. Inline code and links are
+ * wrapped whole, never cut.
+ */
+function underlineEdit(text: string, from: number, to: number): FormatEdit {
+  const start = Math.max(0, Math.min(from, text.length));
+  const end = Math.max(start, Math.min(to, text.length));
+  const sel = start === end ? { from: start, to: end } : trimRange(text, start, end);
+  const runs = runsOf(text, 'underline');
+  const containers = containerRuns(text);
+
+  if (sel.from === sel.to) {
+    const run = runAround(runs, sel.from, sel.to);
+    if (run) {
+      if (run.legacy && containers.some((other) => crosses(run, other))) {
+        const changes = tidyChanges([
+          { from: run.outerFrom, to: run.innerFrom, insert: '' },
+          { from: run.innerTo, to: run.outerTo, insert: '' },
+        ]);
+        const at = mapPos(changes, sel.from, 1);
+        return { changes, selection: { from: at, to: at } };
+      }
+      const s = Math.max(run.innerFrom, Math.min(sel.from, run.innerTo));
+      return splitRunEdit(text, plusRun(run), s, s);
+    }
+    return {
+      changes: [
+        { from: sel.from, to: sel.from, insert: '++' },
+        { from: sel.from, to: sel.from, insert: '++' },
+      ],
+      selection: { from: sel.from + 2, to: sel.from + 2 },
+    };
+  }
+
+  const touching = runs.filter((run) => run.outerFrom < sel.to && sel.from < run.outerTo);
+
+  if (touching.length > 0 && underlineCovers(text, runs, sel.from, sel.to)) {
+    const changes: TextChange[] = [];
+    for (const run of touching) {
+      const s = Math.max(run.innerFrom, sel.from);
+      const e = Math.min(run.innerTo, sel.to);
+      const whole = s <= run.innerFrom && e >= run.innerTo;
+      // A crossed legacy pair cannot be rewritten as `++` around the rest
+      // without crossing again, so it goes whole.
+      const crossed = run.legacy === true && containers.some((other) => crosses(run, other));
+      if (whole || crossed) {
+        changes.push({ from: run.outerFrom, to: run.innerFrom, insert: '' }, { from: run.innerTo, to: run.outerTo, insert: '' });
+      } else {
+        changes.push(...legacySplit(text, run, s, e));
+      }
+    }
+    const tidy = tidyChanges(changes);
+    return { changes: tidy, selection: { from: mapPos(tidy, sel.from, 1), to: mapPos(tidy, sel.to, -1) } };
+  }
+
+  // On. Widen over the underline runs the selection touches (their markers
+  // are dropped, the whole is wrapped once) and over any code span or link it
+  // touches (wrapped whole, never cut).
+  let a = sel.from;
+  let b = sel.to;
+  const drop: TextChange[] = [];
+  for (const run of touching) {
+    a = Math.min(a, run.outerFrom);
+    b = Math.max(b, run.outerTo);
+    drop.push({ from: run.outerFrom, to: run.innerFrom, insert: '' }, { from: run.innerTo, to: run.outerTo, insert: '' });
+  }
+  const segments = underlineWrapSegments(text, a, b, containers);
+  if (segments.length === 0) return { changes: [], selection: { from: sel.from, to: sel.to } };
+
+  const changes = [...drop];
+  for (const seg of segments) {
+    changes.push({ from: seg.from, to: seg.from, insert: '++' }, { from: seg.to, to: seg.to, insert: '++' });
+  }
+  const tidy = tidyChanges(changes);
+  return {
+    changes: tidy,
+    // Just inside the first opening and the last closing `++` (the pair may
+    // have been fused with a dropped one, so count from the outside).
+    selection: {
+      from: mapPos(tidy, segments[0].from, -1) + 2,
+      to: mapPos(tidy, segments[segments.length - 1].to, 1) - 2,
+    },
+  };
+}
+
+/** `splitRunEdit` for an underline run; a legacy run's own tags that stay are rewritten as `++` too. */
+function legacySplit(text: string, run: FormatRun, from: number, to: number): TextChange[] {
+  const edit = splitRunEdit(text, plusRun(run), from, to);
+  if (!run.legacy) return edit.changes;
+  const changes = [...edit.changes];
+  for (const [a, b] of [
+    [run.outerFrom, run.innerFrom],
+    [run.innerTo, run.outerTo],
+  ]) {
+    if (!changes.some((change) => change.from === a && change.to === b)) changes.push({ from: a, to: b, insert: '++' });
+  }
+  return changes;
+}
+
+/**
+ * The run as `splitRunEdit` should re-emit it: a legacy `<ins>` run that
+ * crosses nothing keeps its leftovers as `++`; the markers of a `++` run stay.
+ */
+function plusRun(run: FormatRun): FormatRun {
+  return run.legacy ? { ...run, open: '++', close: '++', legacy: false } : run;
 }
 
 /* ------------------------------------------------------------- highlight -- */

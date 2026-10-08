@@ -65,6 +65,7 @@ const MARK_CHILD: Record<string, string> = {
   Strikethrough: 'StrikethroughMark',
   InlineCode: 'CodeMark',
   Highlight: 'HighlightMark',
+  Underline: 'UnderlineMark',
 };
 
 /** Finds the nearest ancestor of a foldable kind whose span contains `pos` (inclusive of its edges). */
@@ -202,7 +203,7 @@ function enterSafePos(tree: Tree, doc: Text, pos: number): number {
 }
 
 /** Constructs whose markers can simply be closed and reopened around a line break. */
-const SPLITTABLE = new Set(['StrongEmphasis', 'Emphasis', 'Strikethrough', 'Highlight']);
+const SPLITTABLE = new Set(['StrongEmphasis', 'Emphasis', 'Strikethrough', 'Highlight', 'Underline']);
 
 /**
  * The chain of folded constructs whose VISIBLE text strictly contains `pos`,

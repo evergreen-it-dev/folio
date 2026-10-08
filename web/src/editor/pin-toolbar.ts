@@ -43,6 +43,7 @@ import { t } from './i18n';
 import { currentLanguage, languageChangedEffect } from './i18n-reload';
 import { listDedent, listIndent, listIndentAvailable } from './list-indent';
 import { openMenu, type MenuEntry } from './popup-menu';
+import { insertStatus } from './status-widget';
 import { showToast } from './toast';
 
 const PINNED_KEY = 'folio.editor.toolbar';
@@ -294,6 +295,7 @@ function toolbarPanel(view: EditorView): Panel {
         onFormat: (kind) => formatCommand(kind)(view),
         onQuote: () => quoteCommand(view),
         onLink: () => linkCommand(view),
+        onStatus: () => void insertStatus(view),
         onHighlightColor: (pick) => highlightColorCommand(pick)(view),
         highlightColor: () => highlightColorOf(view.state),
       }),

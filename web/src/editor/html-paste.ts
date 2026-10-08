@@ -14,6 +14,8 @@
  */
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
+import { serializeStatus } from '@shared/status';
+import { isHighlightColor, DEFAULT_HIGHLIGHT_COLOR } from '@shared/highlight';
 import {
   cellKey,
   formatTableAttrLine,
@@ -40,6 +42,43 @@ const TRANSPARENT = new Set(['', 'transparent', 'inherit', 'initial', 'unset', '
 const MONOSPACE = /(?:^|,|\s)(?:monospace|consolas|courier(?:\s+new)?|menlo|monaco)(?:,|\s|$)/i;
 const MAX_DATA_IMAGE_CHARS = 70 * 1024 * 1024; // comfortably below the server's 50 MiB decoded limit
 
+/**
+ * `**text**`-style wrapping that keeps the delimiters flush against the text:
+ * `== x ==` is not a highlight, so whitespace at the edges moves outside.
+ */
+function wrapDelimited(delimiter: string, content: string, suffixAttr = ''): string {
+  const parts = /^(\s*)([\s\S]*?)(\s*)$/.exec(content)!;
+  if (!parts[2]) return content;
+  return `${parts[1]}${delimiter}${parts[2]}${delimiter}${suffixAttr}${parts[3]}`;
+}
+
+const CONFLUENCE_LOZENGE: Record<string, string> = {
+  success: 'green',
+  complete: 'green',
+  current: 'blue',
+  progress: 'blue',
+  error: 'red',
+  removed: 'red',
+  moved: 'yellow',
+  warning: 'yellow',
+  new: 'purple',
+  default: 'grey',
+};
+
+/** The status colour a <span> stands for, or undefined when it is not a status badge. */
+function statusColorOf(node: HTMLElement): string | undefined {
+  const classes = (node.getAttribute('class') ?? '').split(/\s+/);
+  if (classes.includes('folio-status')) {
+    return classes.find((cls) => cls.startsWith('folio-status--'))?.slice('folio-status--'.length) ?? 'grey';
+  }
+  // Confluence: `aui-lozenge aui-lozenge-success` (and the older `status-macro`).
+  const lozenge = classes.find((cls) => cls.startsWith('aui-lozenge-'));
+  if (classes.includes('aui-lozenge') || classes.includes('status-macro')) {
+    return CONFLUENCE_LOZENGE[lozenge?.slice('aui-lozenge-'.length) ?? 'default'] ?? 'grey';
+  }
+  return undefined;
+}
+
 function turndownService(): TurndownService {
   const td = new TurndownService({
     headingStyle: 'atx',
@@ -49,15 +88,37 @@ function turndownService(): TurndownService {
   td.use(gfm);
   td.remove(['style', 'script', 'noscript', 'template']);
 
-  // Folio's formatting toolbar writes these exact HTML fragments because GFM
-  // has no underline/highlight syntax with a dependable fallback.
-  td.addRule('folio-underline', {
-    filter: 'ins',
-    replacement: (content) => (content ? `<ins>${content}</ins>` : ''),
+  // Folio writes `~~`; the GFM plugin's single-tilde form is valid but unlike anything we emit.
+  td.addRule('folio-strikethrough', {
+    filter: ['del', 's', 'strike'],
+    replacement: (content) => wrapDelimited('~~', content),
   });
+  // Underline is `++text++` (shared/underline.ts). `<u>` and `<ins>` — from
+  // Confluence, Word, other editors, or an older Folio page — become that, so
+  // no HTML tag pair lands in the document. Turndown nests the output by the
+  // DOM, so `<u><strong>x</strong></u>` is `++**x**++`, never a crossing.
+  td.addRule('folio-underline', {
+    filter: ['ins', 'u'],
+    replacement: (content) => wrapDelimited('++', content),
+  });
+  // `==text==`, with the `{.token}` colour when the HTML says which (Folio's
+  // own Reading copy carries `folio-hl-green`). A <mark> that merely stands
+  // for "some background" (Google Docs) has no token and becomes a plain `==`.
   td.addRule('folio-highlight', {
     filter: 'mark',
-    replacement: (content) => (content ? `<mark>${content}</mark>` : ''),
+    replacement: (content, node) => {
+      const token = /(?:^|\s)folio-hl-([a-z]+)(?:\s|$)/.exec(node.getAttribute('class') ?? '')?.[1];
+      const attr = token && isHighlightColor(token) && token !== DEFAULT_HIGHLIGHT_COLOR ? `{.${token}}` : '';
+      return wrapDelimited('==', content, attr);
+    },
+  });
+  // The status badge: Folio's own `folio-status--green` and Confluence's lozenge.
+  td.addRule('folio-status', {
+    filter: (node) => node.nodeName === 'SPAN' && statusColorOf(node) !== undefined,
+    replacement: (_content, node) => {
+      const label = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+      return label ? serializeStatus(label, statusColorOf(node)) : '';
+    },
   });
   return td;
 }
@@ -168,7 +229,33 @@ function groupCodeParagraphs(root: HTMLElement): void {
   }
 }
 
+/**
+ * Chrome serialises a copied selection with the *computed* style of every
+ * element, including `background-color` — the page's own background, on each
+ * span and paragraph. Read literally that is a highlight on all the text
+ * (a plain Reading copy came back as `==word== ==word==`). Such elements are
+ * recognised by the dump's signature property, and the colour most of them
+ * share is the page background: strip it, keep any colour that differs.
+ */
+function stripInheritedBackground(root: HTMLElement): void {
+  const dumped = Array.from(root.querySelectorAll<HTMLElement>('[style]')).filter((element) =>
+    /-webkit-text-stroke-width|orphans/i.test(element.getAttribute('style') ?? ''),
+  );
+  const counts = new Map<string, number>();
+  for (const element of dumped) {
+    const value = styleValue(element, 'background-color').toLowerCase();
+    if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  const base = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!base) return;
+  for (const element of dumped) {
+    if (styleValue(element, 'background-color').toLowerCase() === base) element.style.removeProperty('background-color');
+  }
+}
+
 function promoteStyles(root: HTMLElement): void {
+  stripInheritedBackground(root);
+
   // Google wraps the whole clipboard in <b style="font-weight:normal">.
   // Leaving that wrapper intact produces a stray pair of ** around the entire
   // document even though the visual style explicitly says it is not bold.
@@ -181,7 +268,11 @@ function promoteStyles(root: HTMLElement): void {
   // code-block lines from ordinary nested/table paragraphs.
   groupCodeParagraphs(root);
 
-  for (const span of Array.from(root.querySelectorAll<HTMLElement>('span'))) promoteSpan(span);
+  for (const span of Array.from(root.querySelectorAll<HTMLElement>('span'))) {
+    // A status badge is converted whole by its own rule; unwrapping it would lose the colour.
+    if (statusColorOf(span) !== undefined) continue;
+    promoteSpan(span);
+  }
 
   // Non-code highlighted paragraphs carry the background on <p>, not <span>.
   for (const paragraph of Array.from(root.querySelectorAll<HTMLElement>('p[style]'))) {
@@ -193,7 +284,8 @@ function promoteStyles(root: HTMLElement): void {
 }
 
 const RICH_FORMATTING_SELECTOR =
-  'a[href],strong,b,em,i,u,s,del,code,pre,ul,ol,li,table,h1,h2,h3,h4,h5,h6,blockquote,img';
+  'a[href],strong,b,em,i,u,ins,mark,s,del,code,pre,ul,ol,li,table,h1,h2,h3,h4,h5,h6,blockquote,img,' +
+  'span.folio-status,span.aui-lozenge,span.status-macro';
 
 /**
  * Does this clipboard HTML carry real formatting rather than being a plain
@@ -202,6 +294,15 @@ const RICH_FORMATTING_SELECTOR =
  * reusing the same style predicates `promoteStyles` relies on below, so the
  * two stay in agreement about what counts as bold/italic/underline/strike.
  */
+/**
+ * HTML that Folio's own Live-edit copy wrote (copy-html.ts). Its `text/plain`
+ * twin is the exact markdown, so pasting it back must use that, not a lossy
+ * trip through HTML.
+ */
+export function isFolioClipboardHtml(html: string): boolean {
+  return /\sdata-folio-clip=/.test(html);
+}
+
 export function htmlHasRichFormatting(html: string): boolean {
   if (!html.trim() || typeof DOMParser === 'undefined') return false;
   const body = new DOMParser().parseFromString(html, 'text/html').body;

@@ -37,6 +37,7 @@ import {
   type TableDisplay,
   type TableLayout,
 } from '../markdown/tableSyntax';
+import { parseStatusAttrs, resolveStatusColor, unescapeStatusLabel } from '@shared/status';
 
 export type { BgToken, CellBox, TableAttrs, TableDisplay, TableLayout };
 export { BG_TOKENS, ROW_SPAN, isRowSpan } from '../markdown/tableSyntax';
@@ -1008,17 +1009,19 @@ export type InlineTokenType =
   | 'em'
   | 'del'
   | 'link'
-  /** `<ins>` — underline, which markdown has no syntax for (see format.ts). */
+  /** `++text++` — underline (see format.ts); also read from the legacy `<ins>`/`<u>` pairs. */
   | 'ins'
   /** `<mark>` — highlight, likewise. */
-  | 'mark';
+  | 'mark'
+  /** `:status[Text]{color=green}` — the status badge (shared/status.ts). */
+  | 'status';
 
 export type InlineToken = {
   type: InlineTokenType;
   text: string;
   /** Link destination; present only for `link` tokens. */
   target?: string;
-  /** Highlight palette token from `==text=={.token}`; `mark` tokens only. */
+  /** Highlight palette token from `==text=={.token}` (`mark`), or the resolved status colour (`status`). */
   color?: string;
 };
 
@@ -1027,6 +1030,22 @@ export interface InlineSpan extends InlineToken {
   from: number;
   to: number;
 }
+
+/**
+ * `++text++` with the parser's flanking rules (underline-syntax.ts): the
+ * opener is not followed by a blank, and is not glued to a word on its left
+ * when punctuation follows it (`i++;j++` is code-ish text, not an underline);
+ * the closer is not preceded by a blank, and when punctuation precedes it a
+ * blank, punctuation or the end must follow. Exactly two plus signs.
+ */
+const PLUS_UNDERLINE =
+  /\+\+(?![\s+])(?:(?<![^\s\p{P}\p{S}]\+\+)|(?![\p{P}\p{S}]))([^+\n]*[^\s+])\+\+(?!\+)(?:(?<![\p{P}\p{S}]\+\+)|(?=[\s\p{P}\p{S}]|$))/uy;
+
+/** Token types whose text is itself inline markdown (`**++x++**`) — drawn nested, see `parseInlineTree`. */
+const CONTAINER_TYPES: ReadonlySet<InlineToken['type']> = new Set(['strong', 'em', 'del', 'ins', 'mark']);
+
+const CROSSED_LEGACY = /<(ins|u)>(\*\*|~~|\*)([^<*~]+)<\/\1>\2/iy;
+const CROSSED_EMPHASIS: Record<string, InlineToken['type']> = { '**': 'strong', '*': 'em', '~~': 'del' };
 
 const INLINE_RULES: { re: RegExp; type: InlineToken['type'] }[] = [
   { re: /`([^`]+)`/y, type: 'code' },
@@ -1045,29 +1064,44 @@ const INLINE_RULES: { re: RegExp; type: InlineToken['type'] }[] = [
   // address with a `)` in it is written; the target keeps its brackets so the
   // cell serializes back to exactly what it was read from.
   { re: /\[([^\]]*?)\]\((<[^>]*>|[^)]*)\)/y, type: 'link' },
-  // The formatting toolbar's two HTML formats. Written by us, and shown as the
-  // format rather than as tags — otherwise underlining a cell would leave
-  // `<ins>` sitting there in the grid.
+  // `++text++` underline — what the toolbar writes (format.ts).
+  { re: PLUS_UNDERLINE, type: 'ins' },
+  // The old HTML underline: still on pages written before `++`, and in imported
+  // files. Shown as the format rather than as tags. A tag pair around bold is
+  // read through the nesting (`**` inside gets drawn, see `parseInlineTree`);
+  // one that crosses a `**` pair has no `<ins>…</ins>` match here and stays text.
   { re: /<ins>([^<]*)<\/ins>/iy, type: 'ins' },
   { re: /<u>([^<]*)<\/u>/iy, type: 'ins' },
   // `==text==` / `==text=={.green}` — what the toolbar writes for highlight
   // now (format.ts); the `<mark>` form below is read for older pages only.
   { re: /==([^=\n]+?)==(?:\{\.([a-z]+)\})?/y, type: 'mark' },
   { re: /<mark>([^<]*)<\/mark>/iy, type: 'mark' },
+  // `:status[Text]{color=green}` — shown as the badge it is in the document
+  // (status-widget.ts) rather than as raw syntax. Same grammar as shared/status.ts.
+  { re: /:status\[((?:\\.|[^\]\\\n])*)\](?:\{([^}\n]*)\})?/y, type: 'status' },
 ];
 
+/** An inline token with its nesting: `children` is set only when the text holds more formatting (`**++x++**`). */
+export interface InlineNode extends InlineSpan {
+  /** Raw range of the text between the markers (what `children` are parsed from). */
+  contentFrom: number;
+  contentTo: number;
+  children?: InlineNode[];
+}
+
 /**
- * Very small inline-markdown tokenizer used to *display* table cells. Editing
- * always happens on the raw cell text, so this never has to round-trip.
+ * One pass over `text` (whose first character sits at `base` in the cell
+ * line). Flat unless `nested`: then a container token's text is parsed again,
+ * and kept as `children` when it holds any formatting.
  */
-export function parseInlineSpans(text: string): InlineSpan[] {
-  const out: InlineSpan[] = [];
+function scanInline(text: string, base: number, nested: boolean): InlineNode[] {
+  const out: InlineNode[] = [];
   let buffer = '';
   let bufferFrom = 0;
   let i = 0;
 
   const flush = (end: number) => {
-    if (buffer) out.push({ type: 'text', text: buffer, from: bufferFrom, to: end });
+    if (buffer) out.push({ type: 'text', text: buffer, from: base + bufferFrom, to: base + end, contentFrom: base + bufferFrom, contentTo: base + end });
     buffer = '';
   };
 
@@ -1079,20 +1113,54 @@ export function parseInlineSpans(text: string): InlineSpan[] {
       continue;
     }
     let matched = false;
+    // `<ins>**x</ins>**` — a legacy underline whose tags cross an emphasis pair
+    // (what the old toolbar wrote over bold text). Read as the emphasis with the
+    // underline inside, so neither the tags nor the `**` show in the grid.
+    CROSSED_LEGACY.lastIndex = i;
+    const crossed = CROSSED_LEGACY.exec(text);
+    if (crossed) {
+      flush(i);
+      const lead = `<${crossed[1]}>${crossed[2]}`.length;
+      const node: InlineNode = {
+        type: CROSSED_EMPHASIS[crossed[2]],
+        text: crossed[3],
+        from: base + i,
+        to: base + i + crossed[0].length,
+        contentFrom: base + i + lead,
+        contentTo: base + i + lead + crossed[3].length,
+      };
+      if (nested) {
+        node.children = [
+          { type: 'ins', text: crossed[3], from: node.contentFrom, to: node.contentTo, contentFrom: node.contentFrom, contentTo: node.contentTo },
+        ];
+      }
+      out.push(node);
+      i += crossed[0].length;
+      continue;
+    }
     for (const rule of INLINE_RULES) {
       rule.re.lastIndex = i;
       const m = rule.re.exec(text);
       if (!m) continue;
       flush(i);
-      out.push({
+      const contentAt = m[0].indexOf(m[1]);
+      const node: InlineNode = {
         type: rule.type,
-        text: unescapeInline(m[1]),
-        from: i,
-        to: i + m[0].length,
+        text: rule.type === 'status' ? unescapeStatusLabel(m[1]) : unescapeInline(m[1]),
+        from: base + i,
+        to: base + i + m[0].length,
+        contentFrom: base + i + (contentAt < 0 ? 0 : contentAt),
+        contentTo: base + i + (contentAt < 0 ? 0 : contentAt) + m[1].length,
         // For a markdown link the address is in m[2]; for a bare one — the text of the match itself.
         ...(rule.type === 'link' ? { target: m[2] ?? m[1] ?? '' } : {}),
         ...(rule.type === 'mark' && m[2] ? { color: m[2] } : {}),
-      });
+        ...(rule.type === 'status' ? { color: resolveStatusColor(parseStatusAttrs(m[2])) } : {}),
+      };
+      if (nested && CONTAINER_TYPES.has(rule.type)) {
+        const children = scanInline(m[1], node.contentFrom, true);
+        if (children.some((child) => child.type !== 'text')) node.children = children;
+      }
+      out.push(node);
       i += m[0].length;
       matched = true;
       break;
@@ -1104,6 +1172,26 @@ export function parseInlineSpans(text: string): InlineSpan[] {
 
   flush(i);
   return out;
+}
+
+/**
+ * Very small inline-markdown tokenizer used to *display* table cells. Editing
+ * always happens on the raw cell text, so this never has to round-trip.
+ * Flat: `**++x++**` is one `strong` whose text is `++x++`. Cells are DRAWN from
+ * `parseInlineTree`, which reads such text again.
+ */
+export function parseInlineSpans(text: string): InlineSpan[] {
+  return scanInline(text, 0, false).map(({ contentFrom: _from, contentTo: _to, children: _children, ...span }) => span);
+}
+
+/** `parseInlineSpans` with the nesting resolved: `**++x++**`, `++**x**++`, `*~~x~~*`. */
+export function parseInlineTree(text: string): InlineNode[] {
+  return scanInline(text, 0, true);
+}
+
+/** Characters a node shows: its leaves' text, markers not counted. */
+export function visibleLength(node: InlineNode): number {
+  return node.children ? node.children.reduce((sum, child) => sum + visibleLength(child), 0) : node.text.length;
 }
 
 export function parseInline(text: string): InlineToken[] {
@@ -1118,18 +1206,22 @@ export function parseInline(text: string): InlineToken[] {
 export function displayToRawOffset(raw: string, displayOffset: number): number {
   if (displayOffset <= 0) return 0;
   let seen = 0;
-  for (const span of parseInlineSpans(raw)) {
-    const length = span.text.length;
-    if (displayOffset <= seen + length) {
-      const inner = displayOffset - seen;
-      const chunk = raw.slice(span.from, span.to);
-      const start = chunk.indexOf(span.text);
-      const base = span.from + (start < 0 ? 0 : start);
-      return Math.min(base + inner, span.to);
+  const find = (nodes: readonly InlineNode[]): number | null => {
+    for (const node of nodes) {
+      const length = visibleLength(node);
+      if (displayOffset <= seen + length) {
+        if (node.children) return find(node.children);
+        const inner = displayOffset - seen;
+        const chunk = raw.slice(node.from, node.to);
+        const start = chunk.indexOf(node.text);
+        const base = node.from + (start < 0 ? 0 : start);
+        return Math.min(base + inner, node.to);
+      }
+      seen += length;
     }
-    seen += length;
-  }
-  return raw.length;
+    return null;
+  };
+  return find(parseInlineTree(raw)) ?? raw.length;
 }
 
 /* --------------------------------------------------------- link caret trap -- */
@@ -1161,7 +1253,15 @@ interface LinkSpanBounds {
  * no markup for it to corrupt and it is left out here.
  */
 function linkSpanNear(text: string, pos: number): LinkSpanBounds | null {
-  for (const span of parseInlineSpans(text)) {
+  const leaves: InlineNode[] = [];
+  const collect = (nodes: readonly InlineNode[]) => {
+    for (const node of nodes) {
+      if (node.children) collect(node.children);
+      else leaves.push(node);
+    }
+  };
+  collect(parseInlineTree(text));
+  for (const span of leaves) {
     if (span.type !== 'link') continue;
     if (pos < span.from || pos > span.to) continue;
     if (span.to - span.from === span.text.length) continue; // bare URL

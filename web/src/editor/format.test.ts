@@ -36,9 +36,9 @@ describe('inlineFormatEdit', () => {
     expect(run('word', 0, 4, 'code')).toBe('`«word»`');
   });
 
-  it('uses <ins> for underline — markdown has no syntax and <u> is not allowed', () => {
-    expect(INLINE_MARKS.underline).toEqual({ open: '<ins>', close: '</ins>' });
-    expect(run('word', 0, 4, 'underline')).toBe('<ins>«word»</ins>');
+  it('uses ++…++ for underline (the owner, 08.10.2026: no HTML tags in the markdown)', () => {
+    expect(INLINE_MARKS.underline).toEqual({ open: '++', close: '++' });
+    expect(run('word', 0, 4, 'underline')).toBe('++«word»++');
   });
 
   it('uses ==…== for highlight (the owner: no HTML in the markdown), reading legacy <mark> too', () => {
@@ -89,7 +89,7 @@ describe('inlineFormatEdit', () => {
 
     it('works for the other formats too', () => {
       expect(run('~~A sel~~', 4, 7, 'strike')).toBe('~~A~~ «sel»');
-      expect(run('<ins>A sel</ins>', 7, 10, 'underline')).toBe('<ins>A</ins> «sel»');
+      expect(run('++A sel++', 4, 7, 'underline')).toBe('++A++ «sel»');
       expect(run('==A sel=={.green}', 4, 7, 'highlight')).toBe('==A=={.green} «sel»');
     });
 
@@ -124,6 +124,141 @@ describe('inlineFormatEdit', () => {
 
   it('clamps a selection that runs past the text', () => {
     expect(run('ab', -3, 99, 'italic')).toBe('*«ab»*');
+  });
+});
+
+describe('underline (++text++)', () => {
+  const U = 'underline' as const;
+  /** Select `needle` (first occurrence at or after `after`) and press U. */
+  const press = (text: string, needle: string, after = 0): string => {
+    const from = text.indexOf(needle, after);
+    return run(text, from, from + needle.length, U);
+  };
+
+  it('wraps a plain word and takes it off again on the second press', () => {
+    expect(press('a word b', 'word')).toBe('a ++«word»++ b');
+    expect(press('a ++word++ b', 'word')).toBe('a «word» b');
+  });
+
+  it('goes INSIDE bold when the selection is the bold text: **++x++**', () => {
+    expect(press('**word**', 'word')).toBe('**++«word»++**');
+  });
+
+  it('goes inside bold when the selection starts on the hidden opening ** (what live-mode dragging gives)', () => {
+    // `**Ongoing Goal #1** rest`, selected from the `**` to the visible end of the bold text: the bug that wrote <ins>**…</ins>**.
+    const text = '**Ongoing Goal #1** rest';
+    expect(run(text, 0, '**Ongoing Goal #1'.length, U)).toBe('**++«Ongoing Goal #1»++** rest');
+  });
+
+  it('goes inside bold when the selection ends on the hidden closing **', () => {
+    const text = 'x **Ongoing Goal #1** rest';
+    expect(run(text, 4, text.indexOf(' rest'), U)).toBe('x **++«Ongoing Goal #1»++** rest');
+  });
+
+  it('wraps the whole bold run when the selection holds it entirely', () => {
+    expect(run('a **bold** b', 0, 12, U)).toBe('++«a **bold** b»++');
+    expect(press('a **bold** b', '**bold**')).toBe('a ++«**bold**»++ b');
+  });
+
+  it('never crosses: a selection that ends past a bold run is cut at its markers', () => {
+    expect(press('**a b** c', 'b** c')).toBe('**a ++«b++** ++c»++');
+  });
+
+  it('never crosses italic, strike or bold-italic either', () => {
+    expect(run('*Ongoing x* rest', 0, '*Ongoing x'.length, U)).toBe('*++«Ongoing x»++* rest');
+    expect(run('~~Ongoing x~~ rest', 0, '~~Ongoing x'.length, U)).toBe('~~++«Ongoing x»++~~ rest');
+    expect(run('***Ongoing x*** rest', 0, '***Ongoing x'.length, U)).toBe('***++«Ongoing x»++*** rest');
+  });
+
+  it('puts ++ outside bold when the selection takes the bold whole, and inside when it is a part of it', () => {
+    expect(press('**a b c**', 'b')).toBe('**a ++«b»++ c**');
+  });
+
+  it('a part of an underline run is cut out of it, whitespace staying outside the markers', () => {
+    expect(press('++A sel B++', 'sel')).toBe('++A++ «sel» ++B++');
+    expect(press('++A sel++', 'sel')).toBe('++A++ «sel»');
+    expect(press('++sel A++', 'sel')).toBe('«sel» ++A++');
+  });
+
+  it('a selection that holds the markers takes the whole run off', () => {
+    expect(run('a ++word++ b', 2, 10, U)).toBe('a «word» b');
+    expect(run('**++word++**', 0, 12, U)).toBe('«**word**»');
+  });
+
+  it('merges separate runs when the selection spans them and something plain', () => {
+    expect(run('++a++ b ++c++', 0, 13, U)).toBe('++«a b c»++');
+    expect(run('++ab++ cd', 3, 9, U)).toBe('++«ab cd»++');
+  });
+
+  it('takes underline off several adjacent runs selected together', () => {
+    expect(run('++a++ ++b++', 0, 11, U)).toBe('«a b»');
+  });
+
+  it('a caret inside a run cuts it; at a visible edge it steps out; outside it opens a pair', () => {
+    expect(run('++ab++', 3, 3, U)).toBe('++a++«»++b++');
+    expect(run('++ab++ c', 4, 4, U)).toBe('++ab++«» c');
+    expect(run('ab', 1, 1, U)).toBe('a++«»++b');
+  });
+
+  it('wraps inline code and links whole instead of cutting them', () => {
+    expect(press('a `code` b', 'ode')).toBe('a ++«`code`»++ b');
+    expect(press('see [label](https://x.y) now', 'abel')).toBe('see ++«[label](https://x.y)»++ now');
+  });
+
+  it('does not read C++ or a lone ++ as an underline run', () => {
+    expect(runsOf('C++ and C++ rock', 'underline')).toEqual([]);
+    expect(runsOf('a ++ b ++ c', 'underline')).toEqual([]);
+    expect(formatActiveIn('C++ and C++ rock', 5, 7, U)).toBe(false);
+    expect(runsOf('`++x++` and ++y++', 'underline').map((r) => [r.innerFrom, r.innerTo])).toEqual([[14, 15]]);
+  });
+
+  it('reports the state by the run, including a caret on its markers', () => {
+    expect(formatActiveIn('a ++word++ b', 6, 6, U)).toBe(true);
+    expect(formatActiveIn('a ++word++ b', 2, 10, U)).toBe(true);
+    expect(formatActiveIn('a ++word++ b', 0, 1, U)).toBe(false);
+    expect(formatActiveIn('**++word++**', 5, 5, U)).toBe(true);
+    expect(formatActiveIn('++a++ ++b++', 0, 11, U)).toBe(true);
+  });
+
+  describe('old <ins>/<u> pairs (pages from before ++)', () => {
+    it('are read as underline runs', () => {
+      expect(formatActiveIn('a <ins>x</ins> b', 8, 8, U)).toBe(true);
+      expect(formatActiveIn('a <u>x</u> b', 6, 6, U)).toBe(true);
+      expect(runsOf('a <ins>x</ins>', 'underline')[0].legacy).toBe(true);
+    });
+
+    it('lose their tags when the selection holds them, or the text they wrap', () => {
+      expect(run('a <ins>word</ins> b', 2, 17, U)).toBe('a «word» b');
+      expect(press('a <ins>word</ins> b', 'word')).toBe('a «word» b');
+      expect(press('a <u>word</u> b', 'word')).toBe('a «word» b');
+    });
+
+    it('a part of one is cut out of it, the leftovers coming out as ++', () => {
+      expect(press('<ins>A sel B</ins>', 'sel')).toBe('++A++ «sel» ++B++');
+    });
+
+    it('a crossed pair <ins>**x</ins>** goes whole — the leftover could only cross again', () => {
+      const text = '<ins>**Ongoing Goal #1</ins>** rest';
+      expect(press(text, 'Goal')).toBe('**Ongoing «Goal» #1** rest');
+      // caret
+      const at = text.indexOf('Goal');
+      expect(applyFormatEdit(text, inlineFormatEdit(text, at, at, U))).toBe('**Ongoing Goal #1** rest');
+    });
+
+    it('turning underline ON over text that touches a legacy pair merges them into one ++ run', () => {
+      expect(run('<ins>ab</ins> cd', 6, 16, U)).toBe('++«ab cd»++');
+    });
+
+    it('selecting the crossed line and pressing U once more writes a clean nested pair', () => {
+      const text = '<ins>**Ongoing Goal #1</ins>** rest';
+      // not covered by the crossed run entirely (` rest` is plain): ON, merged, cut at the bold markers.
+      expect(run(text, 0, text.length, U)).toBe('++«**Ongoing Goal #1** rest»++');
+    });
+  });
+
+  it('is applied identically to a table cell value (same pure edit)', () => {
+    const edit = inlineFormatEdit('**x** y', 2, 3, U);
+    expect(applyFormatEdit('**x** y', edit)).toBe('**++x++** y');
   });
 });
 

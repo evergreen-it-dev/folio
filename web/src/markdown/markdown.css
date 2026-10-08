@@ -95,31 +95,21 @@ html[data-width='wide'] .folio-markdown {
 
 /* Lists & task lists ---------------------------------------------------- */
 
-/* Round 34: a list nested 2-3 levels deep used to be nearly unreadable — every
-   level used the SAME disc marker at almost the SAME indentation (padding-left
-   was 1.4em on every <ul>/<ol> alike, nested or not, and browsers draw an
-   outside marker just outside that padding box, so three levels of "outside
-   marker + 1.4em" barely separated visually and the deepest marker sat close
-   enough to its own text to read as a stray dash/strikethrough). Fixed with
-   two independent things:
-   1. list-style-position: inside — the marker becomes part of the li's own
-      content box instead of hanging in the parent's padding gutter, so it can
-      never collide with a NESTED list's own padding/marker below it;
-   2. per-depth marker + indentation, keyed off actual nesting (`ul ul`, not a
-      class) so it's correct regardless of how many levels the author wrote,
-      same 3-deep cycle GFM/most renderers use (disc/circle/square for `ul`,
-      decimal/lower-alpha/lower-roman for `ol`) and the SAME cycle Live edit
-      already draws for a table cell's own list (editor.css's
-      ul.cm-md-cell-list rules) — the two surfaces now agree on more than just
-      color. Indentation compounds naturally: each level's own padding-left
-      adds to its ancestors' (nested <ul>s are still full <ul> elements, each
-      carrying the base padding), so three levels don't need hand-tuned
-      per-depth widths. */
+/* Lists. Markers hang OUTSIDE the item (`list-style-position: outside`) in a
+   per-level gutter, so (a) wrapped lines align with the item's text, not with
+   its marker, and (b) in a loose list — where the renderer wraps the item's
+   content in a block <p> — the marker still sits on the first line of that
+   paragraph. With `inside` the marker is an inline box in front of the block
+   <p>, so "1." and its text landed on two separate lines.
+   Nested lists are full <ul>/<ol> elements, each carrying the gutter, so the
+   indent compounds per level. The marker shape follows actual nesting
+   (`ul ul`, not a class): disc/circle/square for `ul`, decimal/lower-alpha/
+   lower-roman for `ol` — the same cycle Live edit draws (editor.css). */
 .folio-markdown ul,
 .folio-markdown ol {
   margin: 0 0 1em;
-  padding-left: 1.3em;
-  list-style-position: inside;
+  padding-left: 1.6em;
+  list-style-position: outside;
 }
 /* Tailwind preflight strips list markers globally; restore them for content */
 .folio-markdown ul { list-style-type: disc; }
@@ -129,13 +119,17 @@ html[data-width='wide'] .folio-markdown {
 .folio-markdown ol ol { list-style-type: lower-alpha; }
 .folio-markdown ol ol ol { list-style-type: lower-roman; }
 .folio-markdown li { margin: 0.3em 0; }
-/* list-style-position: inside pulls a nested list's own left edge back to
-   flush with its parent item's text — without this, the visible indent step
-   collapses to almost nothing (the opposite of the bug, same style of fix). */
 .folio-markdown li > ul,
-.folio-markdown li > ol { margin: 0.3em 0 0.3em 1.3em; }
+.folio-markdown li > ol { margin: 0.3em 0; }
+/* A loose item's paragraphs are plain blocks; only the first one needs to stay
+   flush with the marker, and none of them should add their own paragraph gap
+   on top of the item's. */
+.folio-markdown li > p { margin: 0.3em 0; }
+.folio-markdown li > p:first-child { margin-top: 0; }
+.folio-markdown li > p:last-child { margin-bottom: 0; }
 
-.folio-markdown ul.contains-task-list { list-style: none; padding-left: 0.2em; }
+/* The checkbox hangs in the gutter (negative margin) where a bullet would be. */
+.folio-markdown ul.contains-task-list { list-style: none; padding-left: 1.6em; }
 .folio-markdown li.task-list-item { list-style: none; }
 .folio-markdown li.task-list-item input[type='checkbox'] {
   margin: 0 0.6em 0 -1.4em;
@@ -552,6 +546,8 @@ html[data-theme='dark'] .folio-markdown mark.folio-hl-gray { background-color: #
 .folio-markdown th ol {
   margin: 0.15em 0;
   padding-left: 1.1em;
+  /* Cards are dense: the marker stays inline, inside the cell's text column. */
+  list-style-position: inside;
 }
 .folio-markdown td li,
 .folio-markdown th li { margin: 0.15em 0; }

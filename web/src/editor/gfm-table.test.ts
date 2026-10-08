@@ -12,6 +12,8 @@ import {
   parseCellLine,
   parseCellLines,
   parseInlineSpans,
+  parseInlineTree,
+  visibleLength,
   sanitizeCellPaste,
   cycleAlign,
   deleteColumn,
@@ -254,6 +256,17 @@ describe('parseInline', () => {
     ]);
   });
 
+  it('reads a status tag as a badge token with its colour (grey by default and for an unknown one)', () => {
+    expect(parseInline('go :status[Done]{color=green} now')).toEqual([
+      { type: 'text', text: 'go ' },
+      { type: 'status', text: 'Done', color: 'green' },
+      { type: 'text', text: ' now' },
+    ]);
+    expect(parseInline(':status[A]')).toEqual([{ type: 'status', text: 'A', color: 'grey' }]);
+    expect(parseInline(':status[A]{color=mauve}')).toEqual([{ type: 'status', text: 'A', color: 'grey' }]);
+    expect(parseInline(':status[a \\[b\\]]{color=red}')).toEqual([{ type: 'status', text: 'a [b]', color: 'red' }]);
+  });
+
   it('respects escapes instead of opening emphasis', () => {
     expect(parseInline('\\*not em\\*')).toEqual([{ type: 'text', text: '*not em*' }]);
   });
@@ -272,9 +285,43 @@ describe('parseInline', () => {
     expect(parseInline('<u>x</u>')).toEqual([{ type: 'ins', text: 'x' }]);
   });
 
+  it('reads ++underline++ with the parser\'s flanking rules', () => {
+    expect(parseInline('a ++u++ b')).toEqual([
+      { type: 'text', text: 'a ' },
+      { type: 'ins', text: 'u' },
+      { type: 'text', text: ' b' },
+    ]);
+    for (const plain of ['C++ and C++', 'i++;j++', 'a ++ b ++ c', '+++x+++']) {
+      expect(parseInline(plain)).toEqual([{ type: 'text', text: plain }]);
+    }
+  });
+
   it('maps a click past a hidden tag back onto the raw text', () => {
     // display "u tail" over raw "<ins>u</ins> tail"
     expect(displayToRawOffset('<ins>u</ins> tail', 1)).toBe(6);
+  });
+});
+
+describe('parseInlineTree', () => {
+  it('nests formats in either order and keeps raw ranges absolute', () => {
+    const raw = 'a **++b++** c';
+    const [, strong] = parseInlineTree(raw);
+    expect(strong.type).toBe('strong');
+    expect(strong.children?.map((c) => [c.type, c.text, raw.slice(c.from, c.to)])).toEqual([['ins', 'b', '++b++']]);
+    const [ins] = parseInlineTree('++**b**++');
+    expect(ins.children?.map((c) => [c.type, c.text])).toEqual([['strong', 'b']]);
+  });
+
+  it('keeps a leaf flat when its text holds no formatting', () => {
+    expect(parseInlineTree('**b**')[0].children).toBeUndefined();
+  });
+
+  it('counts only visible characters, and maps display <-> raw through the nesting', () => {
+    const raw = '**++ab++** c';
+    expect(parseInlineTree(raw).reduce((n, node) => n + visibleLength(node), 0)).toBe('ab c'.length);
+    expect(displayToRawOffset(raw, 1)).toBe(raw.indexOf('b'));
+    expect(displayToRawOffset(raw, 2)).toBe(raw.indexOf('b') + 1);
+    expect(displayToRawOffset(raw, 4)).toBe(raw.length);
   });
 });
 

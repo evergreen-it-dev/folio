@@ -6,6 +6,44 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **Status tags.** A short coloured badge inside a sentence, like the status
+  lozenge in Confluence: `:status[Done]{color=green}`. Six colours (grey, blue,
+  green, yellow, red, purple); grey is the default and is also what a missing
+  or unknown colour falls back to. The text is stored as typed and shown in
+  capitals, so search, export and copy keep your own spelling. In Live edit the
+  tag is one badge that the caret skips over; click it for a popover with a
+  text field and the six colours, and insert one from the toolbar button, the
+  selection bar or the `/` menu (with text selected it wraps the selection).
+  Tags also work inside table cells. Outside Folio the source reads as plain
+  `:status[Done]`. Search finds a tag by its text, never by its colour. The
+  Confluence import turns status macros into these tags (both the rendered
+  lozenge and the storage-format macro), PDF and DOCX export draw them as
+  badges, and the assistant knows the syntax.
+- **Underline is written `++text++`.** Underline used to be an HTML tag pair
+  (`<ins>…</ins>`), and a pair like that could cross a `**` pair and produce
+  text nothing could render. `++text++` is a delimiter pair like `~~` and
+  `**`, so it nests with bold, italic, strike-through and highlight in any
+  order and can never cross them. Exactly two plus signs: `C++` and `a + b`
+  stay text. The toolbar button and the hotkey write it, paste and the
+  Confluence import write it, and the assistant and MCP descriptions tell
+  agents to use it. Existing `<ins>` and `<u>` on pages still render
+  underlined, and the underline button reads them too (pressing it on such a
+  span removes it). The conversion is also available as a function for anyone
+  who wants to rewrite old pages in bulk: it is conservative, leaves any pair
+  whose rewrite would not parse exactly as it was, and counts what it skipped.
+- **Copy and cut in Live edit keep inline formatting.** Live edit folds the
+  markers (`**`, `==`, `++`, link brackets) away, so copying the visible word
+  used to put bare text on the clipboard. The selection is now mapped back to
+  its Markdown source, and the clipboard gets two flavours: Markdown as plain
+  text, and the rendered result as HTML, so Slack, Google Docs and mail keep
+  the formatting. Pasting that HTML back into Folio (or HTML copied from
+  Reading) converts highlights, status tags and strike-through to Folio's own
+  Markdown.
+- **Live edit lists look like Reading.** Bullets are drawn by depth (disc,
+  circle, square), nested items indent one level at a time with a hanging
+  indent, ordered numbers stay real text, and checklist items drop the dash in
+  favour of the checkbox. Source mode is unchanged.
+
 - **Emoji reactions on whiteboard shapes.** Select a shape in Edit mode and a
   small reaction button appears at the lower right corner of the selection
   frame; it opens a palette of eight
@@ -150,6 +188,33 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   spaces instead of their short addresses.
 
 ### Fixed
+
+- **Reading: a loose list keeps its number and its text on one line.** A list
+  with blank lines between items wraps each item in a paragraph, and with the
+  marker inside the item the number sat alone on the line above the text.
+  Markers now hang in a gutter of their own at every level, which also gives
+  wrapped lines a hanging indent. Checklists and lists inside table cells keep
+  their layout.
+- **Confluence import no longer overwrites the space's home page.** Importing
+  into an existing space with the default target wrote the imported root page
+  over the space's own `index.md`; the tree never lists that file (the space
+  home has its own row), so the imported page vanished from the tree and the
+  old home was gone. The same happened for a chosen folder that already had a
+  page of its own. The root now takes `index.md` only where nothing would be
+  replaced or hidden, and otherwise goes into its own folder; importing the
+  same tree again updates that folder in place.
+- **Formatting inside a table cell is no longer erased on the first
+  keystroke.** Cells draw nested formatting (bold inside underline, highlight
+  inside bold) instead of showing raw tags and markers, and typing into a
+  formatted cell no longer drops its underline and highlight.
+- **Someone else's selection no longer hides your text.** When a collaborator
+  selected a range, everyone else saw the selected lines turn into a blank gap
+  after a few seconds of the collaborator being idle. The text itself was
+  intact in the editor, the shared document and on the server; only its
+  drawing was hidden by the fade that dims idle collaborators. Folio now draws
+  remote selections itself, as a coloured mark that never touches the text's
+  visibility, and the fade dims only the colour and the caret. Mixed versions
+  keep working, since the presence data is unchanged.
 
 - **The reaction button on a whiteboard no longer follows the pointer.** The
   button used to pop up at whatever shape the pointer crossed, which got in the

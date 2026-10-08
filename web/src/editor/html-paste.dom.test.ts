@@ -43,13 +43,25 @@ describe('convertClipboardHtml', () => {
     expect(converted.markdown).toContain('# **Heading**');
     expect(converted.markdown).toContain('**bold**');
     expect(converted.markdown).toMatch(/[_*]italic[_*]/);
-    expect(converted.markdown).toContain('<ins>underlined</ins>');
-    expect(converted.markdown).toContain('<mark>highlighted</mark>');
+    expect(converted.markdown).toContain('++underlined++');
+    expect(converted.markdown).toContain('==highlighted==');
     expect(converted.markdown).toContain('[link](https://example.com)');
     expect(converted.markdown).toContain('folio-table: bg=HA:blue,HB:blue; w=1:18%,2:82%');
     expect(converted.markdown).toContain('| **Kind** | **Example** |');
     expect(converted.markdown).toContain('• one<br>  • two');
     expect(converted.markdown).not.toContain('data:image');
+  });
+
+  it('writes underline as ++…++ nested with bold, never as a crossing tag pair', () => {
+    const md = (html: string) => convertClipboardHtml(`<p>${html}</p>`)!.markdown;
+    expect(md('a <u>under</u> b')).toBe('a ++under++ b');
+    expect(md('a <ins>under</ins> b')).toBe('a ++under++ b');
+    expect(md('<u><strong>x</strong></u>')).toBe('++**x**++');
+    expect(md('<strong><u>x</u></strong>')).toBe('**++x++**');
+    // Google Docs: one span, bold + underline.
+    expect(md('<span style="font-weight:700;text-decoration:underline">Goal #1</span> rest')).toBe('**++Goal #1++** rest');
+    // padding moves outside the marks
+    expect(md('a<u> pad </u>b')).toBe('a ++pad++ b');
   });
 
   it('extracts data images as uploadable files and leaves unique markers', () => {

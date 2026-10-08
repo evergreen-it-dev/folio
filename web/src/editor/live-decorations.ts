@@ -6,6 +6,7 @@
  * The view layer (live-preview.ts) maps these specs onto real Decorations.
  */
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
+import { parseStatusAt, type StatusColor } from '@shared/status';
 import { isBgToken, isTableAttrLine } from '../markdown/tableSyntax';
 
 /** Minimal slice of `@codemirror/state`'s Text that the computation needs. */
@@ -38,12 +39,20 @@ export type InlineSpec =
   | { kind: 'hide'; from: number; to: number }
   /** Styling only, text stays visible. */
   | { kind: 'mark'; from: number; to: number; cls: string }
-  /** Whole-line styling; `pos` is always a line start. */
-  | { kind: 'line'; pos: number; cls: string }
+  /** Whole-line styling; `pos` is always a line start. `style` is an inline style (list depth variable). */
+  | { kind: 'line'; pos: number; cls: string; style?: string }
+  /**
+   * A bullet list marker (`-`, `*`, `+`, plus the indentation before it and the
+   * spaces after it) replaced by a depth-dependent glyph: • / ◦ / ▪, cycling.
+   * `level` is 0-based nesting depth.
+   */
+  | { kind: 'bullet'; from: number; to: number; level: number }
   /** `[ ]` / `[x]` replaced by a real checkbox. */
   | { kind: 'task'; from: number; to: number; checked: boolean }
   /** `[!NOTE]` replaced by the alert's icon + name, the way reading mode heads it. */
-  | { kind: 'callout'; from: number; to: number; type: CalloutType };
+  | { kind: 'callout'; from: number; to: number; type: CalloutType }
+  /** `:status[Text]{color=green}` replaced by its badge (status-widget.ts). `label` is unescaped. */
+  | { kind: 'status'; from: number; to: number; label: string; color: StatusColor };
 
 /** Block-level specs — these affect vertical layout and must come from a StateField. */
 export type BlockSpec =
@@ -85,6 +94,15 @@ const BLOCK_CONTAINERS = new Set([
   'Task',
 ]);
 
+/** How many lists enclose `list` (itself included): 1 for a top-level list. */
+function listDepth(list: SyntaxNode): number {
+  let depth = 0;
+  for (let node: SyntaxNode | null = list; node; node = node.parent) {
+    if (node.name === 'BulletList' || node.name === 'OrderedList') depth++;
+  }
+  return depth;
+}
+
 function childrenNamed(node: SyntaxNode, name: string): SyntaxNode[] {
   const out: SyntaxNode[] = [];
   for (let child = node.firstChild; child; child = child.nextSibling) {
@@ -98,9 +116,13 @@ function childrenNamed(node: SyntaxNode, name: string): SyntaxNode[] {
  * Scans only `ranges` (the viewport) so large documents stay cheap.
  */
 /**
- * Inline HTML this editor renders rather than shows as source: the two tags the
- * formatting toolbar writes for the formats markdown has no syntax for. Both
- * are what GitHub renders too — see format.ts for why these and not `<u>`/`==`.
+ * Inline HTML this editor renders rather than shows as source. Underline is
+ * `++text++` now (an `Underline` node, below) and the toolbar no longer writes
+ * `<ins>`, but pages written before that — and Confluence/Google imports —
+ * still hold `<ins>`/`<u>` pairs, and `<mark>` is the old highlight. They are
+ * folded like markers and their content styled, even when a pair crosses a
+ * `**` pair (`<ins>**x</ins>**`): the pairing below works off the flat tag
+ * list, not off the tree, so crossing costs nothing here.
  */
 const INLINE_HTML: Record<string, string> = {
   ins: 'cm-md-ins',
@@ -108,7 +130,7 @@ const INLINE_HTML: Record<string, string> = {
   mark: 'cm-md-mark',
 };
 
-interface HtmlTagRef {
+export interface HtmlTagRef {
   from: number;
   to: number;
   name: string;
@@ -117,7 +139,7 @@ interface HtmlTagRef {
 
 const HTML_TAG = /^<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\s*>$/;
 
-function readHtmlTag(text: string, from: number, to: number): HtmlTagRef | null {
+export function readHtmlTag(text: string, from: number, to: number): HtmlTagRef | null {
   const match = HTML_TAG.exec(text);
   if (!match) return null;
   const name = match[2].toLowerCase();
@@ -146,7 +168,8 @@ export function computeInlineSpecs({ doc, tree, ranges, live }: ComputeOptions):
     specs.push(spec);
   };
 
-  const addLine = (pos: number, cls: string) => add(`l${pos}:${cls}`, { kind: 'line', pos, cls });
+  const addLine = (pos: number, cls: string, style?: string) =>
+    add(`l${pos}:${cls}:${style ?? ''}`, style === undefined ? { kind: 'line', pos, cls } : { kind: 'line', pos, cls, style });
   const addMark = (from: number, to: number, cls: string) =>
     add(`m${from}-${to}:${cls}`, { kind: 'mark', from, to, cls });
   const hide = (from: number, to: number) => {
@@ -163,6 +186,70 @@ export function computeInlineSpecs({ doc, tree, ranges, live }: ComputeOptions):
   const foldMarker = (node: SyntaxNodeRef, owner: SyntaxNode | null) => {
     if (!live || !owner) return;
     hide(node.from, node.to);
+  };
+
+  /**
+   * Live-mode look of a list item's marker, matching reading mode: bullets turn
+   * into • / ◦ / ▪ by depth, a task item drops its marker (the checkbox is the
+   * marker), an ordered number stays real, editable text but is given a fixed
+   * minimum width so wrapped lines hang under the item's text. The indentation
+   * before the marker is folded away — the line's padding (`.cm-md-li`) draws
+   * the nesting instead. Nothing else about the caret changes: like every other
+   * marker, these folds do not depend on where the selection is.
+   */
+  const foldListMarker = (mark: SyntaxNode) => {
+    const item = mark.parent;
+    const list = item?.parent;
+    if (!item || !list) return;
+    const line = doc.lineAt(mark.from);
+    // Only a marker that opens its line: `> - x` or `- - x` keep their source.
+    const lead = mark.from === line.from || /^[ \t]*$/.test(doc.sliceString(line.from, mark.from));
+    const first = lead ? line.from : mark.from;
+    // Spaces after the marker belong to it, so the glyph box and the text edge
+    // line up; more than four spaces is an indented code block, not padding.
+    let end = mark.to;
+    while (end < line.to && /[ \t]/.test(doc.sliceString(end, end + 1))) end++;
+    if (end - mark.to > 4) end = mark.to + 1;
+    const isTask = mark.nextSibling?.name === 'Task' && mark.nextSibling.firstChild?.name === 'TaskMarker';
+    if (isTask) {
+      hide(first, end);
+    } else if (list.name === 'BulletList') {
+      if (end > first) add(`b${first}`, { kind: 'bullet', from: first, to: end, level: listDepth(list) - 1 });
+    } else {
+      hide(first, mark.from);
+      addMark(mark.from, end, 'cm-md-list-num');
+    }
+  };
+
+  /**
+   * Indentation per nesting level plus a hanging indent: the item's first line
+   * gets `padding-left: depth * 1.5em` and a negative `text-indent`, its
+   * paragraph's later lines the same padding without the indent. Depth comes
+   * from the syntax tree (how many lists enclose the item), never from the
+   * spaces typed in front of it.
+   */
+  const decorateListItem = (item: SyntaxNode, range: Span) => {
+    const depth = item.parent ? listDepth(item.parent) : 0;
+    if (depth === 0) return;
+    const style = `--cm-li-depth:${depth}`;
+    const firstLine = doc.lineAt(item.from);
+    const lead = /^[ \t]*$/.test(doc.sliceString(firstLine.from, item.from));
+    // A list inside a quote or sharing its line with another marker keeps the
+    // quote's own indentation rules.
+    if (!lead) return;
+    addLine(firstLine.from, 'cm-md-li', style);
+    for (let child = item.firstChild; child; child = child.nextSibling) {
+      if (child.name !== 'Paragraph' && child.name !== 'Task') continue;
+      const from = doc.lineAt(Math.max(child.from, range.from)).number;
+      const to = doc.lineAt(Math.min(child.to, range.to)).number;
+      for (let n = from; n <= to; n++) {
+        const line = doc.line(n);
+        if (line.from === firstLine.from) continue;
+        const indent = /^[ \t]*/.exec(line.text)?.[0].length ?? 0;
+        addLine(line.from, 'cm-md-li-cont', style);
+        hide(line.from, line.from + indent);
+      }
+    }
   };
 
   for (const range of ranges) {
@@ -200,6 +287,7 @@ export function computeInlineSpecs({ doc, tree, ranges, live }: ComputeOptions):
           case 'EmphasisMark':
           case 'StrikethroughMark':
           case 'HighlightMark':
+          case 'UnderlineMark':
             addMark(node.from, node.to, 'cm-md-marker');
             foldMarker(node, node.node.parent);
             return false;
@@ -217,6 +305,24 @@ export function computeInlineSpecs({ doc, tree, ranges, live }: ComputeOptions):
               addMark(marks[0].to, marks[1].from, cls);
             }
             return true;
+          }
+
+          // `++text++` (underline-syntax.ts): the text between the marks is
+          // underlined; the marks fold like `**`/`~~` (the `UnderlineMark` case).
+          case 'Underline': {
+            const marks = childrenNamed(node.node, 'UnderlineMark');
+            if (marks.length >= 2 && marks[1].from > marks[0].to) addMark(marks[0].to, marks[1].from, 'cm-md-ins');
+            return true;
+          }
+
+          // `:status[Text]{color=green}` (status-syntax.ts): a badge widget in
+          // live mode, the raw source (dimmed) in source mode.
+          case 'StatusTag': {
+            const tag = parseStatusAt(doc.sliceString(node.from, node.to));
+            if (!tag || tag.length !== node.to - node.from) return false;
+            if (live) add(`s${node.from}`, { kind: 'status', from: node.from, to: node.to, label: tag.label, color: tag.color });
+            else addMark(node.from, node.to, 'cm-md-status-src');
+            return false;
           }
 
           case 'HighlightAttr': {
@@ -307,7 +413,12 @@ export function computeInlineSpecs({ doc, tree, ranges, live }: ComputeOptions):
 
           case 'ListMark':
             addMark(node.from, node.to, 'cm-md-list-mark');
+            if (live) foldListMarker(node.node);
             return false;
+
+          case 'ListItem':
+            if (live) decorateListItem(node.node, range);
+            return true;
 
           case 'TaskMarker': {
             if (!live) return false;

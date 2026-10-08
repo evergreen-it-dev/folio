@@ -18,7 +18,7 @@
 import { StateEffect, StateField, type Extension } from '@codemirror/state';
 import { EditorView, showTooltip, type Tooltip, type TooltipView } from '@codemirror/view';
 import { editorServicesFacet } from './editor-services';
-import { htmlHasRichFormatting, looksLikeMarkdown } from './html-paste';
+import { htmlHasRichFormatting, isFolioClipboardHtml, looksLikeMarkdown } from './html-paste';
 import { t } from './i18n';
 import { pageContextFacet } from './live-preview';
 import { formatLinkTarget, relativePath } from './paths';
@@ -211,7 +211,7 @@ export function markdownPasteChooser(): Extension {
         // being offered as a plain-text document — the chooser is for
         // markdown-shaped text with no better source to convert from.
         const html = event.clipboardData?.getData('text/html') ?? '';
-        if (html && htmlHasRichFormatting(html)) return false;
+        if (html && htmlHasRichFormatting(html) && !isFolioClipboardHtml(html)) return false;
 
         event.preventDefault();
         const { from, to } = view.state.selection.main;

@@ -9,6 +9,8 @@ import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } 
 import { defaultKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { FolioHighlight } from './highlight-syntax';
+import { FolioUnderline } from './underline-syntax';
+import { FolioStatus } from './status-syntax';
 import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
@@ -175,7 +177,7 @@ export function markdownEditorExtensions(): Extension {
     // merely STARTS with a URL, refuses a selection with formatting in it and
     // writes a `)` into the target unescaped. `pasteLinkOverSelection` below
     // does the same job by the rules in format.ts, shared with table cells.
-    markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [FolioHighlight, noSetextHeadings], pasteURLAsLink: false }),
+    markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [FolioHighlight, FolioUnderline, FolioStatus, noSetextHeadings], pasteURLAsLink: false }),
     syntaxHighlighting(folioHighlight),
     folioTheme,
     EditorView.lineWrapping,

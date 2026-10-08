@@ -26,6 +26,7 @@ import { PageTree } from './PageTree';
 import { FormEmbed } from './FormEmbed';
 import './i18n/register';
 import './markdown.css';
+import './status.css';
 import { attachGlossaryTooltips } from './glossaryTooltip';
 
 // Round 13: re-exported here so EDITOR's live block-widget can

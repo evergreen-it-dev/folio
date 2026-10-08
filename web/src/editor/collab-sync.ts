@@ -27,8 +27,9 @@
  */
 import type { Extension } from '@codemirror/state';
 import { ViewPlugin, type EditorView, type PluginValue, type ViewUpdate } from '@codemirror/view';
-import { yCollab, ySync, ySyncAnnotation, ySyncFacet, type YSyncConfig } from 'y-codemirror.next';
+import { yCollab, yRemoteSelections, ySync, ySyncAnnotation, ySyncFacet, type YSyncConfig } from 'y-codemirror.next';
 import type * as Y from 'yjs';
+import { folioRemoteSelections } from './remote-selections';
 
 /** How long after the last change the full-text comparison runs (a length check runs on every change). */
 export const FULL_CHECK_DELAY_MS = 1_000;
@@ -255,8 +256,16 @@ class FolioSyncPluginValue implements PluginValue {
 
 const folioSync = ViewPlugin.fromClass(FolioSyncPluginValue);
 
-/** `yCollab` with its sync plugin replaced by the hardened one above. Same arguments. */
+/**
+ * `yCollab` with its sync plugin replaced by the hardened one above and its
+ * remote-selection plugin by remote-selections.ts (which never hides text and
+ * never throws). Same arguments.
+ */
 export function folioCollab(...args: Parameters<typeof yCollab>): Extension {
   const extensions = yCollab(...args) as unknown as Extension[];
-  return extensions.map((ext) => (ext === (ySync as unknown as Extension) ? folioSync : ext));
+  return extensions.map((ext) => {
+    if (ext === (ySync as unknown as Extension)) return folioSync;
+    if (ext === (yRemoteSelections as unknown as Extension)) return folioRemoteSelections;
+    return ext;
+  });
 }

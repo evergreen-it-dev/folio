@@ -773,7 +773,7 @@ describe('formatting inside a cell', () => {
     expect(h.cell(0, 0).querySelector('.cm-md-link')?.textContent).toBe('word');
   });
 
-  it('renders the HTML formats as formats once the cell is committed', () => {
+  it('renders the underline as a format once the cell is committed', () => {
     const h = mount();
     const field = openCell(h, 0, 0);
     field.value = 'word';
@@ -781,10 +781,10 @@ describe('formatting inside a cell', () => {
     press(field, 'u', { metaKey: true });
     commit(field);
 
-    expect(h.text()).toContain('<ins>word</ins>');
+    expect(h.text()).toContain('++word++');
     const cell = h.cell(0, 0);
     expect(cell.querySelector('.cm-md-ins')?.textContent).toBe('word');
-    expect(cell.textContent).not.toContain('<ins>');
+    expect(cell.textContent).not.toContain('++');
   });
 
   it('takes the hotkeys too, and toggles back off', () => {
@@ -794,7 +794,7 @@ describe('formatting inside a cell', () => {
     field.setSelectionRange(0, 4);
 
     press(field, 'u', { metaKey: true });
-    expect(field.value).toBe('<ins>word</ins>');
+    expect(field.value).toBe('++word++');
     press(field, 'u', { metaKey: true });
     expect(field.value).toBe('word');
 
@@ -810,6 +810,30 @@ describe('rendering', () => {
     expect(cell.querySelectorAll('.cm-md-cell-line')).toHaveLength(2);
     expect(cell.querySelector('strong')?.textContent).toBe('b');
     expect(cell.querySelector<HTMLInputElement>('.cm-md-cell-check')?.checked).toBe(true);
+  });
+
+  it('reads underline and highlight back from the cell, nested or not — typing must not strip them', () => {
+    const raw = '++a++ b ==c== **++d++** ==e=={.green} ++**f**++';
+    const h = mount(['| a |', '| --- |', `| ${raw} |`].join('\n'));
+    const field = openCell(h, 0, 0);
+    expect(field.value).toBe(raw);
+    // What every keystroke does: read the value back off the rendered DOM.
+    field.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    expect(field.value).toBe(raw);
+  });
+
+  it('draws nested formatting as nested elements, with no marker left in the grid (the owner\'s screenshot)', () => {
+    // The two lines of the report: a crossed legacy pair, and a clean bold-in-underline.
+    const h = mount(['| a |', '| --- |', '| ++**Ongoing Goal #1**++ more<br>**++Growth Goal #2++**. rest<br>**<ins>Legacy</ins>** end |'].join('\n'));
+    const cell = h.cell(0, 0);
+    expect(cell.textContent).not.toMatch(/\+\+|\*\*|<ins>|<\/ins>/);
+    expect(cell.querySelector('.cm-md-ins strong')?.textContent).toBe('Ongoing Goal #1');
+    expect(cell.querySelector('strong .cm-md-ins')?.textContent).toBe('Growth Goal #2');
+    expect(cell.querySelectorAll('strong .cm-md-ins').length).toBe(2);
+    // …and the crossed pair the old toolbar wrote over bold text.
+    const crossed = mount(['| a |', '| --- |', '| <ins>**Ongoing Goal #1</ins>** rest |'].join('\n')).cell(0, 0);
+    expect(crossed.textContent).toBe('Ongoing Goal #1 rest');
+    expect(crossed.querySelector('strong .cm-md-ins')?.textContent).toBe('Ongoing Goal #1');
   });
 
   it('keeps the compact toolbar and drops the visual-editor button', () => {

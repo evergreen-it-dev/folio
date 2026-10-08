@@ -211,6 +211,33 @@ describe('renderMarkdownToHtml: ==highlight== (shared/highlight.ts)', () => {
   });
 });
 
+describe('renderMarkdownToHtml: ++underline++ (shared/underline.ts)', () => {
+  it('renders ++text++ as <ins>, nested with bold in either order', () => {
+    expect(renderMarkdownToHtml('a ++u++ b', opts)).toContain('a <ins>u</ins> b');
+    expect(renderMarkdownToHtml('**++x++**', opts)).toContain('<strong><ins>x</ins></strong>');
+    expect(renderMarkdownToHtml('++**x**++', opts)).toContain('<ins><strong>x</strong></ins>');
+  });
+
+  it('leaves C++ alone and keeps ++ inside code literal', () => {
+    const html = renderMarkdownToHtml('C++ and C++ and `++x++`', opts);
+    expect(html).toContain('C++ and C++ and');
+    expect(html).toContain('<code>++x++</code>');
+    expect(html).not.toContain('<ins>');
+  });
+
+  it('shows a legacy crossed <ins>**x</ins>** without any raw tag', () => {
+    const html = renderMarkdownToHtml('<ins>**Ongoing Goal #1</ins>** more text', opts);
+    expect(html).not.toContain('&lt;');
+    expect(html).not.toContain('**');
+    expect(html).toContain('Ongoing Goal #1');
+    expect(html).toContain('<ins>');
+  });
+
+  it('keeps ++ out of the heading slug', () => {
+    expect(extractHeadings('## Plan ++now++')).toEqual([{ level: 2, text: 'Plan now', slug: 'plan-now' }]);
+  });
+});
+
 describe('renderMarkdownToHtml: sanitization', () => {
   it('keeps the format toolbar\'s inline formatting tags (round 21: mark/ins/u survive with their markup)', () => {
     const html = renderMarkdownToHtml('<mark>yellow</mark> and <ins>underlined</ins> and <u>imported</u>', opts);

@@ -5,6 +5,9 @@ import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
 import rehypeStringify from 'rehype-stringify';
 import * as http from 'node:http';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { ulid } from 'ulidx';
 import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { setUpTestSchema, deleteTestSpace } from './db/testSchema.js';
@@ -15,6 +18,7 @@ import {
   applyStorageRepairs,
   assignPaths,
   bgClass,
+  chooseRootBaseDir,
   buildTurndownService,
   composePageBody,
   convertPageHtml,
@@ -267,10 +271,10 @@ describe('confluenceImport.ts pure pieces (round 12, no network)', () => {
         expect(out).not.toContain('<span');
       });
 
-      it('converts span.status-macro (aui-lozenge) to <strong>, dropping its classes and keeping its colour as a dot', () => {
+      it('rebuilds span.status-macro (aui-lozenge) as a status span carrying its colour, dropping the Confluence classes', () => {
         const html = '<p>Level: <span class="status-macro aui-lozenge aui-lozenge-error">MUST HAVE</span></p>';
         const out = preprocessConfluenceDom(html, NOOP_CTX);
-        expect(out).toContain('<strong>🔴 MUST HAVE</strong>');
+        expect(out).toContain('<span class="folio-status folio-status--red">MUST HAVE</span>');
         expect(out).not.toContain('status-macro');
         expect(out).not.toContain('aui-lozenge');
       });
@@ -279,17 +283,32 @@ describe('confluenceImport.ts pure pieces (round 12, no network)', () => {
         const html =
           '<p><span class="status-macro aui-lozenge aui-lozenge-success">DONE</span>' +
           '<span class="status-macro aui-lozenge aui-lozenge-moved">HOLD</span>' +
-          '<span class="status-macro aui-lozenge aui-lozenge-current">NOW</span></p>';
+          '<span class="status-macro aui-lozenge aui-lozenge-current">NOW</span>' +
+          '<span class="status-macro aui-lozenge aui-lozenge-new">NEW</span></p>';
         const out = preprocessConfluenceDom(html, NOOP_CTX);
-        expect(out).toContain('<strong>🟢 DONE</strong>');
-        expect(out).toContain('<strong>🟡 HOLD</strong>');
-        expect(out).toContain('<strong>🔵 NOW</strong>');
+        expect(out).toContain('folio-status--green">DONE<');
+        expect(out).toContain('folio-status--yellow">HOLD<');
+        expect(out).toContain('folio-status--blue">NOW<');
+        expect(out).toContain('folio-status--purple">NEW<');
       });
 
-      it('leaves a colourless (default grey) lozenge unmarked — the absence of a highlight is itself the signal', () => {
+      it('maps a colourless (default grey) lozenge to the grey status', () => {
         const html = '<p><span class="status-macro aui-lozenge">STARTER</span></p>';
         const out = preprocessConfluenceDom(html, NOOP_CTX);
-        expect(out).toContain('<strong>STARTER</strong>');
+        expect(out).toContain('<span class="folio-status folio-status--grey">STARTER</span>');
+      });
+
+      it('converts a storage-format status macro by its title and colour parameters', () => {
+        const html =
+          '<p><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter>' +
+          '<ac:parameter ac:name="title">Selected</ac:parameter></ac:structured-macro> ' +
+          '<ac:structured-macro ac:name="status"><ac:parameter ac:name="title">Plain</ac:parameter></ac:structured-macro> ' +
+          '<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Mauve</ac:parameter><ac:parameter ac:name="title">Odd</ac:parameter></ac:structured-macro></p>';
+        const out = preprocessConfluenceDom(html, NOOP_CTX);
+        expect(out).toContain('<span class="folio-status folio-status--green">Selected</span>');
+        expect(out).toContain('<span class="folio-status folio-status--grey">Plain</span>');
+        expect(out).toContain('<span class="folio-status folio-status--grey">Odd</span>');
+        expect(out).not.toContain('ac:structured-macro');
       });
 
       describe('table classification: simple (inline-only) vs complex', () => {
@@ -380,13 +399,40 @@ describe('confluenceImport.ts pure pieces (round 12, no network)', () => {
         expect(md).toMatch(/<\/details>\n\nAfter\./);
       });
 
-      it('a status-macro lozenge converts to **TEXT** markdown when it is plain running text (not inside a raw HTML table)', () => {
+      it('a status-macro lozenge converts to a :status[TEXT]{color=…} tag when it is plain running text', () => {
         const td = buildTurndownService();
-        const html = '<p>Priority: <span class="status-macro aui-lozenge aui-lozenge-error">MUST HAVE</span></p>';
+        const html =
+          '<p>Priority: <span class="status-macro aui-lozenge aui-lozenge-error">MUST HAVE</span> ' +
+          '<span class="status-macro aui-lozenge">Draft</span></p>';
         const md = convertPageHtml(td, html, NOOP_CTX);
-        expect(md).toContain('**🔴 MUST HAVE**');
+        expect(md).toContain('Priority: :status[MUST HAVE]{color=red} :status[Draft]');
         expect(md).not.toContain('status-macro');
         expect(md).not.toContain('aui-lozenge');
+      });
+
+      it('keeps the label as Confluence had it and escapes what markdown would read', () => {
+        const td = buildTurndownService();
+        const html = '<p><span class="status-macro aui-lozenge aui-lozenge-success">Done [v2] *final*</span></p>';
+        expect(convertPageHtml(td, html, NOOP_CTX)).toBe(':status[Done \\[v2\\] \\*final\\*]{color=green}');
+      });
+
+      it('inside a simple pipe table the tag stays in its cell', () => {
+        const td = buildTurndownService();
+        const html =
+          '<table><tr><th>Item</th><th>State</th></tr>' +
+          '<tr><td>A</td><td><span class="status-macro aui-lozenge aui-lozenge-success">DONE</span></td></tr></table>';
+        const md = convertPageHtml(td, html, NOOP_CTX);
+        expect(md).toContain('| A | :status[DONE]{color=green} |');
+      });
+
+      it('inside a table frozen as raw HTML the span itself survives (a directive there would never be parsed)', () => {
+        const td = buildTurndownService();
+        const html =
+          '<table><tr><td colspan="2">Header</td></tr><tr><td>x</td><td>' +
+          '<span class="status-macro aui-lozenge aui-lozenge-error">STOP</span></td></tr></table>';
+        const md = convertPageHtml(td, html, NOOP_CTX);
+        expect(md).toContain('<span class="folio-status folio-status--red">STOP</span>');
+        expect(md).not.toContain(':status[');
       });
 
       it('an inline-comment-marker unwraps to bare text in the final markdown', () => {
@@ -855,6 +901,14 @@ function startMockConfluence(pageId: string, title: string, exportHtml: string):
   });
 }
 
+/** Writes a page file straight into a space's working tree and indexes it (a page "created outside Folio"). */
+async function writeIndexedPage(slug: string, relPath: string, title: string): Promise<void> {
+  const abs = path.join(storage.getSpaceDir(slug), relPath);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.writeFile(abs, `---\nid: ${ulid()}\n---\n# ${title}\n`, 'utf8');
+  await storage.scanSpace(slug);
+}
+
 describe('confluenceImport.ts: targetSpace bug fix (real PG + a real local mock server, no real Confluence)', () => {
   let teardownSchema: () => Promise<void>;
   beforeAll(async () => {
@@ -965,6 +1019,96 @@ describe('confluenceImport.ts: targetSpace bug fix (real PG + a real local mock 
       if (slug) await deleteTestSpace(slug);
     }
   }, 20_000); // vitest's default 5s test-level timeout is shorter than the pollUntil ceiling above
+
+  it('REGRESSION: importing into an existing space with pages (target = space root) must not take over the space home index.md -- the page lands as a visible tree node', async () => {
+    const user = await authStore.createUser({ email: 'visible-root@confimport-test.local', name: 'Owner', passwordHash: 'x', isAdmin: false });
+    const { base, server } = await startMockConfluence('44', 'Q3 2026', '<p>Backlog.</p>');
+    let slug: string | undefined;
+    try {
+      const resolved = await resolveOrCreateTargetSpace(`Visible Root ${Date.now()}`, user.id);
+      slug = resolved.slug;
+      const existing = await storage.createPage({ space: slug, parentPath: '', title: 'Existing Page', kind: 'doc' });
+      const homeBefore = await storage.resolve(slug, '');
+      const homeBodyBefore = await storage.readFreshDocBody(homeBefore.id);
+
+      const job = startImportJob(
+        { pageUrl: `${base}/wiki/spaces/ENG/pages/44/Q3`, auth: { kind: 'pat', token: 'mock-token' }, targetPath: '', includeChildren: false, targetSpace: slug },
+        user.id,
+        { name: user.name, email: user.email },
+      );
+      await pollUntil(() => getJob(job.id)?.status === 'done', 15_000);
+      expect(getJob(job.id)?.error).toBeNull();
+
+      // The space home is untouched ...
+      const homeAfter = await storage.resolve(slug, '');
+      expect(homeAfter.id).toBe(homeBefore.id);
+      expect(await storage.readFreshDocBody(homeAfter.id)).toBe(homeBodyBefore);
+
+      // ... and the imported root is a real, listed tree node (the sidebar hides only the root index.md).
+      const tree = await storage.getTree(slug);
+      const flat: Array<{ id: string; path: string; title: string }> = [];
+      const walk = (nodes: Array<{ id: string; path: string; title: string; children: unknown[] }>): void => {
+        for (const n of nodes) {
+          flat.push(n);
+          walk(n.children as typeof nodes);
+        }
+      };
+      walk(tree);
+      const imported = flat.find((n) => n.title === 'Q3 2026');
+      expect(imported).toBeDefined();
+      expect(imported!.path).toBe('q3-2026/index.md');
+      expect(flat.some((n) => n.id === existing.id)).toBe(true);
+      expect(tree.length === 1 && tree[0].path === 'index.md' ? tree[0].children.some((c) => c.id === imported!.id) : tree.some((c) => c.id === imported!.id)).toBe(true);
+    } finally {
+      await new Promise((r) => server.close(r));
+      if (slug) await deleteTestSpace(slug);
+    }
+  }, 30_000);
+
+  describe('chooseRootBaseDir (where the imported root page lands)', () => {
+    it('empty space (placeholder home only): the root becomes the space home, as before', async () => {
+      const user = await authStore.createUser({ email: 'base-empty@confimport-test.local', name: 'Owner', passwordHash: 'x', isAdmin: false });
+      const { slug } = await resolveOrCreateTargetSpace(`Base Empty ${Date.now()}`, user.id);
+      try {
+        expect(await chooseRootBaseDir(slug, '', 'r1', 'Root', {})).toBe('');
+      } finally {
+        await deleteTestSpace(slug);
+      }
+    });
+
+    it('space with other pages: the root goes into its own sub-directory; a taken slug gets -2; a re-import reuses the earlier sub-directory', async () => {
+      const user = await authStore.createUser({ email: 'base-busy@confimport-test.local', name: 'Owner', passwordHash: 'x', isAdmin: false });
+      const { slug } = await resolveOrCreateTargetSpace(`Base Busy ${Date.now()}`, user.id);
+      try {
+        await storage.createPage({ space: slug, parentPath: '', title: 'Some Page', kind: 'doc' });
+        expect(await chooseRootBaseDir(slug, '', 'r1', 'Q3 2026', {})).toBe('q3-2026');
+        // A page already occupying the natural slug pushes the import to -2.
+        await storage.createPage({ space: slug, parentPath: '', title: 'Q3 2026', kind: 'doc' });
+        expect(await chooseRootBaseDir(slug, '', 'r1', 'Q3 2026', {})).toBe('q3-2026-2');
+        // Re-import: the map says r1 already lives at q3-2026-2/index.md (indexed) -> same place.
+        await writeIndexedPage(slug, 'q3-2026-2/index.md', 'Q3 2026');
+        expect(await chooseRootBaseDir(slug, '', 'r1', 'Q3 2026', { r1: 'q3-2026-2/index.md' })).toBe('q3-2026-2');
+        // A map entry pointing at the space-root index.md (the old buggy placement) is NOT reused in a busy space.
+        expect(await chooseRootBaseDir(slug, '', 'r2', 'Fresh', { r2: 'index.md' })).toBe('fresh');
+      } finally {
+        await deleteTestSpace(slug);
+      }
+    });
+
+    it('nested target: a folder with its own index.md gets the root as a child instead of being replaced; a folder without one keeps the old behaviour', async () => {
+      const user = await authStore.createUser({ email: 'base-nested@confimport-test.local', name: 'Owner', passwordHash: 'x', isAdmin: false });
+      const { slug } = await resolveOrCreateTargetSpace(`Base Nested ${Date.now()}`, user.id);
+      try {
+        await writeIndexedPage(slug, 'parent/index.md', 'Parent');
+        await writeIndexedPage(slug, 'bare/kid.md', 'Kid');
+        expect(await chooseRootBaseDir(slug, 'parent', 'r1', 'Imported', {})).toBe('parent/imported');
+        expect(await chooseRootBaseDir(slug, 'bare', 'r1', 'Imported', {})).toBe('bare');
+        expect(await chooseRootBaseDir(slug, 'no-such-folder', 'r1', 'Imported', {})).toBe('no-such-folder');
+      } finally {
+        await deleteTestSpace(slug);
+      }
+    });
+  });
 
   it('round 19 point 5b, end-to-end: a genuinely empty Confluence page imports with a valid `[!NOTE]` placeholder, not a blank body', async () => {
     const user = await authStore.createUser({ email: 'empty-page@confimport-test.local', name: 'Owner', passwordHash: 'x', isAdmin: false });
@@ -1285,6 +1429,36 @@ describe('storage-format repairs: what export_view failed to render or never emi
       });
       expect(md).toBe('A completely different text');
     });
+  });
+});
+
+describe('underline -> ++text++ (never a crossing tag pair)', () => {
+  const md = (html: string): string => convertPageHtml(buildTurndownService(), html, NOOP_CTX);
+
+  it('turns <u>, <ins> and an underline-styled span into ++…++', () => {
+    expect(md('<p>a <u>under</u> b</p>')).toBe('a ++under++ b');
+    expect(md('<p>a <ins>under</ins> b</p>')).toBe('a ++under++ b');
+    expect(md('<p>a <span style="text-decoration: underline;">under</span> b</p>')).toBe('a ++under++ b');
+  });
+
+  it('nests with bold by the DOM, in either order — the two never cross', () => {
+    expect(md('<p><u><strong>Ongoing Goal #1</strong></u> rest</p>')).toBe('++**Ongoing Goal #1**++ rest');
+    expect(md('<p><strong><u>Growth Goal #2</u></strong>. rest</p>')).toBe('**++Growth Goal #2++**. rest');
+    expect(md('<p><strong>bold <u>both</u> bold</strong></p>')).toBe('**bold ++both++ bold**');
+  });
+
+  it('keeps padding outside the markers', () => {
+    expect(md('<p>a<u> pad </u>b</p>')).toBe('a ++pad++ b');
+  });
+
+  it('says nothing for an empty or block-wide underline', () => {
+    expect(md('<p>a<u> </u>b</p>')).toBe('a b');
+    expect(md('<u><p>one</p><p>two</p></u>')).not.toContain('++');
+  });
+
+  it('works inside a table cell', () => {
+    const out = md('<table><thead><tr><th>A</th></tr></thead><tbody><tr><td><u>x</u></td></tr></tbody></table>');
+    expect(out).toContain('| ++x++ |');
   });
 });
 

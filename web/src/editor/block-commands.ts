@@ -19,6 +19,7 @@ import i18next from 'i18next';
 import { UI_LANGUAGES } from '../i18n/languages';
 import { emojiFavouritesFacet } from './emoji-complete';
 import { openEmojiPicker } from './emoji-popover';
+import { insertStatus } from './status-widget';
 import { serializeGfmTable } from './gfm-table';
 import type { IconName } from './icons';
 import { NS, t } from './i18n';
@@ -165,6 +166,16 @@ const insertEmoji: BlockItem['insert'] = (view, from, to, completion) => {
   });
 };
 
+/**
+ * A status badge at the caret, with its popover open. The trigger text (the «/»
+ * and whatever was typed after it) is removed first, so the tag never takes it
+ * for a label — `insertStatus` wraps a selection, and there is none here.
+ */
+const insertStatusTag: BlockItem['insert'] = (view, from, to, completion) => {
+  view.dispatch({ changes: { from, to, insert: '' }, ...picked(completion) });
+  insertStatus(view);
+};
+
 /** Opens the OS file picker and hands the result to the upload pipeline. */
 const insertImage: BlockItem['insert'] = (view, from, to, completion) => {
   view.dispatch({ changes: { from, to, insert: '' }, ...picked(completion) });
@@ -214,6 +225,7 @@ export const BLOCK_ITEMS: readonly BlockItem[] = [
   { id: 'warning', aliases: 'warning callout', hint: '> [!WARNING]', icon: 'alert', insert: snippetInsert(lines('> [!WARNING]', '> ${}')) },
   { id: 'expand', aliases: 'expand details collapse toggle spoiler', hint: '<details>', icon: 'expand', insert: insertExpand },
   { id: 'emoji', aliases: 'emoji smile icon', hint: '(( / :name', icon: 'bulb', insert: insertEmoji },
+  { id: 'status', aliases: 'status badge lozenge tag label', hint: ':status[…]', icon: 'tag', insert: insertStatusTag },
   { id: 'pagetree', aliases: 'pagetree tree children subpages', hint: '::pagetree', icon: 'listTree', insert: snippetInsert(lines('::pagetree{depth=2}', '${}')) },
   { id: 'divider', aliases: 'divider hr line', hint: '---', icon: 'divider', insert: snippetInsert(lines('---', '${}')) },
 ];
@@ -256,11 +268,11 @@ export const TOOLBAR_PRIMARY: readonly string[] = [
 ];
 
 /**
- * Already buttons of their own in the formatting group — and both act on the
- * selection, which `runBlockCommand` (the overflow menu's caller) would have
+ * Already buttons of their own in the formatting group (the status tag too) —
+ * and all of them act on the selection, which `runBlockCommand` (the overflow menu's caller) would have
  * thrown away by opening a fresh line first.
  */
-const TOOLBAR_SKIP: readonly string[] = ['quote', 'link'];
+const TOOLBAR_SKIP: readonly string[] = ['quote', 'link', 'status'];
 
 export const toolbarPrimaryItems = (): BlockItem[] =>
   TOOLBAR_PRIMARY.map(blockItemById).filter((item): item is BlockItem => item != null);

@@ -36,6 +36,7 @@ import {
   toolbarPinnedNow,
 } from './pin-toolbar';
 import { openMenu, type MenuHandle } from './popup-menu';
+import { copyMarkdown } from './copy-markdown';
 import { markdownPasteChooser } from './paste-chooser';
 import { childPageDir } from './paths';
 import { clearMountedEditorView, setMountedEditorView } from './scroll-to-heading';
@@ -43,6 +44,7 @@ import { assetUploads } from './uploads';
 import { attachRemotePresenceExpiry } from './remote-presence';
 import { ensureProtectedPageTitle, protectPageTitle, selectTitleOnDoubleClick } from './protected-title';
 import './editor.css';
+import '../markdown/status.css';
 import { clearLiveDocText, publishLiveDocText } from '../app/liveDocText';
 import { debounce } from './debounce';
 
@@ -624,6 +626,8 @@ function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepa
           // handlers in this order and stops at the first `true`.
           markdownPasteChooser(),
           assetUploads(),
+          // Live edit copy/cut: markdown (with the folded markers) + rendered HTML.
+          copyMarkdown,
           i18nReload,
           linkPreview(),
           mentions(),

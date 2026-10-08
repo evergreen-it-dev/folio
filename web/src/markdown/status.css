@@ -1,0 +1,54 @@
+/* Status tag: `:status[Selected]{color=green}` (shared/status.ts).
+   One stylesheet for every surface that draws the badge: reading mode
+   (`<span class="folio-status folio-status--green">`), the live editor's
+   widget (`.cm-md-status` carries the same two classes) and the colour
+   swatches of its popover. Colours are Confluence's lozenge palette; the dark
+   values follow the same scheme as the table-cell backgrounds (markdown.css):
+   a deep tint behind a light text of the same hue.
+   The text is stored as typed — the upper case below is presentation only,
+   so search, copy and export keep the original characters. */
+
+.folio-status {
+  --folio-status-bg: #dfe1e6;
+  --folio-status-fg: #42526e;
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 0 0.4em;
+  margin: 0 0.1em;
+  border-radius: 3px;
+  background-color: var(--folio-status-bg);
+  color: var(--folio-status-fg);
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  vertical-align: 0.06em;
+  /* A list item's hanging indent (negative text-indent, inherited) would push the label out of this box and clip it. */
+  text-indent: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.folio-status--grey { --folio-status-bg: #dfe1e6; --folio-status-fg: #42526e; }
+.folio-status--blue { --folio-status-bg: #deebff; --folio-status-fg: #0747a6; }
+.folio-status--green { --folio-status-bg: #e3fcef; --folio-status-fg: #006644; }
+.folio-status--yellow { --folio-status-bg: #fff0b3; --folio-status-fg: #5e4500; }
+.folio-status--red { --folio-status-bg: #ffebe6; --folio-status-fg: #bf2600; }
+.folio-status--purple { --folio-status-bg: #eae6ff; --folio-status-fg: #403294; }
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-status--grey { --folio-status-bg: #3a3835; --folio-status-fg: #d6d3d1; }
+  html:not([data-theme='light']) .folio-status--blue { --folio-status-bg: #16324f; --folio-status-fg: #8ec5ff; }
+  html:not([data-theme='light']) .folio-status--green { --folio-status-bg: #1e3d24; --folio-status-fg: #86e29a; }
+  html:not([data-theme='light']) .folio-status--yellow { --folio-status-bg: #4a3f1a; --folio-status-fg: #f2d466; }
+  html:not([data-theme='light']) .folio-status--red { --folio-status-bg: #4a2131; --folio-status-fg: #ff9fa8; }
+  html:not([data-theme='light']) .folio-status--purple { --folio-status-bg: #2e2551; --folio-status-fg: #c6b8ff; }
+}
+html[data-theme='dark'] .folio-status--grey { --folio-status-bg: #3a3835; --folio-status-fg: #d6d3d1; }
+html[data-theme='dark'] .folio-status--blue { --folio-status-bg: #16324f; --folio-status-fg: #8ec5ff; }
+html[data-theme='dark'] .folio-status--green { --folio-status-bg: #1e3d24; --folio-status-fg: #86e29a; }
+html[data-theme='dark'] .folio-status--yellow { --folio-status-bg: #4a3f1a; --folio-status-fg: #f2d466; }
+html[data-theme='dark'] .folio-status--red { --folio-status-bg: #4a2131; --folio-status-fg: #ff9fa8; }
+html[data-theme='dark'] .folio-status--purple { --folio-status-bg: #2e2551; --folio-status-fg: #c6b8ff; }

@@ -52,6 +52,38 @@ export class TaskCheckboxWidget extends WidgetType {
   }
 }
 
+/** Bullet glyphs by nesting depth, the cycle reading mode draws: disc, circle, square. */
+const BULLET_GLYPHS = ['\u2022', '\u25E6', '\u25AA'] as const;
+
+/**
+ * A bullet list marker (`-`, `*`, `+`) shown as a real bullet. The document text
+ * is untouched — the widget only stands in for the marker, so copy, search and
+ * the Yjs binding all still see markdown.
+ */
+export class BulletWidget extends WidgetType {
+  constructor(readonly level: number) {
+    super();
+  }
+
+  eq(other: BulletWidget): boolean {
+    return other.level % BULLET_GLYPHS.length === this.level % BULLET_GLYPHS.length;
+  }
+
+  toDOM(): HTMLElement {
+    const dom = document.createElement('span');
+    const shape = this.level % BULLET_GLYPHS.length;
+    dom.className = `cm-md-bullet cm-md-bullet--${shape}`;
+    dom.textContent = BULLET_GLYPHS[shape];
+    return dom;
+  }
+
+  // Let the editor treat a click on the glyph like a click on text, so the caret
+  // lands next to it instead of the press being swallowed by the widget.
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
 const CALLOUT_ICONS: Record<CalloutType, IconName> = {
   note: 'info',
   tip: 'bulb',

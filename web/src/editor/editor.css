@@ -11,6 +11,7 @@
 .cm-folio-preview,
 .cm-folio-format,
 .folio-emoji-pop,
+.folio-status-pop,
 .folio-emoji-picker,
 .folio-tablemenu,
 .folio-modal {
@@ -86,6 +87,7 @@ html[data-width='wide'] .folio-editor {
       .cm-folio-preview,
       .cm-folio-format,
       .folio-emoji-pop,
+      .folio-status-pop,
       .folio-emoji-picker,
       .folio-tablemenu,
       .folio-modal
@@ -136,6 +138,7 @@ html[data-width='wide'] .folio-editor {
     .cm-folio-preview,
     .cm-folio-format,
     .folio-emoji-pop,
+    .folio-status-pop,
     .folio-emoji-picker,
     .folio-tablemenu,
     .folio-modal
@@ -505,9 +508,10 @@ html[data-width='wide'] .folio-editor {
   text-underline-offset: 2px;
 }
 
-/* Round 21: the two formats markdown has no syntax for, written as the inline
-   HTML GitHub renders (`<ins>`, `<mark>` — see format.ts). Live mode folds the
-   tags away and styles what is between them; source mode just dims the tags. */
+/* Underline `++text++` (see format.ts) and, for pages from before it, the
+   inline HTML pair `<ins>`/`<u>`; also the legacy `<mark>`. Live mode folds
+   the markers away and styles what is between them; source mode just dims
+   them. */
 .folio-editor .cm-md-ins {
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -555,6 +559,45 @@ html[data-width='wide'] .folio-editor {
 
 .folio-editor .cm-md-list-mark {
   color: var(--folio-ed-accent);
+}
+
+/* Nested lists, drawn the way reading mode draws them. The depth comes from the
+   syntax tree (live-decorations.ts sets --cm-li-depth), the indent is 1.5em per
+   level, and the first line hangs by one level so the marker sits in the gutter
+   and wrapped lines start under the item's text. */
+.folio-editor .cm-content .cm-line.cm-md-li,
+.folio-editor .cm-content .cm-line.cm-md-li-cont {
+  padding-left: calc(1.5rem + var(--cm-li-depth, 1) * 1.5em);
+}
+.folio-editor .cm-content .cm-line.cm-md-li {
+  text-indent: -1.5em;
+}
+/* The bullet replaces `-` and the space after it, so its box is exactly the
+   hanging gutter. */
+.folio-editor .cm-md-bullet {
+  /* Glyph scale; the box stays 1.5em of the *line's* font size at any scale. */
+  --cm-bullet-scale: 1.3;
+  display: inline-block;
+  box-sizing: border-box;
+  width: calc(1.5em / var(--cm-bullet-scale));
+  padding-right: calc(0.45em / var(--cm-bullet-scale));
+  text-indent: 0;
+  text-align: right;
+  line-height: 1;
+  font-size: calc(var(--cm-bullet-scale) * 1em);
+  color: var(--folio-ed-fg);
+}
+/* The square glyph is drawn much bolder than the disc and circle. */
+.folio-editor .cm-md-bullet--2 {
+  --cm-bullet-scale: 1;
+}
+/* An ordered number stays real, editable text; the min-width (number plus the
+   spaces after it) keeps short numbers on the same text edge as bullets. */
+.folio-editor .cm-md-list-num {
+  display: inline-block;
+  min-width: 1.5em;
+  text-indent: 0;
+  white-space: pre;
 }
 
 .folio-editor .cm-md-hr {
@@ -1812,16 +1855,27 @@ ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
 /* Remote cursors are presence, not permanent document markup. A remote
    selection becomes visible whenever that peer moves it, then fades after a
    short idle window. The local owner's `.cm-selectionBackground` is a
-   different class and therefore remains for as long as they keep it. */
-.folio-editor .cm-ySelection,
-.folio-editor .cm-yLineSelection,
+   different class and therefore remains for as long as they keep it.
+
+   `.cm-ySelection` is a mark that WRAPS the selected document text: only its
+   background may fade, never `opacity`/`visibility` — fading the element hid
+   the selected text itself for everybody watching (08.10.2026). The colour
+   comes per peer as `--folio-ysel-bg` (remote-selections.ts). The caret
+   widget holds no document text, so it fades as a whole. */
+.folio-editor .cm-ySelection {
+  background-color: transparent;
+  transition: background-color 160ms ease;
+}
+
+.folio-editor .cm-editor[data-remote-presence='active'] .cm-ySelection {
+  background-color: var(--folio-ysel-bg, transparent);
+}
+
 .folio-editor .cm-ySelectionCaret {
   opacity: 0;
   transition: opacity 160ms ease;
 }
 
-.folio-editor .cm-editor[data-remote-presence='active'] .cm-ySelection,
-.folio-editor .cm-editor[data-remote-presence='active'] .cm-yLineSelection,
 .folio-editor .cm-editor[data-remote-presence='active'] .cm-ySelectionCaret {
   opacity: 1;
 }
@@ -2158,6 +2212,82 @@ ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
   font-family: var(--folio-ed-mono);
   font-size: 0.92em;
   text-align: center;
+}
+
+/* ---------------------------------------------------------- status tag -- */
+
+/* The badge itself (colours, caps, size) is markdown/status.css, shared with
+   reading mode; only what is specific to the editor is here. */
+.folio-editor .cm-md-status {
+  cursor: pointer;
+}
+.folio-editor .cm-md-status:hover {
+  filter: brightness(0.96);
+  box-shadow: 0 0 0 1px var(--folio-status-fg);
+}
+
+/* Source mode: the raw `:status[…]{…}` stays visible, only dimmed. */
+.folio-editor .cm-md-status-src {
+  color: var(--folio-ed-accent);
+}
+
+.folio-status-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(15rem, var(--folio-ed-popmax));
+  box-sizing: border-box;
+  padding: 0.5rem;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 8px;
+  background: var(--folio-ed-panel);
+  box-shadow: var(--folio-ed-shadow);
+  font-family: var(--folio-ed-sans);
+  font-size: 13px;
+}
+
+.folio-status-pop__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 6px;
+  background: var(--folio-ed-bg);
+  color: var(--folio-ed-fg);
+  font: inherit;
+}
+.folio-status-pop__input:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: -1px;
+}
+
+.folio-status-pop__swatches {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* A dot in the lozenge's own colours: fill = badge background, ring = its text. */
+.folio-status-pop__swatch {
+  appearance: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 2px solid var(--folio-status-fg);
+  border-radius: 50%;
+  background: var(--folio-status-bg);
+  cursor: pointer;
+  opacity: 0.8;
+}
+.folio-status-pop__swatch:hover {
+  opacity: 1;
+}
+.folio-status-pop__swatch[data-selected='true'] {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--folio-ed-panel), 0 0 0 4px var(--folio-status-fg);
+}
+.folio-status-pop__swatch:focus-visible {
+  outline: 2px solid var(--folio-ed-accent);
+  outline-offset: 2px;
 }
 
 /* ------------------------------------------------------------ emoji UI -- */

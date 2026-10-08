@@ -59,7 +59,9 @@ import {
   normalizeRange,
   parseCellLine,
   parseGfmTable,
-  parseInlineSpans,
+  parseInlineTree,
+  visibleLength,
+  type InlineNode,
   riskyLinkSpan,
   sanitizeCellPaste,
   serializeGfmTable,
@@ -88,6 +90,7 @@ import { attachFieldFormatting, formatForEvent } from './format-toolbar';
 import { t } from './i18n';
 import { attachEmojiInput, openEmojiPicker } from './emoji-popover';
 import { isBgToken } from '../markdown/tableSyntax';
+import { serializeStatus, statusClassNames } from '@shared/status';
 import { createIcon, type IconName } from './icons';
 import { tableRangeAt } from './live-decorations';
 import { openMenu, type MenuEntry, type MenuHandle } from './popup-menu';
@@ -1789,7 +1792,12 @@ function renderInline(host: HTMLElement, text: string): void {
     host.appendChild(document.createTextNode(' '));
     return;
   }
-  for (const token of parseInlineSpans(text)) {
+  appendInlineNodes(host, parseInlineTree(text));
+}
+
+/** Draw inline nodes into `host`; a node with `children` (`**++x++**`) nests its own elements. */
+function appendInlineNodes(host: HTMLElement, nodes: readonly InlineNode[]): void {
+  for (const token of nodes) {
     if (token.type === 'text') {
       host.appendChild(document.createTextNode(token.text));
       continue;
@@ -1804,7 +1812,9 @@ function renderInline(host: HTMLElement, text: string): void {
       node.classList.add(`cm-md-mark--${token.color}`);
       node.dataset.color = token.color;
     }
-    node.textContent = token.text;
+    if (token.type === 'status') node.className = statusClassNames(token.color).join(' ');
+    if (token.children) appendInlineNodes(node, token.children);
+    else node.textContent = token.text;
     host.appendChild(node);
   }
 }
@@ -1906,18 +1916,27 @@ function lineAround(value: string, caret: number): { from: number; to: number; t
 function rawToDisplayOffset(raw: string, rawOffset: number): number {
   const wanted = Math.max(0, Math.min(rawOffset, raw.length));
   let visible = 0;
-  for (const span of parseInlineSpans(raw)) {
-    if (wanted >= span.to) {
-      visible += span.text.length;
-      continue;
+  const find = (nodes: readonly InlineNode[]): number | null => {
+    for (const span of nodes) {
+      if (wanted >= span.to) {
+        visible += visibleLength(span);
+        continue;
+      }
+      if (wanted <= span.from) return visible;
+      if (span.children) {
+        // On the opening marker: before the text; on the closing one: after it.
+        if (wanted <= span.contentFrom) return visible;
+        if (wanted >= span.contentTo) return visible + visibleLength(span);
+        return find(span.children);
+      }
+      const source = raw.slice(span.from, span.to);
+      const contentAt = source.indexOf(span.text);
+      const inside = Math.max(0, wanted - span.from - Math.max(0, contentAt));
+      return visible + Math.min(inside, span.text.length);
     }
-    if (wanted <= span.from) return visible;
-    const source = raw.slice(span.from, span.to);
-    const contentAt = source.indexOf(span.text);
-    const inside = Math.max(0, wanted - span.from - Math.max(0, contentAt));
-    return visible + Math.min(inside, span.text.length);
-  }
-  return visible;
+    return null;
+  };
+  return find(parseInlineTree(raw)) ?? visible;
 }
 
 /** Text-node boundary at a visible offset, for restoring a rich-cell caret. */
@@ -1940,6 +1959,20 @@ function inlineSource(node: Node): string {
   if (!(node instanceof HTMLElement)) return '';
   const inner = Array.from(node.childNodes, inlineSource).join('');
   if (node.classList.contains('cm-md-link')) return `[${inner}](${node.dataset.target ?? 'url'})`;
+  // Underline and highlight are drawn as classed spans (`INLINE_CLASSES`), not
+  // as `<ins>`/`<mark>` elements, so they are read back by class — without
+  // this the first keystroke in a cell silently dropped them. A blank at the
+  // edge of the text stays outside the markers (`++ x++` is not an underline).
+  if (node.classList.contains('cm-md-ins') || node.classList.contains('cm-md-mark')) {
+    const [, lead, body, trail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(inner) ?? ['', '', inner, ''];
+    if (!body) return inner;
+    if (node.classList.contains('cm-md-ins')) return `${lead}++${body}++${trail}`;
+    return node.dataset.color ? `${lead}==${body}=={.${node.dataset.color}}${trail}` : `${lead}==${body}==${trail}`;
+  }
+  if (node.classList.contains('folio-status')) {
+    const color = [...node.classList].find((c) => c.startsWith('folio-status--'))?.slice('folio-status--'.length);
+    return inner.trim() === '' ? '' : serializeStatus(inner, color);
+  }
   switch (node.tagName) {
     case 'STRONG':
     case 'B':
@@ -1954,7 +1987,9 @@ function inlineSource(node: Node): string {
       return `\`${inner}\``;
     case 'INS':
     case 'U':
-      return `<ins>${inner}</ins>`;
+      // Written as `++…++` (format.ts) — a legacy `<ins>` cell comes out in
+      // the markdown form the first time it is edited.
+      return `++${inner}++`;
     case 'MARK':
       // Written back as `==…==` (format.ts) — a legacy `<mark>` cell comes out
       // in the markdown form the first time it is edited.
@@ -2111,7 +2146,9 @@ function rawOffsetAtDom(field: HTMLElement, value: string, node: Node, offset: n
   const text = line.querySelector<HTMLElement>('.cm-md-cell-text');
   if (!text || !text.contains(node)) return base + parsed.marker.length;
   const sourceElement = element?.closest<HTMLElement>('[data-source-from]');
-  if (sourceElement && text.contains(sourceElement)) {
+  // An element that holds other formatted elements (`**++x++**`) has no single
+  // "text starts here" offset: those go through the whole-text mapping below.
+  if (sourceElement && text.contains(sourceElement) && !sourceElement.querySelector('[data-source-from]')) {
     const spanFrom = Number(sourceElement.dataset.sourceFrom ?? 0);
     const spanTo = Number(sourceElement.dataset.sourceTo ?? spanFrom);
     const chunk = parsed.text.slice(spanFrom, spanTo);

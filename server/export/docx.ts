@@ -45,10 +45,12 @@ import {
   Packer,
   PageBreak,
   Paragraph,
+  ShadingType,
   Table,
   TableCell,
   TableRow,
   TextRun,
+  UnderlineType,
   WidthType,
   convertInchesToTwip,
 } from 'docx';
@@ -63,8 +65,10 @@ import {
   type HighlightItem,
   type HighlightTextAdapter,
 } from '../../shared/highlight.js';
+import { remarkUnderline } from '../../shared/underline.js';
+import { DECODED_STATUS_RE, STATUS_PALETTE, cleanStatusLabel, parseStatusAttrs, resolveStatusColor } from '../../shared/status.js';
 
-const parser = unified().use(remarkParse).use(remarkGfm);
+const parser = unified().use(remarkParse).use(remarkGfm).use(remarkUnderline);
 
 const HEADING_LEVELS = [
   HeadingLevel.HEADING_1,
@@ -87,6 +91,7 @@ interface InlineStyle {
   bold?: boolean;
   italics?: boolean;
   strike?: boolean;
+  underline?: { type: typeof UnderlineType.SINGLE };
   code?: boolean;
   highlight?: DocxHighlightName;
 }
@@ -189,12 +194,45 @@ function renderHighlightItems(
   return out;
 }
 
+/**
+ * A text node's runs. Ordinary text is one run; a `:status[Text]{color=…}` tag
+ * inside it (this processor has no remark-directive, so it is still text here)
+ * becomes a small bold, capitalised run on the lozenge's own background colour
+ * — the Word equivalent of the badge, readable even where shading is dropped.
+ */
+function textRuns(value: string, style: InlineStyle): TextRun[] {
+  const font = style.code ? 'Consolas' : undefined;
+  if (!value.includes(':status[')) return [new TextRun({ text: value, ...style, font })];
+  const runs: TextRun[] = [];
+  let last = 0;
+  for (const match of value.matchAll(DECODED_STATUS_RE)) {
+    const label = cleanStatusLabel(match[1]);
+    if (!label) continue;
+    if (match.index > last) runs.push(new TextRun({ text: value.slice(last, match.index), ...style, font }));
+    const palette = STATUS_PALETTE[resolveStatusColor(parseStatusAttrs(match[2]))];
+    runs.push(
+      new TextRun({
+        text: `\u00A0${label}\u00A0`,
+        ...style,
+        bold: true,
+        allCaps: true,
+        size: 17,
+        color: palette.fg.slice(1),
+        shading: { type: ShadingType.CLEAR, fill: palette.bg.slice(1), color: 'auto' },
+      }),
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < value.length) runs.push(new TextRun({ text: value.slice(last), ...style, font }));
+  return runs;
+}
+
 function runsFor(nodes: readonly PhrasingContent[], style: InlineStyle): (TextRun | ExternalHyperlink)[] {
   const out: (TextRun | ExternalHyperlink)[] = [];
   for (const node of nodes) {
     switch (node.type) {
       case 'text':
-        out.push(new TextRun({ text: node.value, ...style, font: style.code ? 'Consolas' : undefined }));
+        out.push(...textRuns(node.value, style));
         break;
       case 'inlineCode':
         out.push(new TextRun({ text: node.value, ...style, font: 'Consolas' }));
@@ -207,6 +245,9 @@ function runsFor(nodes: readonly PhrasingContent[], style: InlineStyle): (TextRu
         break;
       case 'delete':
         out.push(...renderInline(node.children, { ...style, strike: true }));
+        break;
+      case 'underline':
+        out.push(...renderInline(node.children, { ...style, underline: { type: UnderlineType.SINGLE } }));
         break;
       case 'break':
         out.push(new TextRun({ text: '', break: 1 }));

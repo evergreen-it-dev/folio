@@ -1,6 +1,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import { remarkUnderline } from '@shared/underline';
 import { visit } from 'unist-util-visit';
 import type { Root, Heading as MdHeading, Text, InlineCode } from 'mdast';
 import { slugify } from './slugify';
@@ -55,7 +56,7 @@ export function createSlugDeduper() {
  */
 export function extractHeadings(rawMarkdown: string): HeadingInfo[] {
   const markdown = stripFrontmatter(rawMarkdown);
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as Root;
+  const tree = unified().use(remarkParse).use(remarkGfm).use(remarkUnderline).parse(markdown) as Root;
   const dedupe = createSlugDeduper();
   const headings: HeadingInfo[] = [];
 

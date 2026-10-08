@@ -103,6 +103,18 @@ palette closes when the selection goes. `BoardCanvas` passes
 `canReact = canWrite && isEditingNow`: in View mode and for a read-only viewer
 the chips are shown but inert, and there is no add or remove.
 
+Other people's carets and selections are drawn by Folio's own plugin,
+`web/src/editor/remote-selections.ts`, swapped in for the one that ships with
+`y-codemirror.next` (same awareness `cursor` field and relative positions, so
+old and new clients see each other). It emits one mark per selection, with the
+colour in a CSS variable, and no line decorations. The presence fade in
+`editor.css` dims the selection background and the caret after a peer has been
+idle for a few seconds; it must only ever touch those. Building the
+decorations never throws: positions are mapped from the `\r\n` text of the
+`Y.Text`, clamped and sorted, a failure keeps the previous set, and a caret that
+would fall inside an atomic range (a replaced list marker, a widget) is moved
+to its edge. It is presentation only and writes nothing to the document.
+
 The sidebar tree has its own signal. Database triggers on the page tables
 publish through PostgreSQL `LISTEN`/`NOTIFY`; the server listens on a
 dedicated connection and sends `{type:'tree', space, v}` over the per-user
@@ -110,6 +122,55 @@ dedicated connection and sends `{type:'tree', space, v}` over the per-user
 answers by invalidating its tree query, with a little jitter. Signals are
 coalesced, so a burst of changes costs a few refreshes, but the last change
 of a burst always shows within a second or two.
+
+### Inline syntax and the editor
+
+The editor has three parsers for the same text, and an inline construct has to
+exist in each: the Lezer grammar of the editor (`web/src/editor/*-syntax.ts`),
+the remark/micromark pipeline of Reading (`web/src/markdown/pipeline.ts`), and
+the server's export and import code (`server/export/`, `server/confluenceImport.ts`).
+Plain TypeScript with no DOM lives in `shared/` so both sides import it.
+
+- **Status tag**, `:status[Done]{color=green}`: a remark text directive.
+  `shared/status.ts` holds the palette (grey, blue, green, yellow, red,
+  purple; anything else is grey), the label escaping and the parser of the
+  attributes. Reading renders `span.folio-status.folio-status--<colour>`; Live
+  edit shows an atomic badge widget with a popover (`status-widget.ts`). The
+  label is stored as typed; capitals come from CSS, so search, export and copy
+  keep the original characters. Search indexes the label and strips the syntax
+  (`stripStatusDirectives`), so the colour is never a search hit. PDF and DOCX
+  take the colours from `STATUS_PALETTE`, which is kept equal to
+  `web/src/markdown/status.css` by hand. A Confluence status macro (rendered
+  lozenge or storage-format macro) becomes the tag; inside a table that has to
+  stay raw HTML, the styled span is kept, and Reading renders it identically.
+- **Underline**, `++text++`: a delimiter pair resolved like `~~`. The Lezer
+  rule is `web/src/editor/underline-syntax.ts`, the Reading/export rule is a
+  micromark extension in `shared/underline.ts`; the two copies must stay in
+  step. Exactly two plus signs, with the same left/right flanking rules as GFM
+  strike-through, so `C++`, `a + b` and `+++` stay text. It renders as `<ins>`.
+  `<ins>` and `<u>` written as raw HTML on old pages are still read and shown
+  underlined. `underline-migrate.ts` is a pure function that rewrites such
+  pairs as `++` (un-crossing `<ins>**x</ins>**` into `**++x++**`), converting
+  a pair only if the result really parses and counting the ones it left;
+  nothing in the application calls it, and nothing runs it by itself.
+- **Copy and cut** in Live edit (`copy-markdown.ts`, `copy-html.ts`): the
+  selection is mapped back to source through the syntax tree. Every inline
+  construct the selection cuts into contributes whatever part of its opening
+  and closing marker the selection does not already contain; block prefixes
+  (`## `, `- `, `> `) come along only when the selection covers the start of a
+  line. The clipboard gets `text/plain` (that Markdown) and `text/html` (the
+  rendered result). Adding an inline form to the grammar means adding a line
+  to the table of layers in `copy-markdown.ts` and a test. Pasting HTML from
+  Folio or from Reading goes through `html-paste.ts`, which turns highlight,
+  status tags and strike-through back into their Markdown.
+- **Lists** in Live edit are drawn like Reading: a bullet widget replaces the
+  marker (disc, circle, square by depth), nested items indent per level with a
+  hanging indent, numbers stay real text, task items show the checkbox. In
+  Reading, markers hang in a gutter outside the item.
+- **Table cells** have a flat inline tokenizer of their own
+  (`gfm-table.ts`); it now builds a nested tree, so a cell draws bold inside
+  underline, highlight inside bold and a status tag, and reading a rich cell
+  back keeps underline and highlight.
 
 ### Git synchronization
 
@@ -263,6 +324,18 @@ added to this list and to `docs/INSTALL.md`.
 - A live room never holds a carriage return.
 - A default install sends nothing to anyone. Analytics stays opt-in, behind a
   key the operator sets.
+- Remote selections never use line decorations, and no presence style may set
+  `opacity` or `visibility` on anything that wraps document text. Fade the
+  background and the caret widget only.
+- Copy and cut in Live edit put Markdown on the clipboard, not the visible
+  characters. Replaced markers (`**`, `==`, `++`, link brackets) are outside a
+  mouse selection of the visible word.
+- The `++` underline keeps its flanking rule and "exactly two" rule in both
+  parsers. Do not write underline as an HTML tag pair: a pair knows nothing
+  about the `**` pair around it and the two can cross.
+- Importing a Confluence tree must never replace a page that already exists at
+  the target, least of all a space's own `index.md`, which the tree does not
+  list.
 
 ## Lessons that cost something
 
@@ -291,6 +364,19 @@ Each of these was a real defect. They are here so that nobody pays twice.
 
 **Editor**
 
+- A third-party plugin that decorates whole lines will fight your own styles.
+  `y-codemirror.next` marked the middle lines of a selection with a line
+  decoration and wrapped the rest in marks; a fade that set `opacity: 0` on
+  those classes made other people's selected text vanish for everyone watching
+  (the text was intact; only its drawing was hidden). When a style is
+  conditional on someone else's state, make it affect a colour, never the
+  text's visibility.
+- An HTML tag pair is a bad inline format for Markdown: it ignores the
+  delimiter pairs around it and can cross them. A delimiter pair resolved by
+  the parser nests and cannot cross.
+- A flat tokenizer for table cells shows raw markers for any nested format.
+  Anything a cell can contain needs the nested tree, and the read-back of a
+  rich cell has to keep every format, or the first keystroke strips them.
 - A line of dashes under a paragraph is a Markdown underline-style heading, so
   typing a single `-` re-parsed the whole paragraph as a heading. The editor's
   parser drops that heading form; Reading mode still renders it.
@@ -313,9 +399,17 @@ Each of these was a real defect. They are here so that nobody pays twice.
   through it; undeclared inline directives must be returned as the original
   text.
 - Do not rewrite absolute asset paths as if they were relative.
+- A CSS list marker inside a block-level item (a loose list wraps item text in
+  a paragraph) becomes a line of its own. Hang the marker outside the item.
+- `:status[...]` is the one inline directive Folio declares; the rule above
+  still applies to every other `:name` in prose.
 
 **Server**
 
+- A tree importer that writes to the "root" of a space writes onto the space's
+  home page. Choose the destination so that it cannot clobber or hide a page
+  that exists; when in doubt, make a folder of its own and update that in
+  place on re-import.
 - Do heavy work after the port is open, never before. A scan that throws
   during startup takes the whole instance down with no way to see why.
 - Do not turn "every file I read failed" into "system failure": with one
@@ -370,6 +464,12 @@ Each of these was a real defect. They are here so that nobody pays twice.
 
 **Product**
 
+- GitHub and GitLab show `++underline++` and `:status[...]{color=…}` as written;
+  only Folio renders them. Status tags degrade to readable text, underline to
+  the text between plus signs.
+- The conversion of old `<ins>`/`<u>` underline to `++` exists as a function
+  (`web/src/editor/underline-migrate.ts`) with no runner in the application:
+  old pages keep rendering underlined without it.
 - Page access is not inherited by child pages, and there is no "close the
   whole subtree" mode.
 - No user groups, no SSO or SCIM.
