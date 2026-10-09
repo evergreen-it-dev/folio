@@ -43,6 +43,44 @@ A page with children takes one of two shapes: `X/index.md`, or `X.md` with a
 folder `X/` next to it. Every operation that moves, renames, deletes or
 restores a page has to handle both.
 
+**Replacing a file page.** A PDF or Office page can be given a new file
+(`server/filePages.ts`). The page id never changes, so everything keyed by it
+(access rules, shares, stars, the URL) carries over; only the bytes and, if the
+extension differs, the last part of the path change.
+
+- `POST /api/pages/:id/file` takes one multipart `file`, runs the same name and
+  magic-byte checks as the upload that creates a file page, needs the editor
+  role and a write scope, and is not reachable through share links. Any of the
+  four types may replace any other (pdf to pptx and back). It answers with the
+  page plus `previousSha`.
+- Every replace is **its own Git commit**, and before it the pending changes of
+  the space are committed with `commitNow` (the author is whoever the space
+  would have credited, not the person replacing). Without that flush the
+  version being replaced could still be uncommitted and "restore" would have
+  nothing to restore.
+- A **changed extension is two commits**: first a pure rename, with the links
+  in other documents rewritten into the same commit (the machinery of "Change
+  slug", `rewriteLinksAfterMove`), then a commit with the new content. The
+  rename stays a pure rename so `git log --follow` keeps one history across
+  it. Only a change of case (`.PDF` to `.pdf`) is not a change.
+- `previousSha` is the newest commit touching the file after that flush, i.e.
+  the version just replaced. It is what the Undo toast restores. It is `null`
+  when the new file was byte for byte identical (nothing was committed), and
+  the interface then says nothing changed instead of offering Undo.
+- The index row is updated directly (size, mtime, `updated_at`). A rescan
+  would skip a file whose mtime and size look unchanged, and two same-sized
+  versions written in one clock tick would go unnoticed. File pages have no
+  extracted text, so there is nothing to reindex; search stays by title.
+- `GET /api/pages/:id/history/:sha/file` serves the bytes at a commit (viewer
+  role; `?download=1` for a download). It follows renames, so an older
+  revision is found under the name it had then. The response is immutable and
+  cached. `GET /api/pages/:id/history/:sha` for a file page returns only the
+  path, extension and size at that revision, never the bytes. MCP has no way to
+  read the bytes either.
+- Restore of a file page goes through the same replace path (message
+  `files: restore <path> to <sha7>`), so it is one more commit and also puts
+  the old extension back.
+
 ### Real-time collaboration
 
 One Yjs document per open page, in a room named by the page id, over
@@ -307,7 +345,20 @@ added to this list and to `docs/INSTALL.md`.
 - A table cell must not re-render in the middle of input-method composition.
   During composition the cell only reads the DOM; cleanup waits for
   `compositionend`.
-- Folio never writes into a PDF or an Office file.
+- Folio never writes into a PDF or an Office file. Replacing a page's file
+  swaps the whole file; it never edits one.
+- Every replace and every restore of a file page is one commit of its own,
+  preceded by a flush of the pending auto-commit. Do not batch two replaces
+  into one commit and do not skip the flush: the version being replaced must
+  be in the history.
+- A changed file extension is a rename commit first, then a content commit. Do
+  not fold the rename into the content: Git detects a rename by similarity,
+  and a new file shares almost nothing with the old one, so the page would
+  lose its earlier versions in the history.
+- `previousSha` is what Undo restores. The replace response must keep carrying
+  it, and a replace of identical bytes must report `null`.
+- The bytes of an old revision are read as a buffer (`git show` without text
+  decoding). Reading them as a string corrupts a PDF or an Office file.
 - An empty whiteboard scene never overwrites a non-empty file.
 - Access is checked on the server. The interface hiding a button is not a
   guard.
@@ -476,8 +527,10 @@ Each of these was a real defect. They are here so that nobody pays twice.
 - The assistant supports one provider. One agent per space.
 - Forms show choice, status, user and link columns as plain text fields, and
   do not follow later changes to the table's columns.
-- File pages have no share links, no version history in the interface and no
-  search by content.
+- File pages have no share links and no search by content. Their version
+  history lists, downloads and restores versions, but offers no side-by-side
+  comparison, and an Office version has no in-browser preview in the history
+  panel (only a download; a PDF is previewed).
 - Moving a page does not rewrite relative links inside it.
 - Offline mode does not cover data tables, forms, uploads or templates.
 - Reactions exist on whiteboard shapes only, not on documents, tables or

@@ -22,6 +22,7 @@ import { trackPageOpen, type PageKind } from '../../analytics';
 import { StaticBoardView } from './StaticBoardView';
 import { PdfView } from './PdfView';
 import { OfficeView } from './OfficeView';
+import { ReplaceFileDropZone } from '../files/ReplaceFileDropZone';
 import { TablePageView, tableRole, type TableViewState } from './TablePageView';
 import { FormPageView } from './FormPageView';
 import { NotFound } from './NotFound';
@@ -289,9 +290,9 @@ export function PageContent({ id }: PageContentProps) {
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
         <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={editable} allowCover={false} compact />
-        <div className="ph-no-capture min-h-0 flex-1">
-          <PdfView pageId={data.id} title={data.title} />
-        </div>
+        <ReplaceFileDropZone space={data.space} pageId={data.id} pagePath={data.path} canEdit={chromeEditable} className="ph-no-capture min-h-0 flex-1">
+          <PdfView pageId={data.id} title={data.title} version={data.updatedAt} />
+        </ReplaceFileDropZone>
       </div>
     );
   }
@@ -306,9 +307,9 @@ export function PageContent({ id }: PageContentProps) {
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
         <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={editable} allowCover={false} compact />
-        <div className="ph-no-capture min-h-0 flex-1">
-          <OfficeView pageId={data.id} title={data.title} format={officeFormat(data.path) ?? 'docx'} />
-        </div>
+        <ReplaceFileDropZone space={data.space} pageId={data.id} pagePath={data.path} canEdit={chromeEditable} className="ph-no-capture min-h-0 flex-1">
+          <OfficeView pageId={data.id} title={data.title} format={officeFormat(data.path) ?? 'docx'} version={data.updatedAt} />
+        </ReplaceFileDropZone>
       </div>
     );
   }

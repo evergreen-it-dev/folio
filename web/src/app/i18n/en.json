@@ -111,7 +111,11 @@
       "restoreConfirmTitle": "Restore this version?",
       "restoreConfirmAction": "Restore",
       "restoreConfirmBody": "The page's current content will be replaced by the version from {{date}}. This becomes a new edit (through the live document), not a history rollback.",
-      "boardVersionAlt": "Board version"
+      "boardVersionAlt": "Board version",
+      "fileName": "File name at that time: {{name}}",
+      "fileSize": "File size: {{size}}",
+      "downloadVersion": "Download this version",
+      "restoreConfirmBodyFile": "The page's file will be replaced by the version from {{date}}. This becomes a new version in the history, and the current file stays in the history too."
     }
   },
   "header": {
@@ -1380,6 +1384,24 @@
       "doc": "Getting started",
       "board": "First whiteboard",
       "table": "First table"
+    }
+  },
+  "files": {
+    "replace": {
+      "action": "Replace with new version…",
+      "done": "File replaced.",
+      "undo": "Undo",
+      "same": "The new file is identical to the current one, nothing changed.",
+      "undone": "Previous version restored",
+      "failed": "Could not replace the file",
+      "undoFailed": "Could not restore the previous version",
+      "unsupportedType": "Only .pdf, .docx, .xlsx and .pptx files can replace this page's file.",
+      "dropOne": "Drop a single file to replace the page's file.",
+      "dropHint": "Drop to replace the file",
+      "dropTitle": "Replace with “{{name}}”?",
+      "dropConfirm": "Replace",
+      "dropBody": "The file of this page is replaced by the new version. The page keeps its link, place in the tree and access; the old version stays in the page history.",
+      "dropBodyExt": "The file type changes from {{from}} to {{to}}: the file name changes too, and links to it from other pages are updated."
     }
   },
   "offline": {

@@ -265,6 +265,15 @@ conversion on the server.
 - Open in a new tab or download with one click.
 - Folio never rewrites your file: what you uploaded is byte for byte what is
   stored.
+- **A new version of the file, same page.** "Replace with new version…" in
+  the tree menu, the button in the page header, or drag a file onto the open
+  page. The page keeps its link, place in the tree and access; the new file
+  may even be another type (a deck that became a PDF), and links to it from
+  other pages are rewritten. A toast offers Undo.
+- **Every version stays.** Each replace is its own commit. The page history
+  lists the versions with their file name and size, lets you download any of
+  them (or preview a PDF) and restore one, which adds one more commit rather
+  than rewriting anything.
 
 These files are for viewing: they are not edited in Folio, and search finds
 them by title.

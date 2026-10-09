@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import * as fsSync from 'node:fs';
+import { posix as pathPosix } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   acceptInviteBodySchema,
@@ -32,6 +33,7 @@ import type {
   PageHistoryEntry,
   PageMeta,
   RepoBranches,
+  ReplaceFilePageResponse,
   SearchHit,
   ShareLinkInfo,
   SharedPagePayload,
@@ -52,6 +54,7 @@ import * as links from './links.js';
 import * as assets from './assets.js';
 import * as git from './git.js';
 import * as gitSync from './gitSync.js';
+import { inspectFilePageUpload, replaceFilePage, restoreFilePageVersion } from './filePages.js';
 import { startPeriodicFetchForSpace } from './gitSync.js';
 import * as gitTree from './gitTree.js';
 import { GitTreePathNotFoundError } from './gitTree.js';
@@ -667,20 +670,10 @@ export function registerRoutes(app: FastifyInstance): void {
     const parentPathValue = !Array.isArray(parentPathField) && parentPathField?.type === 'field' ? parentPathField.value : undefined;
     const parentPath = typeof parentPathValue === 'string' ? parentPathValue : '';
 
-    const isPdfName = /\.pdf$/i.test(file.filename);
-    const office = officeFormat(file.filename);
-    if (!isPdfName && !office) throw badRequest('expected a .pdf, .docx, .xlsx or .pptx file');
+    // Name and magic-byte checks are shared with the replace route (filePages.ts).
+    if (!/\.pdf$/i.test(file.filename) && !officeFormat(file.filename)) throw badRequest('expected a .pdf, .docx, .xlsx or .pptx file');
     const buffer = await file.toBuffer();
-    if (isPdfName) {
-      // Magic-byte check (spec: "extension .pdf and magic bytes %PDF-") —
-      // catches a mislabeled non-pdf before it's ever written to disk.
-      if (buffer.subarray(0, 5).toString('latin1') !== '%PDF-') throw badRequest('not a valid pdf file (missing %PDF- header)');
-    } else {
-      // Every OOXML format (docx/xlsx/pptx) is a ZIP archive — its magic
-      // bytes are the ZIP local-file-header signature "PK\x03\x04".
-      if (buffer.subarray(0, 4).toString('latin1') !== 'PK\x03\x04') throw badRequest('not a valid office file (missing PK zip header)');
-    }
-    const ext = isPdfName ? '.pdf' : `.${office}`;
+    const ext = inspectFilePageUpload(file.filename, buffer);
 
     const meta = await storage.uploadFilePage(space, parentPath, file.filename, ext, buffer);
     const after = snapshotPageChange(await storage.requireEntry(meta.id));
@@ -830,6 +823,50 @@ export function registerRoutes(app: FastifyInstance): void {
     // server/fileAccess.ts), so a plain read stream is the simplest way to
     // avoid holding a 50MB+ file in memory.
     return reply.send(fsSync.createReadStream(entry.absPath));
+  });
+
+  /**
+   * Replaces the file of a pdf/office page with a new version (multipart field
+   * "file", same size limit and checks as the upload that created the page).
+   * The page keeps its id, slug, place in the tree, links, stars and access;
+   * a different extension (deck.pptx -> deck.pdf) renames the file and
+   * rewrites incoming links, see server/filePages.ts. One commit per replace,
+   * so the previous version stays restorable from the page history. Editor+
+   * (a viewer gets 403); not available through share links.
+   */
+  app.post('/api/pages/:id/file', async (request) => {
+    const { id } = request.params as { id: string };
+    const entry = await session.requirePageRole(request, id, 'editor');
+    session.requireWriteScope(request);
+    if (entry.kind !== 'pdf' && entry.kind !== 'office') throw badRequest('page is not a pdf/office file');
+    const file = await request.file();
+    if (!file) throw badRequest('no file uploaded (expected multipart field "file")');
+    if (!/\.pdf$/i.test(file.filename) && !officeFormat(file.filename)) throw badRequest('expected a .pdf, .docx, .xlsx or .pptx file');
+    const buffer = await file.toBuffer();
+    const ext = inspectFilePageUpload(file.filename, buffer);
+
+    const user = request.authUser!;
+    const result = await replaceFilePage(id, ext, buffer, { name: user.name, email: user.email });
+    recordAudit(user.id, 'page.file.replaced', id, { from: result.previousPath, to: result.meta.path, size: buffer.length });
+    const response: ReplaceFilePageResponse = { ...result.meta, previousSha: result.previousSha };
+    return response;
+  });
+
+  /** The bytes of a file page as of one commit (download / preview of an older version). Viewer-level, like the current file. */
+  app.get('/api/pages/:id/history/:sha/file', async (request, reply) => {
+    const { id, sha } = request.params as { id: string; sha: string };
+    const entry = await session.requirePageRole(request, id, 'viewer');
+    if (entry.kind !== 'pdf' && entry.kind !== 'office') throw badRequest('page is not a pdf/office file');
+    const revision = await gitSync.getFilePageRevisionBytes(id, sha);
+    const ext = revision.ext.slice(1);
+    const contentType = ext === 'pdf' ? 'application/pdf' : OFFICE_CONTENT_TYPES[ext];
+    const download = queryString(request.query, 'download') === '1';
+    const baseName = pathPosix.basename(revision.path);
+    const asciiName = baseName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '') || `document.${ext}`;
+    reply.header('Content-Type', contentType);
+    reply.header('Cache-Control', 'private, max-age=31536000, immutable'); // a commit never changes
+    reply.header('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(baseName)}`);
+    return reply.send(revision.bytes);
   });
 
   app.get('/api/pages/:id/access', async (request) => {
@@ -1189,6 +1226,13 @@ export function registerRoutes(app: FastifyInstance): void {
     const entry = await session.requirePageRole(request, id, 'editor');
     session.requireWriteScope(request);
     const user = request.authUser!;
+    if (entry.kind === 'pdf' || entry.kind === 'office') {
+      // Binary: the file at that commit is written back through the same path
+      // as a replace (own commit, links rewritten if the extension differs).
+      const restored = await restoreFilePageVersion(id, sha, { name: user.name, email: user.email });
+      recordAudit(user.id, 'page.file.restored', id, { sha, to: restored.meta.path });
+      return restored.meta;
+    }
     const atSha = await gitSync.getPageAtSha(id, sha);
     gitSync.recordEditor(entry.space, { name: user.name, email: user.email });
 

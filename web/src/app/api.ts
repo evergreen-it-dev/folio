@@ -58,9 +58,11 @@ import type {
   NotificationListResponse,
   PageDoc,
   PageAccessInfo,
+  PageAtShaResponse,
   PageHistoryEntry,
   PageChangeInfo,
   PageMeta,
+  ReplaceFilePageResponse,
   RenamePageBody,
   RepoBranches,
   ResetToRemoteResponse,
@@ -395,8 +397,34 @@ export const api = {
     return page;
   },
 
-  /** GET /api/pages/:id/file — inline by default; `?download=1` for the toolbar's "Download" button. Serves both pdf and office (docx/xlsx/pptx) pages. */
-  pageFileUrl: (id: string, download?: boolean) => `/api/pages/${encodeURIComponent(id)}/file${download ? '?download=1' : ''}`,
+  /**
+   * POST /api/pages/:id/file — replaces the file of an existing pdf/office page
+   * with a new version (same multipart shape and limits as uploadFile). The
+   * page keeps its id, slug and place; the response carries `previousSha`, the
+   * commit to restore for an "Undo".
+   */
+  replacePageFile: async (id: string, file: File) => {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    const page = await request<ReplaceFilePageResponse>(`/api/pages/${encodeURIComponent(id)}/file`, { method: 'POST', body });
+    notifyPageChanges();
+    return page;
+  },
+
+  /**
+   * GET /api/pages/:id/file — inline by default; `?download=1` for the toolbar's "Download" button. Serves both pdf and office (docx/xlsx/pptx) pages.
+   * `version` (the page's updatedAt) is appended as a cache-buster so a replaced file is never shown from a cached copy of the old one.
+   */
+  pageFileUrl: (id: string, download?: boolean, version?: string) => {
+    const params: string[] = [];
+    if (download) params.push('download=1');
+    if (version) params.push(`v=${encodeURIComponent(version)}`);
+    return `/api/pages/${encodeURIComponent(id)}/file${params.length ? `?${params.join('&')}` : ''}`;
+  },
+
+  /** GET /api/pages/:id/history/:sha/file — a file page's bytes as of one commit. */
+  pageHistoryFileUrl: (id: string, sha: string, download?: boolean) =>
+    `/api/pages/${encodeURIComponent(id)}/history/${encodeURIComponent(sha)}/file${download ? '?download=1' : ''}`,
 
   getPageAccess: (id: string) => request<PageAccessInfo>(`/api/pages/${encodeURIComponent(id)}/access`),
 
@@ -656,7 +684,7 @@ export const api = {
    * whichever is present — see HistoryPanel.tsx's HistoryVersionPreview.
    */
   getPageHistoryVersion: (id: string, sha: string) =>
-    request<{ markdown?: string; svg?: string }>(`/api/pages/${encodeURIComponent(id)}/history/${encodeURIComponent(sha)}`),
+    request<PageAtShaResponse>(`/api/pages/${encodeURIComponent(id)}/history/${encodeURIComponent(sha)}`),
 
   restoreVersion: (id: string, sha: string) =>
     request<PageMeta>(`/api/pages/${encodeURIComponent(id)}/restore/${encodeURIComponent(sha)}`, { method: 'POST' }),

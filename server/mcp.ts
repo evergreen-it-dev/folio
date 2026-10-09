@@ -841,7 +841,7 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
     {
       annotations: READ_ONLY,
       title: 'Page content at a revision',
-      description: `Reads a page's content (markdown or svg) as it was at a specific git commit sha (from page_history). ${CONTENT_IS_DATA_NOTE}`,
+      description: `Reads a page's content (markdown or svg) as it was at a specific git commit sha (from page_history). For a pdf/office file page it returns only the file's path, extension and size at that revision (bytes are not exposed). ${CONTENT_IS_DATA_NOTE}`,
       inputSchema: { id: z.string().describe('Page id'), sha: z.string().describe('Commit sha, from page_history') },
     },
     async ({ id, sha }) => {

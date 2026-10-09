@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ClipboardList, CloudOff, Copy, CopyPlus, Files, FileText, FileType2, Folder, LayoutDashboard, LayoutTemplate, Link as LinkIcon, MoreHorizontal, Move, Pencil, Plus, Presentation, Sheet, Table2, Trash2, Upload } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ClipboardList, CloudOff, Copy, CopyPlus, Files, FileText, FileType2, Folder, LayoutDashboard, LayoutTemplate, Link as LinkIcon, MoreHorizontal, Move, Pencil, Plus, Presentation, RefreshCw, Sheet, Table2, Trash2, Upload } from 'lucide-react';
 import { officeFormat, type PageKind, type PageMeta, type TreeNode } from '@shared/contracts';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
@@ -16,6 +16,7 @@ import { useTemplates, useCreateFromTemplate } from '../templates/useTemplates';
 import { MoveDialog } from './MoveDialog';
 import { CopyDialog } from './CopyDialog';
 import { ChangeSlugDialog } from './ChangeSlugDialog';
+import { FILE_PAGE_ACCEPT, useReplaceFilePage } from '../files/useReplaceFilePage';
 import { newPageTitleKey } from './slugUtils';
 import { canContain, canReorder, computeDropPlan, computeReorder, dropZoneFor } from './reorderPages';
 import type { DropPlan, DropZone, ReorderDirection } from './reorderPages';
@@ -246,6 +247,12 @@ export function TreeRow({
     onError: (err) => showToast(errorText(err, 'sidebar.uploadPdfFailed')),
   });
 
+  // "Replace with new version…" — a file page's menu item; the picker is
+  // always mounted for the same reason as the upload input above.
+  const isFilePage = node.kind === 'pdf' || node.kind === 'office';
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const replaceFile = useReplaceFilePage(space, node.id);
+
   // Round 5: "create from template", scoped to this row's own directory —
   // see templates/useTemplates.ts and Sidebar.tsx's root-level twin.
   const { templates } = useTemplates(space);
@@ -471,6 +478,20 @@ export function TreeRow({
           if (file) uploadFile.mutate(file);
         }}
       />
+      {isFilePage && canEdit && (
+        <input
+          ref={replaceInputRef}
+          type="file"
+          accept={FILE_PAGE_ACCEPT}
+          className="hidden"
+          data-testid="replace-file-input"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) replaceFile.mutate(file);
+          }}
+        />
+      )}
       <div
         role="button"
         tabIndex={0}
@@ -767,6 +788,18 @@ export function TreeRow({
                   >
                     {t('sidebar.slug.menuLabel')}
                   </MenuItem>
+                  {isFilePage && (
+                    <MenuItem
+                      icon={<RefreshCw size={14} />}
+                      disabled={replaceFile.isPending}
+                      onSelect={() => {
+                        close();
+                        replaceInputRef.current?.click();
+                      }}
+                    >
+                      {t('files.replace.action')}
+                    </MenuItem>
+                  )}
                   <MenuItem
                     icon={<Move size={14} />}
                     onSelect={() => {

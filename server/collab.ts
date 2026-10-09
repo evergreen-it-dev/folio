@@ -2758,6 +2758,20 @@ export async function renamePageSlug(id: string, newSlug: string, author: GitIde
   const { meta, moved } = await storage.renamePageSlug(id, newSlug);
   if (moved.length === 0) return meta; // same slug as before: nothing moved, nothing to relink or commit
 
+  await rewriteLinksAfterMove(moved);
+
+  const primary = moved[0];
+  await gitSync.commitNow(meta.space, `docs: rename ${primary.oldRelPath} -> ${primary.newRelPath}`, author);
+  return meta;
+}
+
+/**
+ * The link half of a path change (slug rename, file-page extension change):
+ * every document that linked to something that moved gets its link rewritten
+ * through the live-doc-aware editDocBody and flushed to disk, so the caller's
+ * dedicated commit captures it. Does not commit.
+ */
+export async function rewriteLinksAfterMove(moved: storage.SlugRenameMove[]): Promise<void> {
   const rewritesBySource = new Map<string, Array<{ oldRelPath: string; newRelPath: string }>>();
   for (const m of moved) {
     for (const backlink of m.backlinks) {
@@ -2778,10 +2792,6 @@ export async function renamePageSlug(id: string, newSlug: string, author: GitIde
       await flushDoc(sourceId);
     }
   }
-
-  const primary = moved[0];
-  await gitSync.commitNow(meta.space, `docs: rename ${primary.oldRelPath} -> ${primary.newRelPath}`, author);
-  return meta;
 }
 
 // ---------------------------------------------------------------------------

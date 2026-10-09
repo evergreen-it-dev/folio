@@ -17,6 +17,7 @@
  * commit). Full multi-editor Co-authored-by trailers are not implemented —
  * documented simplification, not silently dropped.
  */
+import path from 'node:path';
 import { query } from './db/pool.js';
 import { withSpaceLock } from './db/redis.js';
 import * as storageMod from './storage.js';
@@ -406,6 +407,56 @@ export async function getPageHistory(pageId: string, max = 100): Promise<PageHis
   return git.fileHistory(dir, relToRepo, max, askpass, entry.space);
 }
 
+const SHA_PATTERN = /^[0-9a-f]{7,64}$/i;
+
+export interface FilePageRevisionInfo {
+  /** Space-relative path the file had at that revision (differs from today's after an extension change). */
+  path: string;
+  /** Lowercase extension with the dot: .pdf, .docx, .xlsx, .pptx. */
+  ext: string;
+  size: number;
+}
+
+/** Where a file page's revision lives in the repo: its path then (renames followed) relative to the repo root. Throws 404 when `sha` is not in the page's history. */
+async function locateFilePageRevision(pageId: string, sha: string) {
+  if (!SHA_PATTERN.test(sha)) throw badRequest('invalid revision');
+  const entry = await storageMod.requireEntry(pageId);
+  if (entry.kind !== 'pdf' && entry.kind !== 'office') throw badRequest('page is not a pdf/office file');
+  const dir = storageMod.getRepoDir(entry.space);
+  const rootPath = storageMod.getRootPath(entry.space);
+  const toRepo = (rel: string) => (rootPath ? `${rootPath}/${rel}` : rel);
+  const askpass = (await hasSpaceToken(entry.space)) ? await ensureAskpassScript() : undefined;
+  const fullSha = (await git.pathAtRevisionSha(dir, toRepo(entry.relPath), sha, askpass, entry.space)) ?? null;
+  if (!fullSha) throw notFound('revision');
+  const repoPath = fullSha.path;
+  const relPath = rootPath && repoPath.startsWith(`${rootPath}/`) ? repoPath.slice(rootPath.length + 1) : repoPath;
+  return { entry, dir, askpass, repoPath, relPath, sha: fullSha.sha };
+}
+
+/** Path, extension and size of a file page at a revision, without reading the bytes. */
+export async function getFilePageRevisionInfo(pageId: string, sha: string): Promise<FilePageRevisionInfo> {
+  const found = await locateFilePageRevision(pageId, sha);
+  let size: number;
+  try {
+    size = await git.fileSizeAt(found.dir, found.sha, found.repoPath, found.askpass, found.entry.space);
+  } catch {
+    throw notFound('revision');
+  }
+  return { path: found.relPath, ext: path.posix.extname(found.relPath).toLowerCase(), size };
+}
+
+/** A file page's bytes at a revision (for download and for restoring it). */
+export async function getFilePageRevisionBytes(pageId: string, sha: string): Promise<FilePageRevisionInfo & { bytes: Buffer }> {
+  const found = await locateFilePageRevision(pageId, sha);
+  let bytes: Buffer;
+  try {
+    bytes = await git.showFileBytesAt(found.dir, found.sha, found.repoPath, found.askpass, found.entry.space);
+  } catch {
+    throw notFound('revision');
+  }
+  return { path: found.relPath, ext: path.posix.extname(found.relPath).toLowerCase(), size: bytes.length, bytes };
+}
+
 /**
  * Doc -> { markdown } (frontmatter stripped, same as a normal GET). Board ->
  * { svg } (the raw file at that sha — boards carry no frontmatter to strip,
@@ -430,12 +481,12 @@ export async function getPageHistory(pageId: string, max = 100): Promise<PageHis
 export async function getPageAtSha(pageId: string, sha: string): Promise<PageAtShaResponse> {
   const entry = await storageMod.requireEntry(pageId);
   // A pdf/office's bytes are never read as text (see server/storage.ts's
-  // Binary page files module doc comment) — `git show sha:path` below reads
-  // the blob as a string, which would corrupt a binary revision, and there
-  // is no `svg`/`markdown` slot in PageAtShaResponse for raw bytes anyway.
-  // History/restore for a pdf/office page isn't implemented yet (see the
-  // round's report).
-  if (entry.kind === 'pdf' || entry.kind === 'office') throw badRequest('history is not available for pdf/office pages');
+  // Binary page files module doc comment): the answer describes the file
+  // (`file`) and the bytes themselves come from GET /api/pages/:id/history/:sha/file.
+  if (entry.kind === 'pdf' || entry.kind === 'office') {
+    const info = await getFilePageRevisionInfo(pageId, sha);
+    return { file: { path: info.path, ext: info.ext, size: info.size } };
+  }
   const dir = storageMod.getRepoDir(entry.space);
   const rootPath = storageMod.getRootPath(entry.space);
   const relToRepo = rootPath ? `${rootPath}/${entry.relPath}` : entry.relPath;

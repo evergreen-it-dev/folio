@@ -3,6 +3,8 @@ import { api } from '../api';
 export interface PdfViewProps {
   pageId: string;
   title: string;
+  /** The page's updatedAt: a replaced file has a new one, which changes the url and so reloads the frame instead of showing a cached copy. */
+  version?: string;
 }
 
 /**
@@ -20,10 +22,10 @@ export interface PdfViewProps {
  * platform's own pdf viewer chrome) points at GET /api/pages/:id/file — the
  * same url the header's actions use.
  */
-export function PdfView({ pageId, title }: PdfViewProps) {
+export function PdfView({ pageId, title, version }: PdfViewProps) {
   return (
     <div className="h-full bg-neutral-100 dark:bg-neutral-950">
-      <iframe src={api.pageFileUrl(pageId)} title={title} className="h-full w-full border-0 bg-white" />
+      <iframe src={api.pageFileUrl(pageId, false, version)} title={title} className="h-full w-full border-0 bg-white" />
     </div>
   );
 }

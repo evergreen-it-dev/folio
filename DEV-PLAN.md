@@ -85,6 +85,7 @@ In the order it was built.
 | 48 | No lost text, board reactions, opt-in analytics, link previews | Typed text can no longer stay only on screen: the editor-to-document link repairs itself, the local copy goes only after the server confirms it by state vector, "Not saved" and a leave warning, a view-only page opens read-only; on the server retried file writes, the newer snapshot wins over an unchanged file, atomic writes, CRLF normalized, backups of replaced live text (migration 035); a lone `-` under a paragraph stays a dash; emoji reactions on whiteboard shapes stored in their own shared map of the board (the add button belongs to the one selected shape, in Edit mode only; chips are inert in View and read-only); an off-by-default PostHog hook for demos you run; Open Graph and Twitter cards for the front page (`FOLIO_OG_*`) |
 | 49 | Dependency advisories | Seven open advisories closed: MCP SDK 1.31+, `@fastify/busboy` 3.2.2, `source-map-js` 1.2.2, `proxy-addr` 2.0.8, and by override `shell-quote` and `katex`; `sprintf-js` removed from the lock file (it only served a `js-yaml` 3 command-line tool); `npm audit --omit=dev` is clean |
 | 50 | Inline formatting | A status tag (`:status[Done]{color=green}`, six colours, Confluence status macros imported, PDF and DOCX); underline as `++text++` that nests with the other formats; copy and cut in Live edit keep formatting (Markdown and HTML on the clipboard); Live edit lists look like Reading; Reading keeps the number and text of a loose list on one line; the Confluence import no longer replaces a space's home page; a collaborator's selection no longer hides text |
+| 51 | Replace a file page, file version history | A PDF, Word, Excel or PowerPoint page takes a new file and keeps its id, link, place in the tree, access and stars: tree menu item, header button, drag and drop with a confirmation, an Undo toast. A new file of another type renames the file and rewrites incoming links the way a slug change does. Every replace is its own commit (the quiet-period commit is flushed first), so the history panel lists file versions with name and size, downloads any of them, previews a PDF and restores one. `POST /api/pages/:id/file`, `GET /api/pages/:id/history/:sha/file` |
 
 ## What comes next
 
@@ -104,7 +105,7 @@ picked up.
 
 - Check the kits on each platform (only plain Docker Compose and Coolify have been run end to end; Folio's own production runs on Coolify).
 - More providers for the assistant.
-- Share links, history and content search for file pages.
+- Share links and content search for file pages.
 
 **Depth**
 

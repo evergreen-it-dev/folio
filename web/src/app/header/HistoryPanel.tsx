@@ -134,6 +134,9 @@ function HistoryVersionPreview({ pageId, space, pagePath, entry, comparisonEntry
     mutationFn: () => api.restoreVersion(pageId, entry.sha),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['page', pageId] });
+      // A restored file page can come back under another extension, which renames it in the tree and adds a history entry.
+      queryClient.invalidateQueries({ queryKey: ['tree', space] });
+      queryClient.invalidateQueries({ queryKey: ['history', pageId] });
       showToast(t('history.panel.restored'), 'info');
       onRestored();
     },
@@ -159,8 +162,10 @@ function HistoryVersionPreview({ pageId, space, pagePath, entry, comparisonEntry
         {canRestore && (
           <button
             type="button"
+            // Not before the version's kind is known: the confirmation text depends on it (a file page vs. a document).
+            disabled={isLoading}
             onClick={() => setConfirming(true)}
-            className="shrink-0 rounded-md bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900"
+            className="shrink-0 rounded-md bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-white dark:text-neutral-900"
           >
             {t('history.panel.restoreThisVersion')}
           </button>
@@ -171,6 +176,7 @@ function HistoryVersionPreview({ pageId, space, pagePath, entry, comparisonEntry
       {isLoading && <p className="text-sm text-neutral-400">{t('history.panel.loadingVersion')}</p>}
       {isError && <p className="text-sm text-red-600 dark:text-red-400">{t('history.panel.contentLoadFailed')}</p>}
       {data?.svg !== undefined && <HistorySvgPreview svg={data.svg} />}
+      {data?.file && <HistoryFilePreview pageId={pageId} sha={entry.sha} file={data.file} />}
       {data?.markdown !== undefined && showDiff && isDiffLoading && (
         <p className="text-sm text-neutral-400">{t('history.panel.loadingDiff')}</p>
       )}
@@ -181,7 +187,7 @@ function HistoryVersionPreview({ pageId, space, pagePath, entry, comparisonEntry
           <Markdown markdown={data.markdown} space={space} pagePath={pagePath} />
         </div>
       ) : null}
-      {data && data.svg === undefined && data.markdown === undefined && (
+      {data && data.svg === undefined && data.markdown === undefined && data.file === undefined && (
         <p className="text-sm text-neutral-400">{t('history.panel.versionEmpty')}</p>
       )}
 
@@ -193,7 +199,7 @@ function HistoryVersionPreview({ pageId, space, pagePath, entry, comparisonEntry
           onCancel={() => setConfirming(false)}
           onConfirm={() => restore.mutate()}
         >
-          {t('history.panel.restoreConfirmBody', { date: formatRelativeDate(entry.date) })}
+          {t(data?.file ? 'history.panel.restoreConfirmBodyFile' : 'history.panel.restoreConfirmBody', { date: formatRelativeDate(entry.date) })}
         </ConfirmDialog>
       )}
     </div>
@@ -268,4 +274,36 @@ function HistorySvgPreview({ svg }: { svg: string }) {
   const { t } = useTranslation('app');
   const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   return <img src={src} alt={t('history.panel.boardVersionAlt')} className="mx-auto max-w-full" />;
+}
+
+/** Formats a byte count for people: 1.4 MB, 820 KB. */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * A pdf/office page's version: what the file was called and how big it was, a download of exactly that version
+ * and, for a pdf, the file itself. (An office file has no in-browser preview outside the page's own viewer, so it
+ * is offered as a download.)
+ */
+function HistoryFilePreview({ pageId, sha, file }: { pageId: string; sha: string; file: { path: string; ext: string; size: number } }) {
+  const { t } = useTranslation('app');
+  const name = file.path.slice(file.path.lastIndexOf('/') + 1);
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <div className="text-neutral-700 dark:text-neutral-200">
+        <p>{t('history.panel.fileName', { name })}</p>
+        <p className="text-neutral-500 dark:text-neutral-400">{t('history.panel.fileSize', { size: formatFileSize(file.size) })}</p>
+      </div>
+      <a
+        href={api.pageHistoryFileUrl(pageId, sha, true)}
+        className="w-fit rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+      >
+        {t('history.panel.downloadVersion')}
+      </a>
+      {file.ext === '.pdf' && <iframe src={api.pageHistoryFileUrl(pageId, sha)} title={name} className="h-[50vh] w-full rounded-md border border-neutral-200 bg-white dark:border-neutral-800" />}
+    </div>
+  );
 }

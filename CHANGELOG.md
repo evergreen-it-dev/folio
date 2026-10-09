@@ -6,6 +6,29 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- **Replace a file page with a new version.** A PDF, Word, Excel or PowerPoint
+  page can now take a new file without becoming a new page: it keeps its
+  link, its place in the tree, its icon, its access rules and its stars. Use
+  "Replace with new version…" in the page's tree menu, the button in the
+  page header (editors only), or drag a file from the desktop onto the open
+  page and confirm. After a replace a toast offers "Undo". The new file may
+  have a different type (a deck that is now a PDF): the file is renamed and
+  every link to it from other pages is rewritten, the same way "Change slug"
+  does. A file that is byte for byte the current one changes nothing. The
+  usual checks apply (`.pdf`, `.docx`, `.xlsx`, `.pptx`, and the bytes must
+  look like the claimed format), and share links cannot replace anything.
+- **Version history for file pages, with restore.** Every replace is its own
+  Git commit, and whatever was still waiting for the quiet-period commit is
+  committed first, so the version you replaced is always in the history. The
+  history panel of a file page lists the versions; each shows the file name
+  and size it had then, a download of exactly that version and, for a PDF,
+  a preview. "Restore this version" puts that file back (and its type) as one
+  more commit, so nothing is rewritten and the version you restored over stays
+  in the history. New endpoints: `POST /api/pages/:id/file` (replace) and
+  `GET /api/pages/:id/history/:sha/file` (the file at a commit). The MCP
+  tool for a page at a revision now answers for a file page with its path,
+  extension and size; the bytes are not exposed over MCP. Search still finds
+  file pages by title only.
 - **Status tags.** A short coloured badge inside a sentence, like the status
   lozenge in Confluence: `:status[Done]{color=green}`. Six colours (grey, blue,
   green, yellow, red, purple); grey is the default and is also what a missing

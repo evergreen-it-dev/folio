@@ -137,7 +137,9 @@ connection is back.
   exact agreement with the remote branch. It is destructive by design (local
   changes are discarded), but the state is first saved into a backup branch
   `folio-backup/<timestamp>`, so it can be rolled back.
-- **Page history**: the list of commits and a view of any revision.
+- **Page history**: the list of commits and a view of any revision. For a
+  PDF or Office page each version shows its file name and size, can be
+  downloaded (a PDF can also be previewed), and can be restored.
 - Separately from Git there is **undo for structural actions** (create, copy,
   rename, move, delete) — your own only, and only if nothing has changed
   since.
@@ -295,6 +297,12 @@ See [INSTALL](INSTALL.md).
   Excalidraw boards.
 - **File upload**: images, and also pdf/docx/xlsx/pptx — they become pages in
   the tree.
+- **Replace a file page with a new version**: the tree menu item "Replace with
+  new version…", a button in the page header (editors), or a file dropped
+  on the open page. The page keeps its id, link, place in the tree, access and
+  stars; a different file type renames the file and rewrites links to it.
+  Every replace is a commit of its own, an "Undo" toast restores the previous
+  version, and the history panel restores any older one.
 - **Export**: `md`, `pdf`, `docx`, `yaml`, print, and a zip of the whole
   space. Export with child pages and custom page headers and footers for a
   space are supported. If an export had to be cut by size, the response

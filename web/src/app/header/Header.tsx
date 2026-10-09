@@ -12,6 +12,7 @@ import { ShareButton } from '../share/ShareButton';
 import { ExportMenu } from '../export/ExportMenu';
 import { CreateFormButton } from './CreateFormButton';
 import { PageAccessButton } from './PageAccessButton';
+import { ReplaceFileButton } from '../files/ReplaceFileButton';
 import { PagePresenceIndicator } from './PagePresence';
 import { NotificationsBell } from './NotificationsBell';
 import { ConnectivityIndicator } from './ConnectivityIndicator';
@@ -173,7 +174,7 @@ export function Header({ space, pageId, pagePath, title, icon, table, fileAction
             (requirePageRole(..., 'viewer')), so unlike ShareButton it is not
             gated on canEdit — a reader who can open the page can take a copy
             of it. Same key-prefixing precaution as its siblings above. */}
-        {serverPageId && fileActions && <PageFileActions key={`file-${serverPageId}`} pageId={serverPageId} />}
+        {serverPageId && fileActions && <PageFileActions key={`file-${serverPageId}`} pageId={serverPageId} space={space} canReplace={canEdit} />}
         {serverPageId && !fileActions && <ExportMenu key={`export-${serverPageId}`} pageId={serverPageId} pagePath={pagePath} title={title} table={table} />}
 
         {/* Round FORMS: "Create a form" — only on a table page (the `table`
@@ -212,7 +213,7 @@ export function Header({ space, pageId, pagePath, title, icon, table, fileAction
               )}
               {canEdit && <ShareButton key={`share-m-${serverPageId}`} pageId={serverPageId} />}
               {fileActions ? (
-                <PageFileActions key={`file-m-${serverPageId}`} pageId={serverPageId} />
+                <PageFileActions key={`file-m-${serverPageId}`} pageId={serverPageId} space={space} canReplace={canEdit} />
               ) : (
                 <ExportMenu key={`export-m-${serverPageId}`} pageId={serverPageId} pagePath={pagePath} title={title} table={table} />
               )}
@@ -233,10 +234,11 @@ const HEADER_ICON_LINK =
   'inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 max-md:min-h-10 max-md:min-w-10 dark:hover:bg-neutral-800 dark:hover:text-neutral-200';
 
 /** A pdf/office page's two file actions, as header icons like their history/share siblings (owner, 15.09: no separate toolbar row above the file). */
-function PageFileActions({ pageId }: { pageId: string }) {
+function PageFileActions({ pageId, space, canReplace }: { pageId: string; space: string; canReplace: boolean }) {
   const { t } = useTranslation('app');
   return (
     <>
+      {canReplace && <ReplaceFileButton space={space} pageId={pageId} className={HEADER_ICON_LINK} />}
       <a
         href={api.pageFileUrl(pageId)}
         target="_blank"

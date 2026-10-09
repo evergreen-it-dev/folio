@@ -574,6 +574,67 @@ export async function showFileAt(
 }
 
 /**
+ * The raw BYTES of the file at `sha` — `git show sha:path` without the utf8
+ * decoding showFileAt does (which would corrupt a pdf/office file). Same
+ * partial-clone lazy-fetch story as showFileAt.
+ */
+export async function showFileBytesAt(
+  dir: string,
+  sha: string,
+  relPath: string,
+  askpassScript?: string,
+  spaceSlug?: string,
+): Promise<Buffer> {
+  try {
+    const { stdout } = await execFileAsync('git', ['show', `${sha}:${relPath}`], {
+      cwd: dir,
+      timeout: GIT_TIMEOUT_MS,
+      maxBuffer: MAX_BUFFER,
+      encoding: 'buffer',
+      env: { ...process.env, ...remoteAuthEnv(askpassScript, spaceSlug) },
+    });
+    return stdout;
+  } catch (err) {
+    const e = err as { stderr?: Buffer | string; message: string };
+    throw new GitError(['show', `${sha}:${relPath}`], e.stderr ? e.stderr.toString() : e.message);
+  }
+}
+
+/**
+ * Finds `sha` (full or abbreviated) in the history of the file now at `relPath`,
+ * following renames, and returns the full sha with the path the file had in
+ * that commit. A file page whose extension was replaced (deck.pptx -> deck.pdf)
+ * lives under a different name in its older commits. Null when `sha` is not in
+ * the file's history.
+ */
+export async function pathAtRevisionSha(
+  dir: string,
+  relPath: string,
+  sha: string,
+  askpassScript?: string,
+  spaceSlug?: string,
+): Promise<{ sha: string; path: string } | null> {
+  const mark = '\x1e';
+  const { stdout } = await execGit(
+    dir,
+    ['-c', 'core.quotepath=false', 'log', '--follow', '--name-only', `--pretty=format:${mark}%H`, '--', relPath],
+    remoteAuthEnv(askpassScript, spaceSlug),
+  );
+  const wanted = sha.toLowerCase();
+  for (const record of stdout.split(mark)) {
+    const [head, ...names] = record.split('\n').filter((line) => line.length > 0);
+    if (head && head.toLowerCase().startsWith(wanted) && names.length > 0) return { sha: head, path: names[0] };
+  }
+  return null;
+}
+
+/** Size in bytes of the blob at `sha:path` (`git cat-file -s`), without reading it. */
+export async function fileSizeAt(dir: string, sha: string, relPath: string, askpassScript?: string, spaceSlug?: string): Promise<number> {
+  const { stdout } = await execGit(dir, ['cat-file', '-s', `${sha}:${relPath}`], remoteAuthEnv(askpassScript, spaceSlug));
+  return Number.parseInt(stdout.trim(), 10);
+}
+
+/**
  * True if any *.md file under `root` (relative to `dir`) still has an
  * unresolved conflict marker. Plain Node fs recursion rather than `git
  * grep`'s pathspec globbing (whose "does a bare `*.md` cross directory

@@ -2,11 +2,12 @@ import { createContext, useCallback, useContext, useRef, useState } from 'react'
 import type { ReactNode } from 'react';
 
 type Tone = 'error' | 'info';
-/** Optional trailing link (trash round: the after-restore toast links to the restored page). A plain <a>, not a router <Link> — ToastProvider mounts OUTSIDE BrowserRouter (see App.tsx). */
-interface ToastAction {
-  label: string;
-  href: string;
-}
+/**
+ * Optional trailing action. With `href` it is a link (trash round: the after-restore toast links to the restored
+ * page) — a plain <a>, not a router <Link>, since ToastProvider mounts OUTSIDE BrowserRouter (see App.tsx).
+ * With `onClick` it is a button (the file-replace toast's «Undo»); the toast closes when it is pressed.
+ */
+export type ToastAction = { label: string; href: string; onClick?: never } | { label: string; onClick: () => void; href?: never };
 interface ToastItem {
   id: number;
   message: string;
@@ -20,6 +21,8 @@ const ToastContext = createContext<((message: string, tone?: Tone, action?: Toas
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
+
+  const dismiss = useCallback((id: number) => setItems((prev) => prev.filter((item) => item.id !== id)), []);
 
   const show = useCallback((message: string, tone: Tone = 'error', action?: ToastAction) => {
     const id = ++nextId.current;
@@ -43,10 +46,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             }`}
           >
             {item.message}
-            {item.action && (
+            {item.action?.href !== undefined && (
               <a href={item.action.href} className="mt-1 block truncate font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400">
                 {item.action.label}
               </a>
+            )}
+            {item.action?.onClick && (
+              <button
+                type="button"
+                onClick={() => {
+                  item.action?.onClick?.();
+                  dismiss(item.id);
+                }}
+                className="mt-1 block truncate font-medium text-blue-600 underline underline-offset-2 dark:text-blue-400"
+              >
+                {item.action.label}
+              </button>
             )}
           </div>
         ))}

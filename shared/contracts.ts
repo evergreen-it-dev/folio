@@ -676,10 +676,17 @@ export interface PageHistoryEntry {
   message: string;
 }
 
-/** GET /api/pages/:id/history/:sha response. Doc -> markdown (frontmatter stripped, like a normal GET); board -> svg (the raw file at that sha). Exactly one is present, keyed by the page's own `kind`. */
+/** GET /api/pages/:id/history/:sha response. Doc -> markdown (frontmatter stripped, like a normal GET); board -> svg (the raw file at that sha); pdf/office -> file (metadata only). Exactly one is present, keyed by the page's own `kind`. */
 export interface PageAtShaResponse {
   markdown?: string;
   svg?: string;
+  /** pdf/office page: the file's bytes are not inlined here (GET /api/pages/:id/history/:sha/file serves them); this describes the file as it was then. */
+  file?: { path: string; ext: string; size: number };
+}
+
+/** POST /api/pages/:id/file — the page after its file was replaced, plus the commit that holds the version just replaced (restore it to undo); null when the new file was byte-identical. */
+export interface ReplaceFilePageResponse extends PageMeta {
+  previousSha: string | null;
 }
 
 /** Instance-wide config a client needs before it's in any particular space. */

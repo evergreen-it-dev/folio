@@ -340,11 +340,12 @@ export async function removeOrphanTempFile(abs: string): Promise<void> {
  * the same directory (rename is atomic only within a filesystem), is dot-named
  * and not `.md`, so no scan indexes it, and is removed if anything fails.
  */
-export async function writeFileAtomic(abs: string, content: string): Promise<void> {
+export async function writeFileAtomic(abs: string, content: string | Buffer): Promise<void> {
   const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.tmp`);
   // git.ts excludes this shape from every `git add -A` (ATOMIC_TEMP_PATHSPEC).
   try {
-    await fs.writeFile(tmp, content, 'utf8');
+    if (typeof content === 'string') await fs.writeFile(tmp, content, 'utf8');
+    else await fs.writeFile(tmp, content); // bytes of a pdf/office file: no encoding
     await fs.rename(tmp, abs);
   } catch (err) {
     await fs.rm(tmp, { force: true }).catch(() => undefined);
@@ -2112,6 +2113,57 @@ export async function uploadFilePage(space: string, parentPathRaw: string, origi
     const entryId = await getEntryIdByExactPath(space, relPath);
     if (!entryId) throw new Error('internal: file uploaded but not indexed');
     return toPageMeta(await requireEntry(entryId));
+  });
+}
+
+/**
+ * Replaces the bytes of an existing pdf/office page in place. The page keeps its
+ * id, path, order, icon and everything keyed by the id (access rules, shares,
+ * stars): only the file's content and the index row's size / mtime /
+ * updated_at change. The row is updated directly instead of through a rescan,
+ * because a rescan skips a file whose (mtime, size) look unchanged — two
+ * same-sized versions written within one clock tick would otherwise go
+ * unnoticed. File pages carry no extracted text (search is by title only,
+ * see "Binary page files"), so there is no text to reindex.
+ */
+export async function writeFilePageBytes(id: string, bytes: Buffer): Promise<PageMeta> {
+  const entry = await requireEntry(id);
+  if (entry.kind !== 'pdf' && entry.kind !== 'office') throw badRequest('page is not a pdf/office file');
+  return withSpaceLock(entry.space, async () => {
+    await writeFileAtomic(entry.absPath, bytes);
+    const stat = await fs.stat(entry.absPath);
+    const updatedAt = stat.mtime.toISOString();
+    await query('UPDATE pages_index SET file_mtime = $2, file_size = $3, updated_at = $4 WHERE id = $1', [id, stat.mtime, stat.size, updatedAt]);
+    return toPageMeta(await requireEntry(id));
+  });
+}
+
+/**
+ * Gives a pdf/office page a different extension (deck.pptx -> deck.pdf), keeping
+ * its id: the file is renamed in place and the id rides a claim into the next
+ * scan (the kind can change too, pdf <-> office, which the scan's "same kind"
+ * orphan matching would not follow). Like a slug rename, the path changes, so
+ * the result lists the move for the caller to rewrite incoming links with.
+ * A change of letter case only (.PDF -> .pdf) is not a change.
+ */
+export async function changeFilePageExtension(id: string, newExt: string): Promise<SlugRenameResult> {
+  const entry = await requireEntry(id);
+  if (entry.kind !== 'pdf' && entry.kind !== 'office') throw badRequest('page is not a pdf/office file');
+  return withSpaceLock(entry.space, async () => {
+    const stem = relPathStem(entry.relPath, entry.kind);
+    const currentExt = path.posix.extname(entry.relPath);
+    if (currentExt.toLowerCase() === newExt.toLowerCase()) return { meta: toPageMeta(entry), moved: [] };
+
+    const destAbs = path.join(path.dirname(entry.absPath), `${stem}${newExt}`);
+    const newRelPath = entry.dirPath ? `${entry.dirPath}/${stem}${newExt}` : `${stem}${newExt}`;
+    if (await pathExists(destAbs)) throw conflict(`a page already exists at ${newRelPath}`);
+
+    // Captured before the rename and the rescan, same reason as renamePageSlug.
+    const backlinks = await links.getBacklinks(id);
+    claimBinaryId(destAbs, id);
+    await fs.rename(entry.absPath, destAbs);
+    await scanSpace(entry.space);
+    return { meta: toPageMeta(await requireEntry(id)), moved: [{ id, oldRelPath: entry.relPath, newRelPath, backlinks }] };
   });
 }
 
