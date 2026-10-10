@@ -212,6 +212,14 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- **`docker-compose.yml` passes every documented setting to the app.**
+  `TRUST_PROXY`, `FOLIO_DEMO_MODE` and the other `FOLIO_DEMO_*` settings,
+  `FOLIO_DEFAULT_REPO_URL` and the assistant deadlines
+  (`CURSOR_AGENT_TIMEOUT_MS`, `CURSOR_AGENT_TIMEOUT_MS_AGENT`,
+  `CURSOR_AGENT_IDLE_TIMEOUT_MS`) were read from `.env` by nobody, so under
+  Compose they silently did nothing. They now reach the container; left empty
+  they keep their built-in defaults. `.env.example` and `docs/INSTALL.md`
+  describe them.
 - **Reading: a loose list keeps its number and its text on one line.** A list
   with blank lines between items wraps each item in a paragraph, and with the
   marker inside the item the number sat alone on the line above the text.

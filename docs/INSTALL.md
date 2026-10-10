@@ -77,7 +77,7 @@ in works. Do not expose such an instance to the internet.
 
 All settings live in the `.env` file next to `docker-compose.yml`. Copy
 `.env.example` to `.env` and change what you need. After editing, apply with
-`docker compose up -d`.
+`docker compose up -d`. A setting left empty or unset keeps its default.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -91,7 +91,9 @@ All settings live in the `.env` file next to `docker-compose.yml`. Copy
 | `GOOGLE_ALLOWED_DOMAINS` | empty | Email domains allowed to sign in with Google, comma-separated. Empty means nobody. |
 | `CURSOR_API_KEY` | — | Shared key for the AI assistant. Without it each person adds their own key. |
 | `TRUST_PROXY` | off | Set `true` behind a reverse proxy on the same host or Docker network so the sign-in rate limit is per visitor instead of one shared bucket. Only a proxy on a loopback or private address is believed. |
-| `FOLIO_DEMO_MODE` | off | `1` turns on public-demo mode for running your own demo: one-click demo accounts and a banner, and tokens, the assistant, outbound git and import, new spaces, share links and invitations are disabled. See `.env.dev.example`. |
+| `FOLIO_DEMO_MODE` | off | `1` turns on public-demo mode for running your own demo: one-click demo accounts and a banner, and tokens, the assistant, outbound git and import, new spaces, share links and invitations are disabled. The accounts it offers are listed in `FOLIO_DEMO_ACCOUNTS` (a JSON array, in single quotes in `.env`); `FOLIO_DEMO_RESET_HOURS`, `FOLIO_DEMO_MAX_UPLOAD_MB`, `FOLIO_DEMO_MCP_RPM` and `FOLIO_DEMO_MCP_WRITES_PER_HOUR` are optional. See `.env.example`. |
+| `FOLIO_DEFAULT_REPO_URL` | empty | Prefilled into the repository field of the "create space" dialog. |
+| `CURSOR_AGENT_TIMEOUT_MS`, `CURSOR_AGENT_TIMEOUT_MS_AGENT`, `CURSOR_AGENT_IDLE_TIMEOUT_MS` | `300000`, `1800000`, `600000` | Deadlines of one assistant run in milliseconds: Ask mode, Agent mode, and no activity at all. Empty keeps the default. |
 
 ### Link previews
 

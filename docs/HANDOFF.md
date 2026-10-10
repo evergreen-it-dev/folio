@@ -502,6 +502,19 @@ Each of these was a real defect. They are here so that nobody pays twice.
   IPv4-mapped trust subnet the same way as the `proxy-addr` advisory describes;
   keep `TRUST_PROXY` values in plain IPv4 or full IPv6 form.
 
+**Configuration**
+
+- `docker-compose.yml` lists the app's environment variables one by one, so a
+  setting that is read in `server/` and documented but not listed there never
+  reaches the container: it works from source and silently does nothing under
+  Compose (`TRUST_PROXY` and `FOLIO_DEMO_*` were like that). A new setting goes
+  into the compose `environment:` block as `${NAME:-}`, into `.env.example` and
+  into the table in `docs/INSTALL.md`. Compose then passes an empty string, so
+  the server must read an empty value as unset (`||`, or `?? ''` plus a check
+  for empty), never `Number(process.env.X ?? 2)`, which turns an empty string
+  into 0. A setting whose empty string means something else (`EXPORT_PDF_*`)
+  is left out of the compose file on purpose.
+
 **Process**
 
 - Two agents in one working tree share one branch. One of them will commit on

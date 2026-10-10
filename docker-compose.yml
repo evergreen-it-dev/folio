@@ -45,6 +45,22 @@ services:
       FOLIO_OG_IMAGE: ${FOLIO_OG_IMAGE:-}
       FOLIO_POSTHOG_KEY: ${FOLIO_POSTHOG_KEY:-}
       FOLIO_POSTHOG_HOST: ${FOLIO_POSTHOG_HOST:-}
+      # Optional; empty or unset means off (the server reads an empty value as
+      # "not set").
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      FOLIO_DEFAULT_REPO_URL: ${FOLIO_DEFAULT_REPO_URL:-}
+      # Public-demo mode for running your own demo (see docs/INSTALL.md).
+      FOLIO_DEMO_MODE: ${FOLIO_DEMO_MODE:-}
+      FOLIO_DEMO_ACCOUNTS: ${FOLIO_DEMO_ACCOUNTS:-}
+      FOLIO_DEMO_RESET_HOURS: ${FOLIO_DEMO_RESET_HOURS:-}
+      FOLIO_DEMO_MAX_UPLOAD_MB: ${FOLIO_DEMO_MAX_UPLOAD_MB:-}
+      FOLIO_DEMO_MCP_RPM: ${FOLIO_DEMO_MCP_RPM:-}
+      FOLIO_DEMO_MCP_WRITES_PER_HOUR: ${FOLIO_DEMO_MCP_WRITES_PER_HOUR:-}
+      # Assistant run deadlines in milliseconds; empty keeps the built-in
+      # defaults (5 min Ask, 30 min Agent, 10 min idle).
+      CURSOR_AGENT_TIMEOUT_MS: ${CURSOR_AGENT_TIMEOUT_MS:-}
+      CURSOR_AGENT_TIMEOUT_MS_AGENT: ${CURSOR_AGENT_TIMEOUT_MS_AGENT:-}
+      CURSOR_AGENT_IDLE_TIMEOUT_MS: ${CURSOR_AGENT_IDLE_TIMEOUT_MS:-}
     entrypoint: ['/sbin/tini', '--', '/bin/sh', '-c']
     command:
       - |
