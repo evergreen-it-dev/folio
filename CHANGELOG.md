@@ -4,6 +4,19 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Fixed
+
+- **Single sign-on returns to the page you opened.** Signing in through an
+  OpenID Connect or SAML provider (Google included) used to land on `/` and then
+  on the last space, so a shared link had to be opened again. The login screen
+  now sends the current address (path, query and hash) as `returnTo`; the server
+  keeps it in the signed flow cookie, accepts only a same-site path (no
+  `//`, backslashes, control characters, `/login` or `/api`, at most 1024
+  characters) and lands there after sign-in. Accepting an invitation through a
+  provider opens the invited space; an MCP OAuth consent step interrupted by
+  sign-in resumes on the consent screen. A failed sign-in comes back to the
+  same page with `?authError=`.
+
 ## [0.4.2] - 2026-10-23
 
 Groups and single sign-on. People can be put in groups that hold roles in

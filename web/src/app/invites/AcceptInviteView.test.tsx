@@ -15,7 +15,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import i18next from 'i18next';
 import { SettingsProvider } from '../settings';
-import { AcceptInviteView } from './AcceptInviteView';
+import { AcceptInviteView, inviteSsoStartUrl } from './AcceptInviteView';
 import '../i18n/register';
 
 beforeEach(async () => {
@@ -181,6 +181,15 @@ describe('AcceptInviteView — single sign-on', () => {
     renderView();
     const link = await screen.findByRole('link', { name: 'Accept with Corp SAML' });
     expect(link.getAttribute('href')).toBe('/api/auth/saml/corp-saml/start?invite=tok123');
+  });
+
+  it('the invited space is where the person lands after signing in through the provider', async () => {
+    INVITE_INFO = { valid: true, email: 'ann@corp.test', spaces: [{ space: 'team', name: 'Team', role: 'editor' }], invitedBy: 'Admin', sso: { slug: 'corp', name: 'Corp SSO', enforced: true } };
+    stubFetch();
+    renderView();
+    const link = await screen.findByRole('link', { name: 'Accept with Corp SSO' });
+    expect(link.getAttribute('href')).toBe('/api/auth/oidc/corp/start?invite=tok123&login_hint=ann%40corp.test&returnTo=%2Fs%2Fteam');
+    expect(inviteSsoStartUrl({ slug: 'idp', kind: 'saml' }, 'tok', 'a@b.test', 'team')).toBe('/api/auth/saml/idp/start?invite=tok&returnTo=%2Fs%2Fteam');
   });
 
   it('a provider that does not enforce: both ways are offered', async () => {

@@ -3,7 +3,7 @@
  * (or HTTP-POST when that is all the IdP offers), the Response over HTTP-POST, validated by @node-saml/node-saml.
  * Public routes (registered next to the OIDC ones):
  *
- *   GET  /api/auth/saml/:slug/start      ?invite=<token> | ?test=1
+ *   GET  /api/auth/saml/:slug/start      ?invite=<token> | ?test=1 | ?returnTo=<app path to come back to>
  *   POST /api/auth/saml/:slug/acs        the Assertion Consumer Service (SAMLResponse, RelayState)
  *   GET  /api/auth/saml/:slug/metadata   Folio's SP metadata (entity ID, ACS URL, NameID format)
  *
@@ -43,6 +43,7 @@ import {
   describeError,
   finishSsoSignIn,
   redirectToLoginError,
+  startReturnTo,
   renderTestResult,
   requestOrigin,
   signPayload,
@@ -185,6 +186,8 @@ export interface SamlFlowState {
   requestId: string;
   mode: 'login' | 'test' | 'invite';
   invite?: string;
+  /** The page the person opened before signing in (a validated app path). */
+  returnTo?: string;
   adminId?: string;
   createdAt: number;
   exp: number;
@@ -322,7 +325,8 @@ export async function consumeAssertionId(issuer: string, assertionId: string, no
 // ---------------------------------------------------------------------------
 
 async function startHandler(request: FastifyRequest, reply: FastifyReply, slug: string): Promise<FastifyReply> {
-  const q = request.query as { invite?: string; test?: string };
+  const q = request.query as { invite?: string; test?: string; returnTo?: string };
+  const returnTo = startReturnTo(q);
   const origin = publicUrlOrOrigin(requestOrigin(request));
   const provider = await providers.getProviderBySlug(slug);
   const testMode = q.test === '1';
@@ -334,7 +338,7 @@ async function startHandler(request: FastifyRequest, reply: FastifyReply, slug: 
   }
   if (!provider || provider.kind !== 'saml' || (!provider.enabled && !testMode)) {
     if (testMode) return renderTestResult(reply, origin, { ok: false, error: 'provider not found or not configured' }, await testPopupLanguage(request, adminId));
-    return redirectToLoginError(reply, request, 'provider');
+    return redirectToLoginError(reply, request, 'provider', returnTo);
   }
 
   try {
@@ -350,6 +354,7 @@ async function startHandler(request: FastifyRequest, reply: FastifyReply, slug: 
       requestId: cache.issued,
       mode: testMode ? 'test' : q.invite ? 'invite' : 'login',
       ...(q.invite && !testMode ? { invite: String(q.invite) } : {}),
+      ...(returnTo && !testMode ? { returnTo } : {}),
       ...(adminId ? { adminId } : {}),
       createdAt: Date.now(),
       exp: Math.floor(Date.now() / 1000) + FLOW_TTL_SECONDS,
@@ -361,7 +366,7 @@ async function startHandler(request: FastifyRequest, reply: FastifyReply, slug: 
     const detail = describeError(err);
     request.log.error({ err: detail, provider: slug }, 'saml: building the AuthnRequest failed');
     if (testMode) return renderTestResult(reply, origin, { ok: false, error: detail }, await testPopupLanguage(request, adminId));
-    return redirectToLoginError(reply, request, 'exchange');
+    return redirectToLoginError(reply, request, 'exchange', returnTo);
   }
 }
 
@@ -372,7 +377,7 @@ async function acsHandler(request: FastifyRequest, reply: FastifyReply, slug: st
   const testMode = flow?.mode === 'test' && flow.slug === slug;
   const lang = testMode ? await testPopupLanguage(request, flow?.adminId) : undefined;
   const fail = (code: SsoErrorCode, detail?: string) =>
-    testMode ? renderTestResult(reply, origin, { ok: false, error: detail ?? code }, lang) : redirectToLoginError(reply, request, code);
+    testMode ? renderTestResult(reply, origin, { ok: false, error: detail ?? code }, lang) : redirectToLoginError(reply, request, code, flow?.returnTo);
   const refuseAudited = (code: SsoErrorCode, detail: string) => {
     request.log.warn({ provider: slug, reason: code, err: detail }, 'saml: response refused');
     if (!testMode) recordAudit(null, 'auth.sso_refused', slug, { reason: code, detail, protocol: 'saml' });
@@ -440,6 +445,7 @@ async function acsHandler(request: FastifyRequest, reply: FastifyReply, slug: st
     issuer: idp.entityId,
     mapped,
     inviteToken: usableFlow?.mode === 'invite' ? usableFlow.invite : undefined,
+    returnTo: usableFlow?.returnTo,
     protocol: 'saml',
     fail,
   });

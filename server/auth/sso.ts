@@ -34,6 +34,7 @@ import * as store from './store.js';
 import * as session from './session.js';
 import * as providers from './providers.js';
 import { syncIdpGroups } from './groupSync.js';
+import { safeAppPath, withAuthError } from './returnPath.js';
 import type { AuthProvider } from './providers.js';
 import { completeScimPlaceholder, findPendingScimIdentity, findPendingScimIdentityByEmail } from '../scim/identities.js';
 import { isScimEnabled } from '../scim/tokens.js';
@@ -193,8 +194,14 @@ export function requestOrigin(request: FastifyRequest): string {
   return `${request.protocol}://${request.hostname}`;
 }
 
-export function redirectToLoginError(reply: FastifyReply, request: FastifyRequest, code: SsoErrorCode): FastifyReply {
-  return reply.redirect(`${publicUrlOrOrigin(requestOrigin(request))}/?authError=${code}`);
+/** Back to the app with `authError=<code>`: to the page the person started from (`returnTo`, when the flow kept one) so a retry returns there too, else to `/`. */
+export function redirectToLoginError(reply: FastifyReply, request: FastifyRequest, code: SsoErrorCode, returnTo?: string | null): FastifyReply {
+  return reply.redirect(`${publicUrlOrOrigin(requestOrigin(request))}${withAuthError(returnTo, code)}`);
+}
+
+/** The query `returnTo` of a start URL, validated: the page to come back to, or undefined (default landing). */
+export function startReturnTo(query: { returnTo?: unknown }): string | undefined {
+  return safeAppPath(query.returnTo) ?? undefined;
 }
 
 /**
@@ -209,6 +216,8 @@ export async function finishSsoSignIn(
     issuer: string;
     mapped: MappedClaims;
     inviteToken?: string;
+    /** The page the person opened before signing in (validated at the start and again here); default: the app root. */
+    returnTo?: string;
     protocol: 'oidc' | 'saml';
     fail: (code: SsoErrorCode, detail?: string) => FastifyReply;
   },
@@ -240,7 +249,7 @@ export async function finishSsoSignIn(
   await syncIdpGroups(outcome.userId, provider.id, provider.kind, mapped.groups, { provider, overage: mapped.groupsOverage });
   const { token } = await store.createSession(outcome.userId, { userAgent: request.headers['user-agent'], ip: request.ip });
   session.setSessionCookie(reply, token);
-  return reply.redirect(`${publicUrlOrOrigin(requestOrigin(request))}/`);
+  return reply.redirect(`${publicUrlOrOrigin(requestOrigin(request))}${safeAppPath(input.returnTo) ?? '/'}`);
 }
 
 /** 403 `sso_required`: the login screen then sends the person to the provider (POST /api/auth/sso/discover names it). */

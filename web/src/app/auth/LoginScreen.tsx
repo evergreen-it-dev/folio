@@ -40,11 +40,27 @@ const SSO_ERROR_KEYS: Record<string, string> = {
   exchange: 'auth.login.ssoError.generic',
 };
 
-/** /api/auth/oidc/<slug>/start or /api/auth/saml/<slug>/start — the server redirects to the provider. SAML takes no login hint. */
-export function ssoStartUrl(slug: string, loginHint?: string, kind: SsoProviderPublic['kind'] = 'oidc'): string {
-  if (kind === 'saml') return `/api/auth/saml/${encodeURIComponent(slug)}/start`;
-  const hint = loginHint && loginHint.includes('@') ? `?login_hint=${encodeURIComponent(loginHint.trim())}` : '';
-  return `/api/auth/oidc/${encodeURIComponent(slug)}/start${hint}`;
+/**
+ * The page the person opened before signing in, as a same-origin relative path (path + query + hash) the server
+ * brings them back to after single sign-on — or undefined for the root and /login (the default landing), where there
+ * is nothing to return to. The `authError` of a previous failed attempt is dropped so a retry does not carry it.
+ */
+export function currentReturnTo(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const { pathname, search, hash } = window.location;
+  if (!pathname.startsWith('/') || pathname.startsWith('//') || pathname === '/' || pathname === '/login') return undefined;
+  const params = new URLSearchParams(search);
+  params.delete('authError');
+  const query = params.toString();
+  return `${pathname}${query ? `?${query}` : ''}${hash}`;
+}
+
+/** /api/auth/oidc/<slug>/start or /api/auth/saml/<slug>/start — the server redirects to the provider. SAML takes no login hint. `returnTo` (default: the current page) is where the server lands the person after signing in. */
+export function ssoStartUrl(slug: string, loginHint?: string, kind: SsoProviderPublic['kind'] = 'oidc', returnTo: string | undefined = currentReturnTo()): string {
+  const params: string[] = [];
+  if (kind !== 'saml' && loginHint && loginHint.includes('@')) params.push(`login_hint=${encodeURIComponent(loginHint.trim())}`);
+  if (returnTo) params.push(`returnTo=${encodeURIComponent(returnTo)}`);
+  return `/api/auth/${kind === 'saml' ? 'saml' : 'oidc'}/${encodeURIComponent(slug)}/start${params.length ? `?${params.join('&')}` : ''}`;
 }
 
 const EMAIL_LIKE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

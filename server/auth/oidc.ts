@@ -4,7 +4,7 @@
  * the ID token's signature against the provider's JWKS, `iss`, `aud`, `exp`
  * and the nonce. Public routes (registered next to /api/auth/login):
  *
- *   GET  /api/auth/oidc/:slug/start      ?invite=<token> | ?test=1 | ?login_hint=<email>
+ *   GET  /api/auth/oidc/:slug/start      ?invite=<token> | ?test=1 | ?login_hint=<email> | ?returnTo=<app path to come back to>
  *   GET  /api/auth/oidc/:slug/callback
  *   GET  /api/auth/google/start|callback  — the `google` provider built from GOOGLE_*,
  *                                          on the callback URL Google clients already registered
@@ -33,6 +33,7 @@ import {
   renderTestResult,
   requestOrigin,
   signPayload,
+  startReturnTo,
   testPopupLanguage,
   toPublicProvider,
   verifyPayload,
@@ -108,6 +109,8 @@ export interface FlowState {
   verifier: string;
   mode: 'login' | 'test' | 'invite';
   invite?: string;
+  /** The page the person opened before signing in (a validated app path). */
+  returnTo?: string;
   /** Test mode: the admin who started it (the callback re-checks the session). */
   adminId?: string;
   exp: number;
@@ -191,7 +194,8 @@ export function redirectUriFor(provider: Pick<AuthProvider, 'slug' | 'legacyGoog
 }
 
 async function startHandler(request: FastifyRequest, reply: FastifyReply, slug: string): Promise<FastifyReply> {
-  const q = request.query as { invite?: string; test?: string; login_hint?: string };
+  const q = request.query as { invite?: string; test?: string; login_hint?: string; returnTo?: string };
+  const returnTo = startReturnTo(q);
   const provider = await providers.getProviderBySlug(slug);
   const testMode = q.test === '1';
   let adminId: string | undefined;
@@ -202,7 +206,7 @@ async function startHandler(request: FastifyRequest, reply: FastifyReply, slug: 
   }
   if (!provider || provider.kind !== 'oidc' || (!provider.enabled && !testMode)) {
     if (testMode) return renderTestResult(reply, publicUrlOrOrigin(requestOrigin(request)), { ok: false, error: 'provider not found or not configured' }, await testPopupLanguage(request, adminId));
-    return redirectToLoginError(reply, request, 'provider');
+    return redirectToLoginError(reply, request, 'provider', returnTo);
   }
 
   let config: client.Configuration;
@@ -211,7 +215,7 @@ async function startHandler(request: FastifyRequest, reply: FastifyReply, slug: 
   } catch (err) {
     request.log.error({ err: err instanceof Error ? err.message : err, provider: slug }, 'sso: discovery failed');
     if (testMode) return renderTestResult(reply, publicUrlOrOrigin(requestOrigin(request)), { ok: false, error: `discovery failed: ${err instanceof Error ? err.message : String(err)}` }, await testPopupLanguage(request, adminId));
-    return redirectToLoginError(reply, request, 'exchange');
+    return redirectToLoginError(reply, request, 'exchange', returnTo);
   }
 
   const verifier = client.randomPKCECodeVerifier();
@@ -222,6 +226,7 @@ async function startHandler(request: FastifyRequest, reply: FastifyReply, slug: 
     verifier,
     mode: testMode ? 'test' : q.invite ? 'invite' : 'login',
     ...(q.invite && !testMode ? { invite: String(q.invite) } : {}),
+    ...(returnTo && !testMode ? { returnTo } : {}),
     ...(adminId ? { adminId } : {}),
     exp: Math.floor(Date.now() / 1000) + FLOW_TTL_SECONDS,
   };
@@ -249,7 +254,7 @@ async function callbackHandler(request: FastifyRequest, reply: FastifyReply, slu
   const testMode = flow?.mode === 'test';
   const lang = testMode ? await testPopupLanguage(request, flow?.adminId) : undefined;
   const fail = (code: SsoErrorCode, detail?: string) =>
-    testMode ? renderTestResult(reply, origin, { ok: false, error: detail ?? code }, lang) : redirectToLoginError(reply, request, code);
+    testMode ? renderTestResult(reply, origin, { ok: false, error: detail ?? code }, lang) : redirectToLoginError(reply, request, code, flow?.returnTo);
 
   if (!flow || flow.slug !== slug) return fail('state', 'the sign-in state cookie is missing, expired or for another provider');
   const provider = await providers.getProviderBySlug(slug);
@@ -306,6 +311,7 @@ async function callbackHandler(request: FastifyRequest, reply: FastifyReply, slu
     issuer,
     mapped,
     inviteToken: flow.mode === 'invite' ? flow.invite : undefined,
+    returnTo: flow.returnTo,
     protocol: 'oidc',
     fail,
   });

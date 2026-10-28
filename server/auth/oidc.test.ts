@@ -314,6 +314,59 @@ describe('single sign-on through OpenID Connect (mock provider, real PG)', () =>
     expect(audDetail).toMatch(/"aud"/);
   });
 
+  describe('returnTo: the page the person opened before signing in', () => {
+    const DEEP = '/s/sk-space/p/artifact-34ac74359430e23bd9abd100';
+
+    it('a successful sign-in lands on the exact page, query and fragment included', async () => {
+      const p = await provider();
+      const returnTo = `${DEEP}?tab=history#section-2`;
+      const out = await signIn(p.slug, { startUrl: `/api/auth/oidc/${p.slug}/start?returnTo=${encodeURIComponent(returnTo)}`, claims: { sub: 'u-rt', email: 'rt@acme.test' } });
+      expect(out.res.statusCode).toBe(302);
+      expect(out.sessionCookie).toBeDefined();
+      const location = new URL(String(out.res.headers.location));
+      expect(`${location.pathname}${location.search}${location.hash}`).toBe(returnTo);
+    });
+
+    it('no returnTo keeps the default landing; it travels next to login_hint', async () => {
+      const p = await provider();
+      const plain = await signIn(p.slug, { claims: { sub: 'u-rt-plain', email: 'rt-plain@acme.test' } });
+      expect(new URL(String(plain.res.headers.location)).pathname).toBe('/');
+      const withHint = await signIn(p.slug, { startUrl: `/api/auth/oidc/${p.slug}/start?login_hint=a%40acme.test&returnTo=${encodeURIComponent(DEEP)}`, claims: { sub: 'u-rt-plain', email: 'rt-plain@acme.test' } });
+      expect(new URL(String(withHint.res.headers.location)).pathname).toBe(DEEP);
+    });
+
+    it('a refusal returns to the same page with authError, so a retry still lands there', async () => {
+      const p = await provider({ jitEnabled: false });
+      const out = await signIn(p.slug, { startUrl: `/api/auth/oidc/${p.slug}/start?returnTo=${encodeURIComponent(`${DEEP}?tab=history#x`)}`, claims: { sub: 'u-rt-no', email: 'rt-no@acme.test' } });
+      const location = new URL(String(out.res.headers.location));
+      expect(location.pathname).toBe(DEEP);
+      expect(location.searchParams.get('authError')).toBe('no_account');
+      expect(location.searchParams.get('tab')).toBe('history');
+      expect(location.hash).toBe('#x');
+    });
+
+    it.each(['//evil.com', '/\\evil.com', '/\\/evil.com', 'https://evil.com', 'javascript:alert(1)', '/api/auth/state', '/api', '/\t/evil.com', '/\r\nSet-Cookie:x=1', '/login', '/'])(
+      'rejects %j: the sign-in works and lands on the default page',
+      async (bad) => {
+        const p = await provider();
+        const out = await signIn(p.slug, { startUrl: `/api/auth/oidc/${p.slug}/start?returnTo=${encodeURIComponent(bad)}`, claims: { sub: `u-bad-${counter}`, email: `bad${counter}@acme.test` } });
+        expect(out.res.statusCode).toBe(302);
+        const location = new URL(String(out.res.headers.location), 'http://localhost');
+        expect(location.hostname).toBe('localhost');
+        expect(location.pathname).toBe('/');
+        expect(out.sessionCookie).toBeDefined();
+      },
+    );
+
+    it('a returnTo smuggled into a forged flow cookie is not trusted without the signature', async () => {
+      const flow = signFlow({ slug: 'x', state: 's', nonce: 'n', verifier: 'v', mode: 'login', returnTo: '/s/a', exp: Math.floor(Date.now() / 1000) + 60 });
+      expect(verifyFlow(flow)?.returnTo).toBe('/s/a');
+      const [body, mac] = flow.split('.');
+      const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, 'base64url').toString()), returnTo: '//evil.com' })).toString('base64url');
+      expect(verifyFlow(`${forged}.${mac}`)).toBeNull();
+    });
+  });
+
   it('refuses a callback without the flow cookie, or with a tampered one', async () => {
     const p = await provider();
     const noCookie = await app.inject({ method: 'GET', url: `/api/auth/oidc/${p.slug}/callback?code=x&state=y` });

@@ -197,6 +197,49 @@ describe('single sign-on through SAML 2.0 (test IdP, real PG)', () => {
     expect(actions).toContain('auth.sso_login');
   });
 
+  describe('returnTo: the page the person opened before signing in', () => {
+    const DEEP = '/s/sk-space/p/artifact-34ac74359430e23bd9abd100';
+    const q = (returnTo: string) => `?returnTo=${encodeURIComponent(returnTo)}`;
+    let n = 0;
+
+    it('a successful sign-in lands on the exact page, query and fragment included; without it, on the root', async () => {
+      const p = await provider();
+      const returnTo = `${DEEP}?tab=history#section-2`;
+      const out = await signIn(p.slug, { startQuery: q(returnTo), nameId: 'u-rt', attributes: { email: 'rt@acme.test' } });
+      expect(out.authError).toBeNull();
+      expect(out.sessionCookie).toBeDefined();
+      const location = new URL(String(out.res.headers.location));
+      expect(`${location.pathname}${location.search}${location.hash}`).toBe(returnTo);
+
+      const plain = await signIn(p.slug, { nameId: 'u-rt', attributes: { email: 'rt@acme.test' } });
+      expect(new URL(String(plain.res.headers.location)).pathname).toBe('/');
+    });
+
+    it('a refusal returns to the same page with authError, so a retry still lands there', async () => {
+      const p = await provider({ jitEnabled: false });
+      const out = await signIn(p.slug, { startQuery: q(`${DEEP}?tab=history#x`), nameId: 'u-rt-no', attributes: { email: 'rt-no@acme.test' } });
+      expect(out.authError).toBe('no_account');
+      const location = new URL(String(out.res.headers.location));
+      expect(location.pathname).toBe(DEEP);
+      expect(location.searchParams.get('tab')).toBe('history');
+      expect(location.hash).toBe('#x');
+    });
+
+    it.each(['//evil.com', '/\\evil.com', '/\\/evil.com', 'https://evil.com', 'javascript:alert(1)', '/api/auth/state', '/api', '/\t/evil.com', '/\r\nSet-Cookie:x=1', '/login', '/'])(
+      'rejects %j: the sign-in works and lands on the default page',
+      async (bad) => {
+        const p = await provider();
+        n += 1;
+        const out = await signIn(p.slug, { startQuery: q(bad), nameId: `u-bad-${n}`, attributes: { email: `bad${n}@acme.test` } });
+        expect(out.res.statusCode).toBe(302);
+        const location = new URL(String(out.res.headers.location), 'http://localhost');
+        expect(location.hostname).toBe('localhost');
+        expect(location.pathname).toBe('/');
+        expect(out.sessionCookie).toBeDefined();
+      },
+    );
+  });
+
   it('group sync: the SAML groups attribute becomes Folio group memberships at every sign-in, mapped through the table', async () => {
     const admin = (await adminCookie()).admin;
     const eng = await groupStore.createGroup({ slug: `saml-eng-${counter}`, name: `SAML Eng ${counter}`, description: '' }, admin.id);

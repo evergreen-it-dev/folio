@@ -21,6 +21,17 @@ const REASON_KEY: Record<string, string> = {
 };
 
 /**
+ * The single sign-on start link of an invite: the invite token, the invited email as a login hint (OIDC only) and,
+ * like the password path, the invited space as where to land afterwards. Exported for tests.
+ */
+export function inviteSsoStartUrl(sso: { slug: string; kind?: 'oidc' | 'saml' }, token: string, email?: string | null, space?: string): string {
+  const params = [`invite=${encodeURIComponent(token)}`];
+  if (sso.kind !== 'saml' && email) params.push(`login_hint=${encodeURIComponent(email)}`);
+  if (space) params.push(`returnTo=${encodeURIComponent(`/s/${space}`)}`);
+  return `/api/auth/${sso.kind === 'saml' ? 'saml' : 'oidc'}/${encodeURIComponent(sso.slug)}/start?${params.join('&')}`;
+}
+
+/**
  * Public `/invite/:token` (round 9) — rendered OUTSIDE AuthProvider, same
  * split as /share/:token in App.tsx's AppRoutes: no session required to
  * even LOAD this screen. Still checks GET /api/auth/state itself (a plain
@@ -166,11 +177,7 @@ export function AcceptInviteView() {
       {info.sso && (
         <>
           <a
-            href={
-              info.sso.kind === 'saml'
-                ? `/api/auth/saml/${encodeURIComponent(info.sso.slug)}/start?invite=${encodeURIComponent(token!)}`
-                : `/api/auth/oidc/${encodeURIComponent(info.sso.slug)}/start?invite=${encodeURIComponent(token!)}${info.email ? `&login_hint=${encodeURIComponent(info.email)}` : ''}`
-            }
+            href={inviteSsoStartUrl(info.sso, token!, info.email, info.spaces[0]?.space)}
             className="flex items-center justify-center gap-2 rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
           >
             <KeyRound size={16} aria-hidden="true" />

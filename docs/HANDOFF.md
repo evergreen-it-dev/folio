@@ -469,6 +469,9 @@ added to this list and to `docs/INSTALL.md`.
   authoritative) and the domain is allowed. Enforced SSO makes the server refuse
   a password for the provider's domains in every route that sets or checks one;
   `/login?local` is the audited emergency way in for instance administrators.
+  The start routes take `returnTo`, keep it in the signed flow cookie and land
+  there after sign-in; `safeAppPath` (`returnPath.ts`) accepts only a same-site
+  path, never `/login` or `/api`, at most 1024 characters, else `/`.
 - **Group sync** (`groupSync.ts`) runs from the shared sign-in, so OIDC and SAML
   behave alike, in one transaction. It never touches `local` memberships or the
   manager flag, skips archived groups, refuses a change that would leave a space
@@ -961,8 +964,9 @@ Each of these was a real defect. They are here so that nobody pays twice.
   (Git has them); the Claude API inside a page is a stub and network calls are
   blocked; search sees the visible text of the entry page, not what scripts draw;
   claude.ai and Cursor share links are not fetched (publish over MCP instead).
-- OAuth: signing in with Google during the consent step returns to `/`, so the
-  person repeats "Connect"; its rate limits live in process memory, not Redis;
+- OAuth: a consent address longer than 1024 characters is not kept through
+  single sign-on, so the person repeats "Connect"; its rate limits live in
+  process memory, not Redis;
   a client's metadata document is cached for an hour; no connector has been
   tried live from claude.ai or ChatGPT.
 - Public sites: Folio generates no `robots.txt` or sitemap and does not mark

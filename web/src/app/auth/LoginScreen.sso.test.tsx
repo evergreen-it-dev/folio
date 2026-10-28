@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import i18next from 'i18next';
 import type { SsoDiscoverResult, SsoProviderPublic } from '@shared/contracts';
-import { LoginScreen, ssoStartUrl } from './LoginScreen';
+import { LoginScreen, currentReturnTo, ssoStartUrl } from './LoginScreen';
 
 beforeEach(async () => {
   await i18next.changeLanguage('en');
@@ -97,5 +97,39 @@ describe('LoginScreen: single sign-on', () => {
     stubFetch({ provider: null, enforced: false });
     renderLogin();
     expect(screen.getByRole('alert').textContent).toMatch(/Ask an administrator to invite you/);
+  });
+});
+
+describe('LoginScreen: single sign-on returns to the page the person opened', () => {
+  const DEEP = '/s/sk-space/p/artifact-34ac74359430e23bd9abd100';
+
+  it('currentReturnTo is the path, query and hash; nothing for the root or /login', () => {
+    window.history.replaceState({}, '', `${DEEP}?tab=history#sec`);
+    expect(currentReturnTo()).toBe(`${DEEP}?tab=history#sec`);
+    window.history.replaceState({}, '', '/login?local');
+    expect(currentReturnTo()).toBeUndefined();
+    window.history.replaceState({}, '', '/?authError=exchange');
+    expect(currentReturnTo()).toBeUndefined();
+  });
+
+  it('drops a stale authError from the returnTo', () => {
+    window.history.replaceState({}, '', `${DEEP}?authError=denied&tab=history`);
+    expect(currentReturnTo()).toBe(`${DEEP}?tab=history`);
+  });
+
+  it('every start URL (OIDC, SAML, with a login hint) carries returnTo', () => {
+    window.history.replaceState({}, '', `${DEEP}?tab=history`);
+    const returnTo = `returnTo=${encodeURIComponent(`${DEEP}?tab=history`)}`;
+    expect(ssoStartUrl('google')).toBe(`/api/auth/oidc/google/start?${returnTo}`);
+    expect(ssoStartUrl('corp', 'ann@corp.test')).toBe(`/api/auth/oidc/corp/start?login_hint=ann%40corp.test&${returnTo}`);
+    expect(ssoStartUrl('okta', undefined, 'saml')).toBe(`/api/auth/saml/okta/start?${returnTo}`);
+    expect(ssoStartUrl('okta', 'ann@corp.test', 'saml')).toBe(`/api/auth/saml/okta/start?${returnTo}`);
+  });
+
+  it('the rendered buttons link with returnTo', () => {
+    stubFetch({ provider: null, enforced: false });
+    window.history.replaceState({}, '', DEEP);
+    renderLogin();
+    expect(screen.getByRole('link', { name: 'Continue with Google' }).getAttribute('href')).toBe(`/api/auth/oidc/google/start?returnTo=${encodeURIComponent(DEEP)}`);
   });
 });

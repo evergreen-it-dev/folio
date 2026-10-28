@@ -40,6 +40,7 @@ import { decryptSecret, encryptSecret, hasSecretConfigured } from '../secretCryp
 import * as userGitCredentials from '../userGitCredentials.js';
 import { recordAudit } from '../audit.js';
 import { isDemoMode } from '../demo.js';
+import { safeReturnPath } from './returnPath.js';
 
 export const GITHUB_CONNECT_START_PATH = '/api/auth/github-connect/start';
 export const GITHUB_CONNECT_CALLBACK_PATH = '/api/auth/github-connect/callback';
@@ -157,22 +158,7 @@ function clearStateCookie(reply: FastifyReply): void {
   reply.clearCookie(STATE_COOKIE_NAME, { path: GITHUB_CONNECT_CALLBACK_PATH });
 }
 
-/**
- * Where to land after the round-trip: a same-origin PATH only (its query and
- * fragment dropped), never an absolute or protocol-relative URL — anything
- * else falls back to "/". Exported for tests.
- */
-export function safeReturnPath(raw: unknown): string {
-  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 512) return '/';
-  if (!raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/';
-  try {
-    const parsed = new URL(raw, 'http://folio.invalid');
-    if (parsed.origin !== 'http://folio.invalid') return '/';
-    return parsed.pathname || '/';
-  } catch {
-    return '/';
-  }
-}
+export { safeReturnPath };
 
 // ---------------------------------------------------------------------------
 // GitHub calls
