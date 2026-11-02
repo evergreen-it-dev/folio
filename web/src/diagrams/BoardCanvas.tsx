@@ -94,6 +94,7 @@ import { BoardHeadingAction } from './BoardHeadingAction';
 import { StickyNotePalette, STICKY_NOTE_DRAG_MIME } from './StickyNotePalette';
 import { createStickyNoteElements, screenToSceneCoords, type StickyNoteColorId } from './boardStickyNotes';
 import { openStickyTextEditor, soleSelection } from './boardStickyEdit';
+import { containerForDblclickText } from './boardDblclickText';
 import { trackBoardEdit } from '../analytics';
 import './i18n/register';
 
@@ -1167,6 +1168,41 @@ export default function BoardCanvas({ pageId, shareToken, shareMode, onEditingCh
     const host = containerRef.current;
     if (host) openStickyTextEditor(api, host, sticky.id);
   }
+
+  /**
+   * Double-click inside an empty shape edits the shape's own text.
+   *
+   * Excalidraw only binds a double-click to the shape near its centre or
+   * outline; anywhere else in a transparent interior it creates free text on
+   * top (boardDblclickText.ts). A capture-phase native listener on the host
+   * sees the event before the canvas's React onDoubleClick; for those clicks
+   * it stops the event and opens the shape through the same sole-selection +
+   * Enter path the sticky notes use. Everything else (Alt for deliberate free
+   * text, Ctrl/Cmd, other tools, filled shapes, shapes with text, selected
+   * groups) falls through to Excalidraw untouched.
+   */
+  useEffect(() => {
+    const host = containerRef.current;
+    if (!host || !isEditingNow) return;
+    const onDblclick = (event: MouseEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target;
+      if (!(target instanceof HTMLCanvasElement) || !target.classList.contains('interactive')) return;
+      const api = apiRef.current;
+      if (!api) return;
+      const appState = api.getAppState();
+      if (appState.activeTool.type !== 'selection' || appState.multiElement || appState.viewModeEnabled) return;
+      const point = screenToSceneCoords(event.clientX, event.clientY, appState);
+      const id = containerForDblclickText(api.getSceneElements(), appState, point);
+      if (!id) return;
+      event.preventDefault();
+      event.stopPropagation();
+      api.updateScene({ appState: soleSelection(id) });
+      openStickyTextEditor(api, host, id);
+    };
+    host.addEventListener('dblclick', onDblclick, true);
+    return () => host.removeEventListener('dblclick', onDblclick, true);
+  }, [isEditingNow]);
 
   /** Plain click on a palette swatch (no drag) — centre of the currently visible viewport, same spot `fitBoardToScreen` frames. */
   function insertStickyNoteAtViewportCenter(colorId: StickyNoteColorId): void {

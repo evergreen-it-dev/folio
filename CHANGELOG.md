@@ -16,6 +16,13 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   provider opens the invited space; an MCP OAuth consent step interrupted by
   sign-in resumes on the consent screen. A failed sign-in comes back to the
   same page with `?authError=`.
+- **Double-click inside an empty shape types into that shape.** On a whiteboard,
+  a double-click in the interior of a rectangle, ellipse or diamond with no fill
+  and no text created a separate text element on top of it unless it landed
+  near the centre or on the outline (Excalidraw's own rule), so people grouped a
+  box and a text by hand. Now it opens the shape's own text wherever it lands,
+  also inside a frame. Alt+double-click still makes free text, and a double-click
+  on empty canvas, on existing text or into a selected group works as before.
 
 ## [0.4.2] - 2026-10-23
 

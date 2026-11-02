@@ -239,6 +239,14 @@ palette closes when the selection goes. `BoardCanvas` passes
 `canReact = canWrite && isEditingNow`: in View mode and for a read-only viewer
 the chips are shown but inert, and there is no add or remove.
 
+**Double-click into a shape** (`web/src/diagrams/boardDblclickText.ts`).
+Excalidraw binds a double-click's text to an empty, unfilled shape only near
+its centre or outline. A capture-phase `dblclick` listener on the board host
+asks `containerForDblclickText` for the topmost empty rectangle, ellipse or
+diamond under the point (arrows, lines and frames skipped) and opens that
+shape's text through the same sole-selection + Enter path as a new sticky note
+(`boardStickyEdit.ts`); anything else, and Alt, Ctrl or Cmd, goes to Excalidraw.
+
 Other people's carets and selections are drawn by Folio's own plugin,
 `web/src/editor/remote-selections.ts`, swapped in for the one that ships with
 `y-codemirror.next` (same awareness `cursor` field and relative positions, so

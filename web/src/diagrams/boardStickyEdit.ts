@@ -1,5 +1,6 @@
 /**
- * Opens a freshly inserted sticky note for text entry.
+ * Opens a text container (a freshly inserted sticky note, or an empty shape
+ * that was double-clicked off-centre, see boardDblclickText.ts) for text entry.
  *
  * The imperative API has no "start editing this container's text" method, so
  * the package's own keyboard path is used: with exactly ONE selected element
