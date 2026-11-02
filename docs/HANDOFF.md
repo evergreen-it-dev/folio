@@ -499,6 +499,9 @@ added to this list and to `docs/INSTALL.md`.
   user agent and address. **The audit log** (`/admin/audit`, CSV streamed up to
   100,000 rows) shows what `audit_log` holds; every new action needs a label in
   both interface languages.
+  A space's own access log (`listAccessLogForSpace`) joins the user named by
+  `meta.targetUserId` and returns `meta.targetUserName`, so an `access.*` row
+  says whom it was about; write `targetUserId` on every new person-level event.
 
 ### Public sites
 

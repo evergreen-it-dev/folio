@@ -684,6 +684,8 @@ interface AuditLogRow {
   meta: Record<string, unknown> | null;
   at: string;
   actor_name: string | null;
+  /** Only listAccessLogForSpace selects it: the name of meta.targetUserId, null when that user is gone. */
+  target_user_name?: string | null;
 }
 
 /** actor_name is null when actor_id is null (fire-and-forget guest/system action, rare for access events) OR the actor user has since been deleted (audit_log.actor_id is ON DELETE SET NULL — see audit.ts) — either way the row itself is kept, just with a placeholder name. */
@@ -694,17 +696,25 @@ function rowToAccessLogEntry(row: AuditLogRow, language?: string): AccessLogEntr
     actorId: row.actor_id,
     actorName: row.actor_name ?? serverText('audit.deletedUser', language),
     target: row.target ?? '',
-    meta: row.meta ?? {},
+    meta: withTargetUserName(row, language),
     at: new Date(row.at).toISOString(),
   };
+}
+
+/** A space's log names the person each access.* event was about: their current name, a placeholder once the account is deleted. */
+function withTargetUserName(row: AuditLogRow, language?: string): Record<string, unknown> {
+  const meta = row.meta ?? {};
+  if (row.target_user_name === undefined || typeof meta.targetUserId !== 'string' || typeof meta.targetUserName === 'string') return meta;
+  return { ...meta, targetUserName: row.target_user_name ?? serverText('audit.deletedUser', language) };
 }
 
 /** GET /api/spaces/:space/access-log — newest first. */
 export async function listAccessLogForSpace(space: string, limit = 50, language?: string): Promise<AccessLogEntry[]> {
   const rows = await query<AuditLogRow>(
-    `SELECT al.id, al.action, al.actor_id, al.target, al.meta, al.at, u.name AS actor_name
+    `SELECT al.id, al.action, al.actor_id, al.target, al.meta, al.at, u.name AS actor_name, tu.name AS target_user_name
        FROM audit_log al
        LEFT JOIN users u ON u.id = al.actor_id
+       LEFT JOIN users tu ON tu.id::text = al.meta ->> 'targetUserId'
       WHERE (al.action = ANY($1) AND al.target = $2)
          OR (al.action = ANY($4) AND al.target IN (SELECT r.group_id::text FROM space_group_roles r WHERE r.space_slug = $2))
       ORDER BY al.at DESC

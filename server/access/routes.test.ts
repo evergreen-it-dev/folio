@@ -93,6 +93,7 @@ describe('access/routes (round 27, real PG)', () => {
     expect(grantEntry.actorId).toBe(admin.id);
     expect(grantEntry.meta.targetUserId).toBe(target.id);
     expect(grantEntry.meta.role).toBe('editor');
+    expect(grantEntry.meta.targetUserName).toBe(target.name);
 
     const revokeEntry = await pollUntil(async () => (await authStore.listAccessLogForSpace(spaceB.slug)).find((e) => e.action === 'access.revoke'));
     expect(revokeEntry.meta.targetUserId).toBe(target.id);

@@ -4,7 +4,26 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Security
+
+- Dependency updates close 19 Dependabot advisories: DOMPurify 3.4.17 (used by
+  Mermaid diagrams in the browser; GHSA-cg2g-xh64-v4q7, GHSA-mrv2-3pqr-j5jr,
+  GHSA-c6gr-qvv4-5v3f), Zod 4.6.6 (GHSA-mrhx-c7xc-m3w5), undici 7.30.1
+  (GHSA-f72v-6w45-q472, GHSA-xjj6-f33q-929c), body-parser 2.4.0
+  (GHSA-27r3-jxmh-p828, with qs 6.16.1), fast-uri 3.1.9 and 4.2.3
+  (GHSA-333x-w4r6-6crp, GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr,
+  GHSA-xhq7-xmqj-769h), ip-address 10.7.4 (GHSA-rxp7-6hxx-x8q5), Fastify 5.12.6
+  (GHSA-389g-gv7q-r4x8) and, for development, Vitest 4.1.12
+  (GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp). The Zod 3.25 copies inside the
+  Cursor SDK and `chromium-bidi` stay: they load only the Zod 3 API, and there is
+  no 3.x release with the fix.
+
 ### Fixed
+
+- **The access log of a space names the person.** "Granted access → editor"
+  did not say to whom. Each grant, removal and self-grant now shows the person's
+  current name (or "(deleted user)"), older entries included, since the log
+  always kept the user id.
 
 - **Single sign-on returns to the page you opened.** Signing in through an
   OpenID Connect or SAML provider (Google included) used to land on `/` and then

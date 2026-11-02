@@ -157,8 +157,13 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
  * new visibility ("→ Public"), or the four publishing settings
  * ("(download: on, assistant: off, domain: docs.example.com)"). `null` when the entry carries nothing to show.
  */
-export function accessLogDetail(entry: Pick<AccessLogEntry, 'action' | 'meta'>, t: Translate): string | null {
+export function accessLogDetail(entry: Pick<AccessLogEntry, 'action' | 'meta'>, t: Translate, options: { person?: boolean } = {}): string | null {
   const { meta } = entry;
+  if (options.person && (entry.action === 'access.grant' || entry.action === 'access.revoke' || entry.action === 'access.self_grant')) {
+    const person = typeof meta.targetUserName === 'string' && meta.targetUserName ? ` · ${meta.targetUserName}` : '';
+    const role = entry.action !== 'access.revoke' && typeof meta.role === 'string' ? ` → ${meta.role}` : '';
+    return person || role ? person + role : null;
+  }
   if (entry.action === 'space.visibility') {
     const v = meta.visibility;
     return v === 'public' || v === 'instance' || v === 'private' ? ` → ${t(visibilityLabelKey(v))}` : null;

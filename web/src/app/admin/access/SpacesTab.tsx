@@ -364,7 +364,7 @@ function SpaceAccessLog({ space }: { space: string }) {
         {data.entries.map((entry) => (
           <li key={entry.id}>
             {formatDateTime(entry.at, i18n.language)} · {entry.actorName} · {t(`access.log.${displayAction(entry.action, entry.meta).replace('.', '_')}`)}
-            {accessLogDetail(entry, t)}
+            {accessLogDetail(entry, t, { person: true })}
           </li>
         ))}
       </ul>

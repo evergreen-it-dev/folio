@@ -168,6 +168,16 @@ describe('accessLogDetail', () => {
     expect(accessLogDetail({ action: 'access.revoke', meta: { targetUserId: 'u1' } }, t)).toBeNull();
   });
 
+  it('names the person in a space log, and only there', () => {
+    const grant = { action: 'access.grant' as const, meta: { role: 'editor', targetUserId: 'u1', targetUserName: 'Jane Doe' } };
+    expect(accessLogDetail(grant, t, { person: true })).toBe(' · Jane Doe → editor');
+    expect(accessLogDetail(grant, t)).toBe(' → editor');
+    expect(accessLogDetail({ action: 'access.revoke', meta: { targetUserId: 'u1', targetUserName: 'Jane Doe', previousRole: 'viewer' } }, t, { person: true })).toBe(' · Jane Doe');
+    expect(accessLogDetail({ action: 'access.self_grant', meta: { role: 'admin', targetUserId: 'u1', targetUserName: 'Jane Doe' } }, t, { person: true })).toBe(' · Jane Doe → admin');
+    expect(accessLogDetail({ action: 'access.grant', meta: { role: 'viewer', targetUserId: 'u1' } }, t, { person: true })).toBe(' → viewer');
+    expect(accessLogDetail({ action: 'access.revoke', meta: { targetUserId: 'u1' } }, t, { person: true })).toBeNull();
+  });
+
   it('names the new visibility, public included, and ignores an unknown value', () => {
     expect(accessLogDetail({ action: 'space.visibility', meta: { visibility: 'public' } }, t)).toBe(' → access.spaces.visibilityPublic');
     expect(accessLogDetail({ action: 'space.visibility', meta: { visibility: 'instance' } }, t)).toBe(' → access.spaces.visibilityInstance');
