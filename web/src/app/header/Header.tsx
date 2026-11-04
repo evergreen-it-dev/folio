@@ -13,6 +13,7 @@ import { ExportMenu } from '../export/ExportMenu';
 import { CreateFormButton } from './CreateFormButton';
 import { PageAccessButton } from './PageAccessButton';
 import { CompareButton } from './CompareButton';
+import { WritingRulesButton } from './WritingRulesButton';
 import { ReplaceFileButton } from '../files/ReplaceFileButton';
 import { PagePresenceIndicator } from './PagePresence';
 import { NotificationsBell } from './NotificationsBell';
@@ -69,6 +70,11 @@ export interface HeaderProps {
  * disambiguate. Both this page star and the sidebar's space star still get
  * a real `title` tooltip regardless (StarButton.tsx) — not just aria-label.
  */
+/** A document the writing rules can judge: a plain markdown page, not a table, form, board, base or file. */
+function isProsePage(pagePath: string | undefined, table: unknown, fileActions: boolean | undefined): boolean {
+  return pagePath !== undefined && !table && !fileActions && /\.md$/i.test(pagePath) && !/\.(table|form)\.md$/i.test(pagePath);
+}
+
 export function Header({ space, pageId, pagePath, title, icon, table, fileActions, presence, collapsed, onToggleCollapse, onOpenSwitcher, propertiesSlotRef }: HeaderProps) {
   const { t } = useTranslation('app');
   const role = useSpaceRole(space);
@@ -200,6 +206,10 @@ export function Header({ space, pageId, pagePath, title, icon, table, fileAction
         {/* Compare mode: open to every role that can open the page (comparing changes nothing). A folder listing has no page id, so none here. */}
         {serverPageId && title !== undefined && <CompareButton key={`compare-${serverPageId}`} pageId={serverPageId} space={space} title={title} />}
 
+        {serverPageId && title !== undefined && isProsePage(pagePath, table, fileActions) && (
+          <WritingRulesButton key={`writing-rules-${serverPageId}`} pageId={serverPageId} space={space} title={title} />
+        )}
+
         {serverPageId && <StarButton kind="page" id={serverPageId} />}
       </div>
 
@@ -235,6 +245,9 @@ export function Header({ space, pageId, pagePath, title, icon, table, fileAction
               {canEdit && table && <CreateFormButton key={`create-form-m-${serverPageId}`} pageId={serverPageId} space={space} />}
               <PageAccessButton key={`access-m-${serverPageId}`} pageId={serverPageId} space={space} />
               {title !== undefined && <CompareButton key={`compare-m-${serverPageId}`} pageId={serverPageId} space={space} title={title} />}
+              {title !== undefined && isProsePage(pagePath, table, fileActions) && (
+                <WritingRulesButton key={`writing-rules-m-${serverPageId}`} pageId={serverPageId} space={space} title={title} />
+              )}
               <StarButton kind="page" id={serverPageId} />
             </div>
           )}

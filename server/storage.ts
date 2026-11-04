@@ -24,7 +24,7 @@ import type { PoolClient } from 'pg';
 import * as matterNS from 'gray-matter';
 import { ulid } from 'ulidx';
 import type { CanvasDocument, CreatePageBody, FormDoc, PageKind, PageMeta, PageStatus, SpaceAssetMode, SpaceGitStatus, SpaceInfo, SpaceVisibility, TableColumn, TableDoc, TableView, TemplateListItem, TreeNode } from '../shared/contracts.js';
-import { INDEX_META_VERSION, officeFormat, TEMPLATE_DESCRIPTION_KEY } from '../shared/contracts.js';
+import { INDEX_META_VERSION, officeFormat, TEMPLATE_DESCRIPTION_KEY, WRITING_RULES_PATH } from '../shared/contracts.js';
 import { compileScanIgnore } from './scanIgnore.js';
 import { badRequest, conflict, forbidden, notFound } from './errors.js';
 import { translitSlug } from './translit.js';
@@ -43,6 +43,7 @@ import { serverText } from './serverText.js';
 import { docIndexText, docIndexTextAsync } from './indexText.js';
 import { CANVAS_MAX_BYTES, canvasSearchText, parseJsonCanvas } from '../shared/canvas/index.js';
 import { inlineMarkdownToPlainText } from '../shared/inlineText.js';
+import { docExtOf, isMdxPath, isStrongIndexName, stripDocExt } from '../shared/mdx.js';
 import { carryFrontmatterKeys, mergeFrontmatter, writeFrontmatterKeys, type FolioFrontmatter, type FrontmatterKeyEdit } from './frontmatter.js';
 import * as propsSidecar from './propsSidecar.js';
 import { ownProperties, reservedKeysOf } from './reservedPropertyKeys.js';
@@ -220,7 +221,7 @@ function normalizeResolvePath(p: string): string {
   return segments.join('/');
 }
 
-function humanize(slug: string): string {
+export function humanize(slug: string): string {
   return slug.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -356,7 +357,7 @@ function titleFallback(relPath: string, kind: PageKind): string {
   if (kind === 'base') return base.slice(0, -'.base'.length);
   // An artifact bundle `q3.artifact/` without a manifest title: its folder name without the suffix.
   if (kind === 'artifact') return artifactStem(base);
-  return base.slice(0, -'.md'.length);
+  return stripDocExt(base);
 }
 
 function numericOrder(v: unknown): number | undefined {
@@ -850,7 +851,7 @@ export async function migrateLegacySpaces(): Promise<void> {
 }
 
 async function peekTitleFromRoot(dir: string): Promise<string | null> {
-  for (const filename of ['index.md', 'README.md']) {
+  for (const filename of ['index.md', 'index.mdx', 'README.md', 'README.mdx']) {
     try {
       const raw = await fs.readFile(path.join(dir, filename), 'utf8');
       const title = extractH1(matter(raw).content);
@@ -1006,7 +1007,10 @@ async function indexDocFile(space: string, relPath: string, abs: string, mtime: 
     // So does the id of a file whose `id:` another page holds (fileIdIsOwn).
     id = await resolveIndexOnlyId('doc', space, relPath, abs, size);
   } else {
-    id = takeIdClaim(abs) ?? ulid();
+    // No id in the file: the Folio operation that put it here (a claim), else the page already indexed at this path
+    // (its id was stripped from the file), else an id derived from space + path - never a random one, so a rebuilt
+    // index or a second instance on the same files gives this page the same id (see "Stable page ids").
+    id = takeIdClaim(abs) ?? (await getEntryIdByExactPath(space, relPath)) ?? (await freeStableId(space, relPath));
     await persistDocFrontmatter(abs, { id, order: explicitOrder, status: explicitStatus, icon, cover }, body, { raw });
   }
   return {
@@ -1043,7 +1047,7 @@ async function indexBoardFile(space: string, relPath: string, abs: string, mtime
   const header = splitBoardHeader(raw);
   let id = header.id;
   if (!id) {
-    id = ulid();
+    id = (await getEntryIdByExactPath(space, relPath)) ?? (await freeStableId(space, relPath));
     await fs.writeFile(abs, withBoardId(raw, id), 'utf8');
   }
   return {
@@ -1121,6 +1125,99 @@ async function freePathId(kind: IndexOnlyKind, space: string, relPath: string): 
     if (!holder || (holder.space_slug === space && holder.path === relPath)) return id;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Stable page ids: the same page, the same id, after the instance is rebuilt
+//
+// A page's id is the whole of its URL (/s/<space>/p/<id>, /public/<slug>/p/<id>),
+// so an id that changes kills every link ever sent. Where the id lives:
+//  - docs: front matter `id` (native spaces), the board's header comment, a
+//    table's / form's own front matter — written with the content, so a database
+//    rebuilt from the repository (drop pages_index, rescan; a fresh instance
+//    connected to the same repository) gives every page the same id back;
+//  - light-footprint docs, PDFs, Office files, bases, artifacts: no id in the
+//    file, so the id is derived from space + path (pathIdFor above);
+//  - a file that arrives WITHOUT an id (hand-made, a copy from elsewhere, a
+//    repository that was never opened in Folio): its id used to be a random ULID,
+//    which exists only in this instance's copy until the next sync — a rebuild
+//    before that, or a second instance on the same files, invented another one.
+//    Now it is derived from space + path (stableUlid), after the index row at that
+//    path (if any) has had its say.
+//  - a page created through the API on an instance that is rebuilt from a script
+//    (the public demo's daily reset): FOLIO_STABLE_IDS=1 makes the id of a NEW page
+//    the same derived value, so the reset instance hands out the ids of the
+//    previous one. Off by default: on an ordinary instance deleting a page and
+//    creating another at its path must not resurrect the old id.
+// ---------------------------------------------------------------------------
+
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+/** A ULID-shaped (26 Crockford characters, valid for createPageBodySchema.id) id that is a pure function of space + path (+ attempt, for the rare collision). */
+export function stableUlid(space: string, relPath: string, attempt = 0): string {
+  const seed = `folio-stable-id\0${space}\0${relPath}${attempt === 0 ? '' : `\0${attempt}`}`;
+  const digest = createHash('sha1').update(seed).digest();
+  let bits = 0;
+  let acc = 0;
+  let out = '';
+  for (const byte of digest) {
+    acc = (acc << 8) | byte;
+    bits += 8;
+    while (bits >= 5 && out.length < 26) {
+      bits -= 5;
+      out += CROCKFORD[(acc >> bits) & 31];
+    }
+    acc &= (1 << bits) - 1;
+    if (out.length === 26) break;
+  }
+  // A real ULID's first character is 0-7 (48-bit timestamp); keep that so nothing that validates the shape objects.
+  return `${CROCKFORD[CROCKFORD.indexOf(out[0]) & 7]}${out.slice(1)}`;
+}
+
+/** FOLIO_STABLE_IDS=1: pages CREATED through the API get stableUlid ids too (the demo's reset). */
+export function stableIdsEnabled(): boolean {
+  return ['1', 'true', 'yes', 'on'].includes((process.env.FOLIO_STABLE_IDS ?? '').trim().toLowerCase());
+}
+
+/** The path's stableUlid — unless another page already holds it (then the next one in the same sequence). */
+async function freeStableId(space: string, relPath: string): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    const id = stableUlid(space, relPath, attempt);
+    const holder = await queryOne<{ space_slug: string; path: string }>('SELECT space_slug, path FROM pages_index WHERE id = $1', [id]);
+    if (!holder || (holder.space_slug === space && holder.path === relPath)) return id;
+  }
+}
+
+/** The id of a page about to be created at `relPath`: stable when FOLIO_STABLE_IDS is on, else a fresh ULID. */
+async function newPageIdAt(space: string, relPath: string): Promise<string> {
+  return stableIdsEnabled() ? freeStableId(space, relPath) : ulid();
+}
+
+/**
+ * An id a link used before: the current page of `space` whose derived id (any of the path ids, or stableUlid) is
+ * `oldId` — what the link meant when the page had no id in its file, or before the file gained one. Undefined when
+ * no page matches. Only runs on a miss (a 404 on its way to a "moved or removed" screen), never on a hit.
+ */
+export async function findMovedPage(space: string, oldId: string): Promise<PageIndexEntry | undefined> {
+  if (!/^(?:(?:doc|pdf|office|canvas|base|artifact)-[0-9a-f]{24}|[0-9A-HJKMNP-TV-Z]{26})$/.test(oldId)) return undefined;
+  const now = Date.now();
+  let cached = derivedIdCache.get(space);
+  if (!cached || now - cached.at > DERIVED_ID_TTL_MS) {
+    // One pass over the space, kept for a moment: a public 404 is anonymous, so a flood of well-shaped unknown ids must not each cost a pass.
+    const rows = await query<{ id: string; path: string }>('SELECT id, path FROM pages_index WHERE space_slug = $1 LIMIT 50000', [space]);
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      map.set(stableUlid(space, row.path), row.id);
+      for (const kind of ['doc', 'pdf', 'office', 'canvas', 'base', 'artifact'] as const) map.set(pathIdFor(kind, space, row.path, 0), row.id);
+    }
+    cached = { at: now, map };
+    derivedIdCache.set(space, cached);
+  }
+  const id = cached.map.get(oldId);
+  return id && id !== oldId ? getEntry(id) : undefined;
+}
+
+const DERIVED_ID_TTL_MS = 30_000;
+const derivedIdCache = new Map<string, { at: number; map: Map<string, string> }>();
 
 async function resolveIndexOnlyId(kind: IndexOnlyKind, space: string, relPath: string, abs: string, size: number): Promise<string> {
   const claimed = takeIdClaim(abs);
@@ -1640,9 +1737,10 @@ export interface ScanStats {
   filesRead: number;
   filesSkipped: number;
   /**
-   * Markdown-like files Folio does not index (`.mdx`, `.markdown`). A
-   * Docusaurus `docs/` written in MDX connected as a space of zero pages with
-   * no word about why (docs-as-code test, 14.10.2026); the scan logs this count.
+   * Markdown-like files Folio does not index (`.markdown`). A Docusaurus `docs/`
+   * written in MDX once connected as a space of zero pages with no word about
+   * why (docs-as-code test, 14.10.2026); `.mdx` has opened as a page since then,
+   * and the scan logs how many of the other dialect it passed over.
    */
   skippedUnsupported: number;
   /** Non-page files the space holds after the scan (`space_files`, wave 3: `assets/`, attachments, any other file). */
@@ -1652,7 +1750,7 @@ export interface ScanStats {
 
 /** Markdown dialects a folder may hold that Folio does not open as pages — counted, never indexed. */
 function isUnsupportedMarkdown(lowerName: string): boolean {
-  return lowerName.endsWith('.mdx') || lowerName.endsWith('.markdown');
+  return lowerName.endsWith('.markdown');
 }
 
 export interface ScanProgress {
@@ -1795,7 +1893,7 @@ async function scanSpaceImpl(space: string, onProgress?: (progress: ScanProgress
         else if (dirent.isDirectory()) await count(abs, false);
         else if (dirent.isFile()) {
           const lower = dirent.name.toLowerCase();
-          if (lower.endsWith('.md') || lower.endsWith('.excalidraw.svg') || lower.endsWith('.pdf') || officeFormat(lower) || lower.endsWith('.canvas') || lower.endsWith('.base')) totalFiles++; // `.form.md` is also `.md`, already counted
+          if (lower.endsWith('.md') || lower.endsWith('.mdx') || lower.endsWith('.excalidraw.svg') || lower.endsWith('.pdf') || officeFormat(lower) || lower.endsWith('.canvas') || lower.endsWith('.base')) totalFiles++; // `.form.md` is also `.md`, already counted
         }
       }
     }
@@ -1816,7 +1914,8 @@ async function scanSpaceImpl(space: string, onProgress?: (progress: ScanProgress
     // Round FORMS: same load-bearing ordering as isTable — `.form.md` also
     // ends in `.md`, so isMd below deliberately excludes it too.
     const isForm = !isTable && lower.endsWith('.form.md');
-    const isMd = !isTable && !isForm && lower.endsWith('.md');
+    // `.mdx` (Astro/Nimbus/Starlight/Docusaurus docs) is a document like `.md`: the file stays what it is, only the suffix differs.
+    const isMd = !isTable && !isForm && (lower.endsWith('.md') || lower.endsWith('.mdx'));
     const isBoard = lower.endsWith('.excalidraw.svg');
     // Round PDF: case-insensitive, same as every other extension check here
     // (a repo checked out on a case-preserving filesystem can hold `.PDF`).
@@ -1878,7 +1977,7 @@ async function scanSpaceImpl(space: string, onProgress?: (progress: ScanProgress
     filesRead++;
 
     // README.md is the directory's index only when this directory has no index.md.
-    const isIndex = isMd && (name === 'index.md' || (name === 'README.md' && !hasIndexMd));
+    const isIndex = isMd && (isStrongIndexName(name) || (/^README\.mdx?$/.test(name) && !hasIndexMd));
     // One file must not be able to sink the scan of a whole space. Before
     // this, any throw from a single file's indexing or upsert aborted
     // scanSpace outright — and during createSpaceFromRepo that meant a bare
@@ -2004,7 +2103,7 @@ async function scanSpaceImpl(space: string, onProgress?: (progress: ScanProgress
       return;
     }
     const names = new Set(dirents.map((d) => d.name));
-    const hasIndexMd = names.has('index.md');
+    const hasIndexMd = names.has('index.md') || names.has('index.mdx');
 
     for (const dirent of dirents) {
       const name = dirent.name;
@@ -2065,7 +2164,7 @@ async function scanSpaceImpl(space: string, onProgress?: (progress: ScanProgress
         continue;
       }
       const dirNames = await fs.readdir(path.dirname(abs)).catch(() => [] as string[]);
-      await visitPageFile(abs, rel, path.basename(rel), dirNames.includes('index.md'), 'pages');
+      await visitPageFile(abs, rel, path.basename(rel), dirNames.includes('index.md') || dirNames.includes('index.mdx'), 'pages');
     }
   } else {
     await walk(root, '');
@@ -2178,7 +2277,7 @@ async function scanSpaceImpl(space: string, onProgress?: (progress: ScanProgress
   console.log(`[scan] ${space}: ${filesRead} read, ${filesSkipped} unchanged, ${stats.durationMs}ms`);
   if (skippedUnsupported > 0) {
     // eslint-disable-next-line no-console
-    console.warn(`[scan] ${space}: ${skippedUnsupported} .mdx/.markdown file(s) skipped — only .md files become pages`);
+    console.warn(`[scan] ${space}: ${skippedUnsupported} .markdown file(s) skipped — only .md and .mdx files become pages`);
   }
   return stats;
 }
@@ -2421,6 +2520,20 @@ export async function countAgentPages(spaces: readonly string[]): Promise<Map<st
 }
 
 /**
+ * The slugs among `spaces` whose `.agent` folder holds the writing-rules page (shared/contracts.ts
+ * WRITING_RULES_PATH) — one grouped query, a boolean per space like countAgentPages (`SpaceInfo.agentRules
+ * .writingRules`: the client shows "Check against writing rules" only where it is true).
+ */
+export async function spacesWithWritingRules(spaces: readonly string[]): Promise<Set<string>> {
+  if (spaces.length === 0) return new Set();
+  const rows = await query<{ space_slug: string }>(
+    `SELECT DISTINCT space_slug FROM pages_index WHERE space_slug = ANY($1::text[]) AND path = $2 AND kind = 'doc'`,
+    [spaces, WRITING_RULES_PATH],
+  );
+  return new Set(rows.map((r) => r.space_slug));
+}
+
+/**
  * Builds the space's page tree, mixing real pages (index.md/README.md self
  * nodes, same-named X.md + X/ parent pages, and leaves) with synthetic
  * 'folder' nodes only for directories that genuinely have no page of their
@@ -2611,7 +2724,7 @@ export function relPathStem(relPath: string, kind: PageKind): string {
     const fmt = officeFormat(relPath);
     return fmt ? base.slice(0, -(fmt.length + 1)) : base;
   }
-  return base.slice(0, -'.md'.length);
+  return stripDocExt(base);
 }
 
 /**
@@ -2756,10 +2869,39 @@ export async function listTemplates(space: string): Promise<TemplateListItem[]> 
 async function uniqueRelPath(space: string, parentPath: string, stem: string, ext: string): Promise<string> {
   let candidate = stem;
   let n = 2;
+  // `intro.md` and `intro.mdx` are one name to a reader (and to a link): either one occupies the stem.
+  const exts = ext === '.md' || ext === '.mdx' ? ['.md', '.mdx'] : [ext];
   for (;;) {
-    const rel = parentPath ? `${parentPath}/${candidate}${ext}` : `${candidate}${ext}`;
-    if (!(await pathExists(path.join(spaceDir(space), rel)))) return rel;
+    const taken = await Promise.all(
+      exts.map((e) => pathExists(path.join(spaceDir(space), parentPath ? `${parentPath}/${candidate}${e}` : `${candidate}${e}`))),
+    );
+    if (!taken.some(Boolean)) return parentPath ? `${parentPath}/${candidate}${ext}` : `${candidate}${ext}`;
     candidate = `${stem}-${n++}`;
+  }
+}
+
+/**
+ * The suffix a NEW document gets in `parentPath`: `.md`, except in a folder of `.mdx` pages. The nearest folder
+ * (this one, then each parent up to the content root) that holds any document decides: only `.mdx` documents
+ * there (Nimbus/Starlight/Astro docs written entirely in MDX) -> `.mdx`; any `.md`, or no document anywhere
+ * (a fresh space) -> `.md`. So a mixed folder and every ordinary space keep `.md`, and a page created next to
+ * `index.mdx` is MDX like its neighbours instead of a stray `.md` the site generator reads differently.
+ */
+async function defaultDocExt(space: string, parentPath: string): Promise<'.md' | '.mdx'> {
+  const root = spaceDir(space);
+  let dir = parentPath;
+  for (;;) {
+    const names = await fs.readdir(path.join(root, dir)).catch(() => [] as string[]);
+    let mdx = 0;
+    let md = 0;
+    for (const name of names) {
+      const lower = name.toLowerCase();
+      if (lower.endsWith('.mdx')) mdx++;
+      else if (lower.endsWith('.md') && !lower.endsWith('.table.md') && !lower.endsWith('.form.md')) md++;
+    }
+    if (mdx + md > 0) return mdx > 0 && md === 0 ? '.mdx' : '.md';
+    if (!dir) return '.md';
+    dir = dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '';
   }
 }
 
@@ -2778,7 +2920,7 @@ export function normalizeFileStem(raw: string): string {
   let stem = raw.trim();
   if (!stem) throw badRequest('fileStem must not be empty');
   if (stem.startsWith('.')) throw badRequest('fileStem must not start with a dot');
-  stem = stem.replace(/\.md$/i, '').trim();
+  stem = stem.replace(/\.mdx?$/i, '').trim();
   if (!stem) throw badRequest('fileStem must not be empty');
   if (FILE_STEM_FORBIDDEN_RE.test(stem)) throw badRequest('fileStem must not contain / \\ # | ^ : [ ] % or control characters');
   if (/\.(table|form)$/i.test(stem)) throw badRequest('fileStem must not end with .table or .form');
@@ -2847,11 +2989,16 @@ export async function createPage(body: CreatePageBody, initial?: CreatePageIniti
     // stamped with the same id.
     let id = body.id ?? ulid();
     if (body.id && (await getEntry(body.id))) throw conflict('a page with this id already exists');
+    // FOLIO_STABLE_IDS: a page the client did not name itself gets the id of its path (see "Stable page ids").
+    const idAtPath = async (rel: string): Promise<void> => {
+      if (!body.id) id = await newPageIdAt(body.space, rel);
+    };
     let relPath: string;
     // Every page file this call writes, for the scoped scan below (a form brings its table).
     const writtenFiles: string[] = [];
     if (body.kind === 'board') {
       relPath = await uniqueRelPath(body.space, parentPath, translitSlug(title), '.excalidraw.svg');
+      await idAtPath(relPath);
       // QA-3: the header must carry the TITLE too, not just the id. A board has no
       // frontmatter and no H1, so `folio-title` is the only place its name can live;
       // without it scanSpace falls back to the file name and a board created as
@@ -2875,6 +3022,7 @@ export async function createPage(body: CreatePageBody, initial?: CreatePageIniti
       // through the shared codec so it's byte-for-byte what a normal write would
       // produce, never a hand-rolled frontmatter block.
       relPath = await uniqueRelPath(body.space, parentPath, translitSlug(title), '.table.md');
+      await idAtPath(relPath);
       const doc: TableDoc = {
         meta: { id, version: 1, rowIds: 'column' },
         head: `# ${title}\n\n`,
@@ -2912,12 +3060,13 @@ export async function createPage(body: CreatePageBody, initial?: CreatePageIniti
       // (before the table) because the child directory name is derived
       // from IT.
       relPath = await uniqueRelPath(body.space, parentPath, translitSlug(title), '.form.md');
+      await idAtPath(relPath);
       const formStem = relPathStem(relPath, 'form');
       const tableParentPath = parentPath ? `${parentPath}/${formStem}` : formStem;
       await fs.mkdir(path.join(spaceDir(body.space), tableParentPath), { recursive: true });
 
-      const tableId = ulid();
       const tableRelPath = await uniqueRelPath(body.space, tableParentPath, translitSlug(title), '.table.md');
+      const tableId = await newPageIdAt(body.space, tableRelPath);
       const starterColumns: TableColumn[] = body.columns ?? [{ id: 'field_1', name: serverText('table.firstField', language), type: 'text' }];
       const tableDoc: TableDoc = {
         meta: { id: tableId, version: 1, rowIds: 'column' },
@@ -2962,14 +3111,19 @@ export async function createPage(body: CreatePageBody, initial?: CreatePageIniti
         'views:\n  - type: table\n    name: Table\n    order:\n      - file.name\n      - file.folder\n      - file.tags\n      - file.mtime\n    sort:\n      - property: file.mtime\n        direction: DESC\n';
       await fs.writeFile(abs, initial?.baseSource ?? starter, 'utf8');
     } else {
-      relPath = await uniqueRelPath(body.space, parentPath, fileStem ?? translitSlug(title), '.md');
+      relPath = await uniqueRelPath(body.space, parentPath, fileStem ?? translitSlug(title), await defaultDocExt(body.space, parentPath));
       const abs = path.join(spaceDir(body.space), relPath);
+      await idAtPath(relPath);
       if (isLightFootprintSpace(body.space)) {
-        // No front matter at all: the id rides a claim into the scan below — the
+        // No Folio front matter at all: the id rides a claim into the scan below — the
         // path's own deterministic id unless the client minted one (offline create).
         if (!body.id) id = await freePathId('doc', body.space, relPath);
         claimPageId(abs, id);
-        await persistDocFrontmatter(abs, {}, docBody ?? `# ${title}\n`);
+        // A new `.mdx` page in a docs folder of a site generator gets what that generator asks of every page: a
+        // `title` in the front matter (Nimbus and Starlight refuse to build a page without one, and say "do not
+        // repeat the title in the body"). A `.md` page keeps its `# Title`.
+        if (isMdxPath(relPath) && docBody === undefined) await persistDocFrontmatter(abs, {}, '', { raw: `---\ntitle: ${JSON.stringify(title)}\n---\n` });
+        else await persistDocFrontmatter(abs, {}, docBody ?? `# ${title}\n`);
       } else {
         await persistDocFrontmatter(abs, { id }, docBody ?? `# ${title}\n`);
       }
@@ -3258,7 +3412,7 @@ export async function createSpace(name: string, createdBy: string | null, opts: 
 
   const dir = repoDir(slug);
   await fs.mkdir(dir, { recursive: true });
-  await persistDocFrontmatter(path.join(dir, 'index.md'), { id: ulid() }, `# ${trimmed}\n`);
+  await persistDocFrontmatter(path.join(dir, 'index.md'), { id: await newPageIdAt(slug, 'index.md') }, `# ${trimmed}\n`);
   if (opts.starterTemplates) {
     // Written before the initial commit, so they ride `init: create space`.
     const templatesDir = path.join(dir, TEMPLATES_DIR_NAME);
@@ -3266,7 +3420,7 @@ export async function createSpace(name: string, createdBy: string | null, opts: 
     for (const t of starterTemplates(opts.language)) {
       // The description rides as a key of its own (template-description), merged in next to Folio's.
       const described = `---\n${TEMPLATE_DESCRIPTION_KEY}: ${JSON.stringify(t.description)}\n---\n`;
-      await persistDocFrontmatter(path.join(templatesDir, `${t.stem}.md`), { id: ulid(), icon: t.icon }, t.markdown, { raw: described });
+      await persistDocFrontmatter(path.join(templatesDir, `${t.stem}.md`), { id: await newPageIdAt(slug, `${TEMPLATES_DIR_NAME}/${t.stem}.md`), icon: t.icon }, t.markdown, { raw: described });
     }
   }
   await writeFolioMeta(path.join(dir, `${slug}${FOLIO_META_EXT}`), trimmed); // rides the SAME initial commit as index.md, right below
@@ -4189,11 +4343,11 @@ export async function createFormFromTable(tableId: string): Promise<PageMeta> {
   if (tableEntry.kind !== 'table') throw badRequest('page is not a data table');
   const table = await readFreshTableDoc(tableId);
 
-  const id = ulid();
   const tableStem = relPathStem(tableEntry.relPath, 'table');
   const formParentPath = tableEntry.dirPath ? `${tableEntry.dirPath}/${tableStem}` : tableStem;
   await fs.mkdir(path.join(spaceDir(tableEntry.space), formParentPath), { recursive: true });
   const relPath = await uniqueRelPath(tableEntry.space, formParentPath, translitSlug(tableEntry.title), '.form.md');
+  const id = await newPageIdAt(tableEntry.space, relPath);
   const doc: FormDoc = {
     meta: { id, version: 1 },
     table: tableEntry.relPath,
@@ -4333,7 +4487,7 @@ function pageFileKind(name: string): PageKind | undefined {
   if (officeFormat(lower)) return 'office';
   if (lower.endsWith('.canvas')) return 'canvas';
   if (lower.endsWith('.base')) return 'base';
-  if (lower.endsWith('.md')) return 'doc';
+  if (lower.endsWith('.md') || lower.endsWith('.mdx')) return 'doc';
   return undefined;
 }
 
@@ -4719,7 +4873,7 @@ async function copyPageInternal(
                   ? '.base'
                 : source.kind === 'artifact'
                   ? ARTIFACT_DIR_SUFFIX
-                  : '.md';
+                  : docExtOf(source.relPath) || '.md'; // a copy of an `.mdx` page is an `.mdx` page
     const relPath = await uniqueRelPath(toSpace, toParentPath, stem, ext);
     const destAbs = path.join(spaceDir(toSpace), relPath);
 
@@ -5025,7 +5179,7 @@ export async function renamePageSlug(id: string, rawSlug: string): Promise<SlugR
                     ? '.base'
                     : entry.kind === 'artifact'
                       ? ARTIFACT_DIR_SUFFIX
-                      : '.md';
+                      : docExtOf(entry.relPath) || '.md'; // a renamed `.mdx` page stays `.mdx`
       srcAbs = entry.absPath;
       destAbs = path.join(path.dirname(entry.absPath), `${slug}${ext}`);
       oldRelPath = entry.relPath;
@@ -5616,15 +5770,21 @@ async function resolveNormalized(space: string, normalized: string): Promise<Pag
   const indexPath = normalized ? `${normalized}/index.md` : 'index.md';
   const asIndex = await queryOne<PagesIndexRow>('SELECT * FROM pages_index WHERE space_slug = $1 AND path = $2', [space, indexPath]);
   if (asIndex) return toPageMeta(rowToEntry(asIndex));
+  const mdxIndexPath = normalized ? `${normalized}/index.mdx` : 'index.mdx';
+  const asMdxIndex = await queryOne<PagesIndexRow>('SELECT * FROM pages_index WHERE space_slug = $1 AND path = $2', [space, mdxIndexPath]);
+  if (asMdxIndex) return toPageMeta(rowToEntry(asMdxIndex));
   const readmePath = normalized ? `${normalized}/README.md` : 'README.md';
   const asReadme = await queryOne<PagesIndexRow>('SELECT * FROM pages_index WHERE space_slug = $1 AND path = $2', [space, readmePath]);
   if (asReadme) return toPageMeta(rowToEntry(asReadme));
+  const mdxReadmePath = normalized ? `${normalized}/README.mdx` : 'README.mdx';
+  const asMdxReadme = await queryOne<PagesIndexRow>('SELECT * FROM pages_index WHERE space_slug = $1 AND path = $2', [space, mdxReadmePath]);
+  if (asMdxReadme) return toPageMeta(rowToEntry(asMdxReadme));
   // Same-named page parent: `X.md` + `X/`. getTree/getSubtree represent the
   // directory as X.md's children, so resolving the ancestor directory `X`
   // must lead back to that real page rather than a synthetic folder route.
   // Only an unambiguous match is accepted; externally-created collisions
   // keep the directory fallback instead of choosing an arbitrary page kind.
-  const pairedPaths = [`${normalized}.md`, `${normalized}.table.md`, `${normalized}.form.md`, `${normalized}.excalidraw.svg`];
+  const pairedPaths = [`${normalized}.md`, `${normalized}.mdx`, `${normalized}.table.md`, `${normalized}.form.md`, `${normalized}.excalidraw.svg`];
   const pairedRows = await query<PagesIndexRow>(
     'SELECT * FROM pages_index WHERE space_slug = $1 AND path = ANY($2::text[])',
     [space, pairedPaths],
@@ -5637,12 +5797,12 @@ async function resolveNormalized(space: string, normalized: string): Promise<Pag
   // one path its own space home asks for, and the UI concluded the SPACE was gone.
   if (normalized === 'index.md' || normalized.endsWith('/index.md')) {
     const dir = normalized.slice(0, -'index.md'.length);
-    const siblingReadme = `${dir}README.md`;
-    const asSiblingReadme = await queryOne<PagesIndexRow>(
-      'SELECT * FROM pages_index WHERE space_slug = $1 AND path = $2',
-      [space, siblingReadme],
+    // The directory's own page may be `index.mdx` / `README.md` / `README.mdx` (an MDX docs folder, a plain repo).
+    const asSibling = await queryOne<PagesIndexRow>(
+      'SELECT * FROM pages_index WHERE space_slug = $1 AND path = ANY($2::text[]) ORDER BY array_position($2::text[], path) LIMIT 1',
+      [space, [`${dir}index.mdx`, `${dir}README.md`, `${dir}README.mdx`]],
     );
-    if (asSiblingReadme) return toPageMeta(rowToEntry(asSiblingReadme));
+    if (asSibling) return toPageMeta(rowToEntry(asSibling));
   }
   return undefined;
 }

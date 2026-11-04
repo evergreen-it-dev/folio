@@ -208,7 +208,7 @@ function decodedVariants(linkPath: string): string[] {
 /** The indexed page a wikilink path means from a source page in `sourceDir`, or null. See the module comment for the order. */
 export function resolveWikilinkPath(index: PagePathIndex, sourceDir: string, linkPath: string): string | null {
   for (const variant of decodedVariants(linkPath)) {
-    const names = /\.md$/i.test(variant) ? [variant] : [`${variant}.md`, variant];
+    const names = /\.mdx?$/i.test(variant) ? [variant] : [`${variant}.md`, `${variant}.mdx`, variant];
     const explicitRelative = variant.startsWith('./') || variant.startsWith('../');
     for (const name of names) {
       const relative = joinNormalized(sourceDir, name);
@@ -232,7 +232,7 @@ export function wikilinkBasenames(linkPath: string): string[] {
     const base = lastSegment(variant).toLowerCase();
     if (!base) continue;
     out.add(base);
-    if (!base.endsWith('.md')) out.add(`${base}.md`);
+    if (!/\.mdx?$/.test(base)) out.add(`${base}.md`).add(`${base}.mdx`);
   }
   return [...out];
 }
@@ -261,9 +261,9 @@ function relativePath(fromDir: string, toPath: string): string {
  * resolves (cannot happen for an indexed `target`, but never guess).
  */
 function composeLinkPath(orig: string, oldTarget: string, target: string, newDir: string, newIndex: PagePathIndex): string | null {
-  const wroteMd = /\.md$/i.test(orig);
-  const targetIsMd = /\.md$/i.test(target);
-  const strip = (p: string) => (targetIsMd && !wroteMd ? p.slice(0, -'.md'.length) : p);
+  const wroteMd = /\.mdx?$/i.test(orig);
+  const targetIsMd = /\.mdx?$/i.test(target);
+  const strip = (p: string) => (targetIsMd && !wroteMd ? p.replace(/\.mdx?$/i, '') : p);
   const encodeLike = (p: string) => (orig.includes('%') ? p.replace(/ /g, '%20') : p);
   const style = orig.startsWith('./') || orig.startsWith('../') ? 'relative' : orig.includes('/') ? 'path' : 'name';
 

@@ -4,6 +4,64 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Added
+
+- **Public sites are readable by AI agents.** Every published site now serves
+  `llms.txt` (title, summary and a list of its pages grouped by section, each
+  with a link to the page's Markdown and a one-line description taken from the
+  page's first paragraph, under readable section titles, following llmstxt.org), `llms-full.txt` (the Markdown of all listed pages in one file,
+  capped at 200 pages or 2 MB with a note when cut) and a Markdown copy of every
+  page at the page address plus `.md` (`/p/<id>.md`; `/index.md` for the home
+  page), in which `[[wikilinks]]` become links to the linked page's `.md`. Page heads carry `<link rel="alternate" type="text/markdown">` and a
+  link to `llms.txt`. Pages with restricted access, `.agent` and templates are
+  left out exactly as on the HTML site. A switch in **Site & PDF settings** (the
+  `llms` key of `.folio/site.json`, on by default) turns it off; it is also off
+  while search engines are not allowed to index the site.
+- **Writing rules and "Check against writing rules".** A page named
+  `writing-rules` in a space's `.agent` folder holds the team's style rules
+  (administrators add a starter with "Create writing rules" in the `.agent`
+  section). A page's header gets **Check against writing rules**: the assistant
+  runs read-only and lists each finding with its rule, the quoted fragment and
+  a suggested rewrite; **Fix with Agent** hands the findings to Agent mode. The
+  button is missing without rules and disabled, with the reason, without a
+  working Folio AI key. New MCP tool `check_page_writing_rules` gives an
+  external agent the rules and a page before it writes (49 tools).
+
+- **MDX pages.** A `.mdx` file (Nimbus, Starlight, Astro, Docusaurus docs) is a
+  page like a `.md` one: it is scanned, titled from its front matter, edited,
+  renamed, moved, copied and linked. Folio does not run MDX; it keeps it intact.
+  `import`/`export` lines, JSX components (`<Aside>`, `<Tabs>`, `<Card />`),
+  `{expressions}` and comments come back from a save byte for byte. In Live edit
+  each import and component is folded into one compact block (a component shows
+  its name, attributes and Markdown body, a click opens its source); Reading
+  draws the same components as labelled boxes and hides the import lines. A new
+  page is `.mdx` only in a folder of `.mdx` pages, and starts with a front matter
+  `title:` there. Before, the scan skipped `.mdx` files and a Docusaurus or
+  Nimbus docs folder connected as a space of no pages.
+- **Comments on page text.** Select text in a document and press **Comment**
+  (in Live edit or in Reading) to start a thread on that passage; the passage
+  is highlighted, and the **Comments** panel lists the open threads next to
+  the page, with resolved ones behind "Show resolved". Anyone who can see the
+  page can comment and reply, editors included; the author edits or deletes
+  their own comments, and the person who started a thread or an editor of the
+  page resolves and reopens it. Deleting a thread's first comment deletes the
+  thread. The thread follows its text as the page is edited and shows the
+  quoted text if the passage is deleted. Comments live in the database, not
+  in the Markdown file, so they stay out of Git, exports and published
+  sites, and they stay with a page moved to the trash and restored. Changes
+  appear for everyone who has the page open. Adds migration 060. MCP tools
+  `list_comments`, `add_comment` (starts a thread on the first occurrence of
+  a quoted passage) and `reply_comment` let an agent read and answer threads;
+  they are not available on public sites.
+
+### Changed
+
+- **Pages without a stored id get a stable one.** A document or whiteboard
+  found on disk without an `id` used to get a random identifier each time
+  the instance was rebuilt, so links to it broke. It now gets an id derived
+  from its space and path (an existing index row at that path keeps its id).
+  Pages that already have an id are not touched.
+
 ### Security
 
 - Dependency updates close 19 Dependabot advisories: DOMPurify 3.4.17 (used by
@@ -20,6 +78,22 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- **A click or `End` under a block widget lands on the right line.** In Live
+  edit, a click below or an `End` press next to a table, a Mermaid diagram, an
+  HTML block or an MDX import or component put the cursor one line too low,
+  because the widget's vertical margins were not counted in the editor's height
+  map. Now they are.
+- **Page links survive a rebuilt or re-seeded instance, and a dead link no
+  longer ends in a blank page.** Before, a rebuilt instance or a demo that is
+  re-created every day gave each page a new random id, and every shared link
+  died. An id that no longer exists but is the path-derived id of a current
+  page now leads to that page: a `301` on public sites (HTML and `.md`),
+  `GET /api/spaces/:space/moved-page/:id` in the app. Set `FOLIO_STABLE_IDS=1`
+  to give new pages, home pages, starter templates and a form's table the
+  derived id too, so a re-seeded instance hands out the ids of the previous
+  one (off by default). A link to a page that is really gone shows a "moved or
+  removed" screen with search and a link to the space instead of a blank page,
+  and a page that is open when it is removed switches to the same screen.
 - **The access log of a space names the person.** "Granted access → editor"
   did not say to whom. Each grant, removal and self-grant now shows the person's
   current name (or "(deleted user)"), older entries included, since the log

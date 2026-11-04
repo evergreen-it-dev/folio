@@ -63,6 +63,9 @@
   --folio-bg-red: #ffdeeb;
   --folio-bg-orange: #ffe8cc;
   --folio-bg-gray: #e9ecef;
+  /* Inline comments (comment-highlights.ts): a soft yellow over the commented range, a stronger one for the active thread. */
+  --folio-ed-comment: rgb(255 212 0 / 22%);
+  --folio-ed-comment-active: rgb(255 212 0 / 48%);
 }
 
 /* The width switch from the user menu (app/settings.tsx sets html[data-width]).
@@ -127,6 +130,8 @@ html[data-width='wide'] .folio-editor {
     --folio-bg-red: #4a2131;
     --folio-bg-orange: #4a3320;
     --folio-bg-gray: #2c2a28;
+    --folio-ed-comment: rgb(255 212 0 / 16%);
+    --folio-ed-comment-active: rgb(255 212 0 / 36%);
   }
 }
 
@@ -178,6 +183,8 @@ html[data-width='wide'] .folio-editor {
     --folio-bg-red: #4a2131;
     --folio-bg-orange: #4a3320;
     --folio-bg-gray: #2c2a28;
+    --folio-ed-comment: rgb(255 212 0 / 16%);
+    --folio-ed-comment-active: rgb(255 212 0 / 36%);
 }
 
 .folio-editor {
@@ -901,6 +908,12 @@ html[data-theme='dark'] .folio-editor .cm-md-callout-caution {
   /* Inline SVG keeps the checkmark self-contained — no external asset. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-size: 100%;
+}
+
+/* The slot every block widget sits in (block-slot.ts). CodeMirror measures a block's height without its margins; the slot
+   contains the block's vertical margins (flow-root stops them collapsing out), so its height is the block's real one. */
+.folio-editor .cm-md-block-slot {
+  display: flow-root;
 }
 
 .folio-editor .cm-md-block {
@@ -3268,4 +3281,153 @@ body:has([data-app-modal]) :is(
     .folio-image-editor
   ) {
   visibility: hidden !important;
+}
+
+/* ------------------------------------------------------- inline comments -- */
+
+/* The editor and its comments panel side by side (PageEditor renders the frame only where comments are on). */
+.folio-editor-frame {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+}
+
+.folio-editor-frame > .folio-editor {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.folio-editor .cm-comment {
+  background: var(--folio-ed-comment);
+  border-bottom: 1px solid var(--folio-ed-comment-active);
+  cursor: pointer;
+}
+
+.folio-editor .cm-comment--active {
+  background: var(--folio-ed-comment-active);
+}
+
+.folio-editor .cm-comment--flash {
+  animation: folio-comment-flash 1.4s ease-out;
+}
+
+@keyframes folio-comment-flash {
+  0%,
+  35% {
+    background: var(--folio-ed-comment-active);
+    outline: 2px solid var(--folio-ed-comment-active);
+  }
+  100% {
+    outline: 2px solid transparent;
+  }
+}
+
+/* Reading mode paints the same ranges with the CSS Custom Highlight API (comment-reading.ts). */
+::highlight(folio-comment) {
+  background-color: var(--folio-ed-comment, rgb(255 212 0 / 22%));
+}
+
+::highlight(folio-comment-active) {
+  background-color: var(--folio-ed-comment-active, rgb(255 212 0 / 48%));
+}
+
+/* The chrome-row button beside the panel toggle: its open-thread count rides on the corner. */
+.folio-editor__comments {
+  position: relative;
+}
+
+.folio-editor__comments-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--folio-ed-accent);
+  color: var(--folio-ed-accent-fg);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------- MDX block -- */
+
+/*
+ * An `.mdx` page's `import`/`export` lines (--esm) or one JSX component (--jsx), folded into one block.
+ * Like the HTML block above it is a read-only preview: a click reveals the source, where it is edited.
+ */
+.folio-editor .cm-md-mdxblock {
+  position: relative;
+  background: transparent;
+  border-color: var(--folio-ed-border);
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.folio-editor .cm-md-mdxblock__host {
+  overflow-x: auto;
+  pointer-events: none;
+  /* The editor's `pre-wrap` would turn every newline between the rendered tags into a blank line. */
+  white-space: normal;
+}
+
+.folio-editor .cm-md-mdxblock--esm {
+  padding: 0.35rem 0.6rem;
+  background: var(--folio-ed-surface);
+}
+
+.folio-editor .cm-md-mdxblock--esm pre {
+  margin: 0;
+  font-family: var(--folio-ed-mono);
+  font-size: 0.82em;
+  line-height: 1.5;
+  color: var(--folio-ed-faint);
+  white-space: pre-wrap;
+}
+
+.folio-editor .cm-md-mdxblock--esm code {
+  background: none;
+  padding: 0;
+}
+
+/* A component is framed by its own labelled box (markdown.css), so the widget adds no second frame. */
+.folio-editor .cm-md-mdxblock--jsx {
+  padding: 0;
+  border: none;
+}
+
+.folio-editor .cm-md-mdxblock--jsx .cm-md-mdxblock__badge {
+  top: 0.45rem;
+  right: 0.6rem;
+}
+
+/* Compact: a long component is cut at a fixed height and fades out; the click that opens the source shows the rest. */
+.folio-editor .cm-md-mdxblock--jsx .cm-md-mdxblock__host {
+  max-height: 22rem;
+  overflow: hidden;
+}
+
+.folio-editor .cm-md-mdxblock--clipped .cm-md-mdxblock__host {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 3rem), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 3rem), transparent);
+}
+
+/* The Reading view's page padding does not belong inside a block. */
+.folio-editor .cm-md-mdxblock__host .folio-markdown { padding: 0; }
+.folio-editor .cm-md-mdxblock__host .folio-mdx { margin: 0; }
+
+.folio-editor .cm-md-mdxblock__badge {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: var(--folio-ed-surface);
+  color: var(--folio-ed-faint);
+  font-family: var(--folio-ed-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }

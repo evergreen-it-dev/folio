@@ -2603,6 +2603,56 @@ export function getLiveText(id: string): string | undefined {
   return docs.get(id)?.getText('content').toString();
 }
 
+/** A comment anchor on a stretch of a doc's text: base64 of two Y.encodeRelativePosition, plus the text itself (shared/comments.ts). */
+export interface QuoteAnchor {
+  anchorFrom: string;
+  anchorTo: string;
+  quotedText: string;
+}
+
+/**
+ * The anchor of the first occurrence of `quote` in a doc page's current text
+ * (the markdown body, as the editor holds it), or undefined when it is not
+ * there. Positions are relative to the page's room, so a page nobody has open
+ * is first opened the way a connection would open it (ensureDocSeeded: the
+ * stored room state, else the file, whose seed is stored at once) — an anchor
+ * computed against any other copy would point at items the next room does not
+ * have. A room opened only for this is closed again unless someone joined it.
+ * The start sticks to the character after it, the end to the one before, so
+ * typing right next to the quote does not stretch the highlight.
+ */
+export async function anchorQuote(id: string, quote: string): Promise<QuoteAnchor | undefined> {
+  const wasLive = docs.has(id);
+  await ensureDocSeeded(id);
+  const ydoc = docs.get(id);
+  if (!ydoc) return undefined;
+  try {
+    const needle = normalizeEol(quote);
+    const ytext = ydoc.getText('content');
+    const start = needle ? ytext.toString().indexOf(needle) : -1;
+    if (start < 0) return undefined;
+    // yEngineFor, not the plain `Y` import — see its doc comment up top.
+    const E = yEngineFor(ydoc);
+    const encode = (index: number, assoc: number): string => Buffer.from(E.encodeRelativePosition(E.createRelativePositionFromTypeIndex(ytext, index, assoc))).toString('base64');
+    return { anchorFrom: encode(start, 0), anchorTo: encode(start + needle.length, -1), quotedText: needle };
+  } finally {
+    if (!wasLive) await closeRoomIfIdle(id, ydoc);
+  }
+}
+
+/** What y-websocket's closeConn does for the last connection of a room: write it out, forget it. A room somebody joined meanwhile stays. */
+async function closeRoomIfIdle(id: string, ydoc: Y.Doc): Promise<void> {
+  const connections = (): number => (ydoc as unknown as { conns?: Map<unknown, unknown> }).conns?.size ?? 0;
+  if (docs.get(id) !== ydoc || connections() > 0) return;
+  await writers.get(id)?.flush();
+  // No await between the last look and the removal: a connection cannot slip in between.
+  if (docs.get(id) !== ydoc || connections() > 0) return;
+  writers.delete(id);
+  seededDocs.delete(id);
+  docs.delete(id);
+  ydoc.destroy();
+}
+
 /**
  * Routes a PUT's markdown through the live Y.Doc (full-text replace inside a
  * transaction) instead of writing the file directly. The doc's own 'update'
@@ -2718,7 +2768,7 @@ export async function maybeAutoRenameSlug(id: string, oldTitle: string | null, n
   if (!oldTitle || !newTitle || oldTitle === newTitle) return;
   const entry = await storage.getEntry(id);
   if (!entry || entry.kind !== 'doc' || entry.isIndex) return;
-  const currentSlug = entry.relPath.replace(/^.*\//, '').replace(/\.md$/i, '');
+  const currentSlug = entry.relPath.replace(/^.*\//, '').replace(/\.mdx?$/i, '');
   const oldSlug = translitSlug(oldTitle);
   const newSlug = translitSlug(newTitle);
   // «new-page», «new-page-2», … — every uniqueRelPath variant of the old title counts as auto-derived.
@@ -2838,7 +2888,7 @@ export async function rewriteLinksAfterMove(moved: storage.SlugRenameMove[]): Pr
 /** The folders a slug rename moved: a directory page's (index.md / README.md) folder, old -> new. */
 function movedDirsOf(moved: storage.SlugRenameMove[]): Map<string, string> {
   const dirs = new Map<string, string>();
-  const dirOfIndex = (p: string) => (/(^|\/)(index|README)\.md$/.test(p) && p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : null);
+  const dirOfIndex = (p: string) => (/(^|\/)(index|README)\.mdx?$/.test(p) && p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : null);
   for (const m of moved) {
     const from = dirOfIndex(m.oldRelPath);
     const to = dirOfIndex(m.newRelPath);

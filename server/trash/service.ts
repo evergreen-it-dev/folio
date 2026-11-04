@@ -270,7 +270,7 @@ export async function listTrash(actor: User, filters: TrashListFilters = {}): Pr
 // ---------------------------------------------------------------------------
 
 /** Page-file extensions, longest-suffix first — `.table.md` must be stripped whole before plain `.md` gets a chance (same trap storage.titleFallback documents). */
-const PAGE_EXTS = ['.table.md', '.excalidraw.svg', '.pdf', '.docx', '.xlsx', '.pptx', '.md', '.artifact'];
+const PAGE_EXTS = ['.table.md', '.excalidraw.svg', '.pdf', '.docx', '.xlsx', '.pptx', '.md', '.mdx', '.artifact'];
 
 function splitRelExt(rel: string): { base: string; ext: string } {
   const lower = rel.toLowerCase();

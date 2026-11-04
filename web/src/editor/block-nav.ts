@@ -58,7 +58,7 @@ import { EditorSelection, EditorState, Prec, type Extension, type Line, type Tex
 import { EditorView, keymap, type Command } from '@codemirror/view';
 import { HEADER_ROW, parseGfmTable } from './gfm-table';
 import { computeBlockSpecs, computeInlineSpecs, type BlockSpec } from './live-decorations';
-import { liveModeFacet } from './live-preview';
+import { isMdxState, liveModeFacet } from './live-preview';
 import { openTableCellAt } from './table-widget';
 
 /** Generous cap on how many back-to-back widgets/label lines one key press
@@ -76,6 +76,7 @@ function blockSpecsOf(view: EditorView): BlockSpec[] {
     selection: state.selection.ranges,
     ranges: [{ from: 0, to: state.doc.length }],
     live: true,
+    mdx: isMdxState(state),
   });
 }
 
@@ -89,6 +90,7 @@ function calloutLabelLines(view: EditorView): Set<number> {
     selection: state.selection.ranges,
     ranges: [{ from: 0, to: state.doc.length }],
     live: true,
+    mdx: isMdxState(state),
   });
   const lines = new Set<number>();
   for (const spec of specs) if (spec.kind === 'callout') lines.add(state.doc.lineAt(spec.from).number);
@@ -302,6 +304,7 @@ const tablePointerGuard = EditorState.transactionFilter.of((tr) => {
     selection: state.selection.ranges,
     ranges: [{ from: 0, to: state.doc.length }],
     live: true,
+    mdx: isMdxState(state),
   }).find((spec) => spec.kind === 'table' && head >= spec.from && head <= spec.to);
   if (!table) return tr;
 
@@ -409,6 +412,7 @@ function foldedTables(state: EditorState): BlockSpec[] {
     selection: state.selection.ranges,
     ranges: [{ from: 0, to: state.doc.length }],
     live: true,
+    mdx: isMdxState(state),
   }).filter((spec) => spec.kind === 'table');
 }
 

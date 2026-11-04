@@ -14,7 +14,7 @@ export interface FolderTitlePage {
 }
 
 /** The suffixes a page file may carry; the stem is what is left (the directory a same-named page claims). */
-const SUFFIXES = ['.excalidraw.svg', '.table.md', '.form.md', '.canvas', '.base', '.pdf', '.md'];
+const SUFFIXES = ['.excalidraw.svg', '.table.md', '.form.md', '.canvas', '.base', '.pdf', '.md', '.mdx'];
 
 function stemOf(fileName: string): string | null {
   const lower = fileName.toLowerCase();
@@ -35,12 +35,12 @@ const nameOf = (p: string): string => p.slice(p.lastIndexOf('/') + 1);
 export function folderTitleMap(pages: readonly FolderTitlePage[]): Map<string, string> {
   const out = new Map<string, string>();
   const hasIndexMd = new Set<string>();
-  for (const p of pages) if (nameOf(p.path) === 'index.md') hasIndexMd.add(dirOf(p.path));
+  for (const p of pages) if (/^index\.mdx?$/.test(nameOf(p.path))) hasIndexMd.add(dirOf(p.path));
   for (const p of pages) {
     const name = nameOf(p.path);
     const dir = dirOf(p.path);
     if (dir === '') continue; // the root's index page is the space home, not a folder
-    if (name === 'index.md' || (name === 'README.md' && !hasIndexMd.has(dir))) {
+    if (/^index\.mdx?$/.test(name) || (/^README\.mdx?$/.test(name) && !hasIndexMd.has(dir))) {
       if (p.title.trim()) out.set(dir, p.title.trim());
     }
   }
@@ -49,7 +49,7 @@ export function folderTitleMap(pages: readonly FolderTitlePage[]): Map<string, s
   const claims = new Map<string, string[]>();
   for (const p of pages) {
     const name = nameOf(p.path);
-    if (name === 'index.md' || name === 'README.md') continue;
+    if (/^(index|README)\.mdx?$/.test(name)) continue;
     const stem = stemOf(name);
     if (!stem) continue;
     const dir = dirOf(p.path);

@@ -37,7 +37,7 @@ Replace the address, and put the token in through the UI or your secret manager 
 
 ## Notes
 
-- A small local model may handle 45 tools poorly. If it does, try a larger one, or expose fewer tools.
+- A small local model may handle 49 tools poorly. If it does, try a larger one, or expose fewer tools.
 - Personal rights per user would need OAuth. Open WebUI supports OAuth 2.1 for MCP, but this has not been tried against Folio.
 - The demo does not issue personal tokens, so Open WebUI cannot connect to it with a token. Run your own Folio.
 - Page content is data, not instructions, and the token is read-only, so the model cannot change the wiki.

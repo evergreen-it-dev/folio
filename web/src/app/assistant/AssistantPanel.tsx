@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, matchPath } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Bot, ChevronUp, History, Loader2, MessageCircle, Minus, Plus, Send, Settings, Shield, Square, X } from 'lucide-react';
+import { Bot, ChevronUp, History, Loader2, MessageCircle, Minus, Plus, Send, Settings, Shield, Square, Wand2, X } from 'lucide-react';
 import type { AssistantFeedbackRating, AssistantMessage, AssistantRunMode } from '@shared/contracts';
 import { api } from '../api';
 import { useAssistantRun } from './runState';
@@ -14,6 +14,9 @@ import { useToast } from '../ui/Toast';
 import { Menu } from '../ui/Menu';
 import { AssistantSettingsModal } from './AssistantSettingsModal';
 import { AssistantMessageContent, AssistantStreamingContent } from './AssistantMessageContent';
+import { canEditContent } from '../auth/roles';
+import { writingRulesFixMessage, writingRulesLanguageName } from './writingRulesPrompt';
+import type { PendingAssistantAsk } from './AssistantHost';
 import { AssistantFeedbackButtons, useAssistantFeedback } from './AssistantFeedback';
 import { AssistantSurveyCard } from './AssistantSurvey';
 import '../i18n/register';
@@ -28,6 +31,9 @@ export interface AssistantPanelProps {
    */
   open: boolean;
   onClose: () => void;
+  /** A request from elsewhere in the app (AssistantHost.ask): sent once the panel is ready, then reported through `onAskHandled`. */
+  pendingAsk?: PendingAssistantAsk | null;
+  onAskHandled?: (id: number) => void;
 }
 
 // sessionStorage (not localStorage): "survive a reload" per the
@@ -127,8 +133,8 @@ function useSidebarRightEdge(): number {
   return edge;
 }
 
-export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
-  const { t } = useTranslation('app');
+export function AssistantPanel({ open, onClose, pendingAsk = null, onAskHandled }: AssistantPanelProps) {
+  const { t, i18n } = useTranslation('app');
   const errorText = useApiErrorText();
   const showToast = useToast();
   const run = useAssistantRun();
@@ -166,6 +172,8 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   // setIsRunning(true) before its network call.
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The conversation that holds a writing-rules check (set by `send`), so its findings can be handed to Agent mode.
+  const [writingRulesCheck, setWritingRulesCheck] = useState<{ conversationId: string; pageId: string; title: string } | null>(null);
   // Survey card: `engagedSurveyId` keeps it on screen after the first answer
   // (the server stops reporting the survey as due at once, but the optional
   // comment step and the "Thanks!" line still follow); `finishedSurveyIds`
@@ -291,20 +299,30 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
     await run.stop();
   }
 
-  async function submit() {
-    const message = draft.trim();
-    if (!message || busy || !ready) return;
+  /**
+   * Sends `message` as a run. `fresh` starts a new conversation (a check of one page should not be tangled with
+   * an old chat); `check` remembers that this conversation holds a writing-rules check, for "Fix with Agent".
+   */
+  async function send(message: string, mode: AssistantRunMode, opts: { fresh?: boolean; displayMessage?: string; check?: { pageId: string; title: string } } = {}): Promise<boolean> {
+    const fresh = opts.fresh ?? startNew;
     const now = new Date().toISOString();
-    const optimistic: AssistantMessage = { id: `optimistic-${Date.now()}`, role: 'user', content: message, createdAt: now };
-    setPendingMessages((current) => [...current, optimistic]);
-    setDraft('');
+    const optimistic: AssistantMessage = { id: `optimistic-${Date.now()}`, role: 'user', content: opts.displayMessage ?? message, createdAt: now };
+    if (fresh) {
+      setPendingMessages([optimistic]);
+      setEngagedSurveyId(null);
+      setStartNew(true);
+    } else {
+      setPendingMessages((current) => [...current, optimistic]);
+    }
+    setRunMode(mode);
     setIsSubmitting(true);
     try {
       const res = await run.start({
         message,
-        runMode,
-        conversationId: startNew ? null : activeConversationId,
-        startNew,
+        ...(opts.displayMessage ? { displayMessage: opts.displayMessage } : {}),
+        runMode: mode,
+        conversationId: fresh ? null : activeConversationId,
+        startNew: fresh,
         currentPath,
         space,
         pageId: pageId ?? null,
@@ -312,13 +330,61 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
       setStartNew(false);
       setConversationId(res.conversationId);
       storeConversationId(res.conversationId);
+      setWritingRulesCheck(opts.check ? { conversationId: res.conversationId, ...opts.check } : null);
+      return true;
     } catch (error) {
       // The run never started server-side — drop the optimistic bubble, it was never sent.
       setPendingMessages((current) => current.filter((m) => m.id !== optimistic.id));
       showToast(errorText(error, 'assistant.chat.sendFailed'));
+      return false;
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function submit() {
+    const message = draft.trim();
+    if (!message || busy || !ready) return;
+    setDraft('');
+    await send(message, runMode);
+  }
+
+  // A request from elsewhere in the app (the page header's "Check against writing rules"): sent as soon as the
+  // key is known to work and nothing is running; dropped (with a hint) when it can't be.
+  useEffect(() => {
+    if (!pendingAsk || settings.isLoading) return;
+    if (!ready) {
+      onAskHandled?.(pendingAsk.id); // the panel already explains how to configure the assistant
+      return;
+    }
+    if (busy) {
+      showToast(t('assistant.writingRules.busy'));
+      onAskHandled?.(pendingAsk.id);
+      return;
+    }
+    onAskHandled?.(pendingAsk.id);
+    setDraft('');
+    void send(pendingAsk.message, pendingAsk.runMode, { fresh: pendingAsk.startNew, displayMessage: pendingAsk.displayMessage, check: pendingAsk.writingRulesCheck });
+    // `send` is re-created every render; the request id is what makes this run once per request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAsk?.id, settings.isLoading, ready]);
+
+  // "Fix with Agent" under the findings of a writing-rules check: only right after that conversation's last answer,
+  // only when the answer lists findings, only for someone who may edit the page.
+  const lastMessage = messages[messages.length - 1];
+  const myRole = space ? spacesData?.spaces.find((s) => s.slug === space)?.myRole : undefined;
+  const canFix =
+    writingRulesCheck !== null &&
+    writingRulesCheck.conversationId === activeConversationId &&
+    !busy &&
+    lastMessage?.role === 'assistant' &&
+    /^###\s+\d+\./m.test(lastMessage.content) &&
+    canEditContent(myRole);
+
+  async function fixWithAgent() {
+    if (!writingRulesCheck || busy) return;
+    const { pageId: checkedPageId, title } = writingRulesCheck;
+    await send(writingRulesFixMessage({ pageId: checkedPageId, title, uiLanguage: writingRulesLanguageName(i18n.resolvedLanguage ?? i18n.language) }), 'agent', { fresh: false, displayMessage: t('assistant.writingRules.fixDisplay') });
   }
 
   return (
@@ -450,6 +516,17 @@ export function AssistantPanel({ open, onClose }: AssistantPanelProps) {
                         onRate={(rating) => rate(message, rating)}
                         alwaysVisible={index === messages.length - 1}
                       />
+                    )}
+                    {canFix && index === messages.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={() => void fixWithAgent()}
+                        title={t('assistant.writingRules.fixHint')}
+                        className="mt-1 flex items-center gap-1.5 rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                      >
+                        <Wand2 size={12} aria-hidden="true" />
+                        {t('assistant.writingRules.fix')}
+                      </button>
                     )}
                   </div>
                 );

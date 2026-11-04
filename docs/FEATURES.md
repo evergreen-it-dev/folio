@@ -138,6 +138,16 @@ is present.
 
 Authorship reaches the Git commit: the history shows who changed the page.
 
+**Comments on text.** In a document, select a passage and press **Comment** (in
+Live edit or Reading) to start a thread; the passage is highlighted and the
+**Comments** panel lists open threads, resolved ones behind "Show resolved".
+Anyone who can see the page can comment and reply; the author edits or deletes
+their own comments; the person who started a thread or a page editor resolves
+and reopens it. The thread follows its text and shows the quote if the passage
+is deleted. Comments are stored in the database (migration 060), not in the
+Markdown file: they are not in Git, exports or published sites. The MCP tools
+`list_comments`, `add_comment` and `reply_comment` give agents the same access.
+
 **Shared page timer.** Every page has a timer icon in its header (document, table,
 whiteboard, form, PDF/Office, a space's home page; a folder listing has one for
 the space): presets of 1, 3, 5 and 10 minutes, or a custom time (minutes and
@@ -417,6 +427,34 @@ connection is back.
   `sidebar_position`, `slug`, `tags`, `description` from Docusaurus, MkDocs,
   Hugo or Jekyll, comments, lists, quoting — stays byte for byte when a page is
   saved, copied or duplicated.
+- **`.mdx` pages (Nimbus, Starlight, Astro, Docusaurus) are pages like `.md`
+  ones.** Connect a site's docs folder (for example `src/content/docs/`) as a
+  space bound to that folder: every `.mdx` file is a page in the tree, `index.mdx`
+  is a folder's own page, and the title comes from the front matter `title:`.
+  Folio does not run MDX, and the editor works on the text of the file, so what
+  it does not understand comes back from a save byte for byte: `import` / `export`
+  lines, JSX components (`<Aside>`, `<Tabs>`, `<Card />`, nested ones, with
+  Markdown inside), `{expressions}` and `{/* comments */}`. In Live edit each such
+  construct is folded into one compact "MDX component" / "MDX import" block (a
+  component is at most 22rem tall and fades out below that): a component is drawn
+  as a box with its name, its attributes and its Markdown body (tables, lists and
+  code inside included), imports as code. A click opens the block as plain text to
+  edit; arrow keys step over it like over an HTML block; Source mode folds
+  nothing. Reading hides the `import`/`export` lines and `{/* … */}` comment lines
+  and draws components as the same boxes (a long expression attribute is shown as
+  `{…}`). A line starting with a capitalised tag (or `<>`) is a component up to its
+  matching closing tag; a tag with text after it on the same line, JSX inside a
+  paragraph and a component that is never closed stay ordinary paragraph text.
+  Lower-case HTML (`<details>`, `<dl>`) is Markdown's own and is handled as before.
+  A new page gets `.mdx` only when the nearest folder that holds documents (this
+  one, then its parents) holds nothing but `.mdx`; a mixed folder, a space with no
+  pages and every ordinary space keep `.md`. A new `.mdx` page in a space bound to
+  a folder starts with a front matter `title:` and an empty body (Nimbus and
+  Starlight refuse a page without a title and ask not to repeat it in the text);
+  a new `.md` page starts with `# Title`. Renaming, moving and copying keep the
+  suffix, and `intro.md` and `intro.mdx` count as one name. Checked on the docs of
+  Cloudflare's Nimbus demo site (17 pages): `git status` is clean after connecting,
+  and editing one paragraph in Live edit commits that paragraph and nothing else.
 - **A light footprint in a product repository.** When a space is bound to a
   folder of a repository (a root path such as `docs/`), Folio does not write an
   `id` into the files — not on the first scan, not when a page is created or
@@ -651,6 +689,25 @@ it exactly as they read a space with `instance` visibility.
   subdomain, else the address on this Folio; or one of them) that the canonical
   links and the sitemap use. The site answers on every address; only the
   canonical one is declared. In the public demo every site is `noindex`.
+- **For AI agents.** Each site also serves, at its own root (the site's host, or
+  `/public/<space>/` on the main host): `llms.txt`, an index in the llmstxt.org
+  format (site title, summary, then every public page as
+  `- [Title](<page>.md): description`, grouped by the top-level folders of the
+  tree); `llms-full.txt`, the Markdown of all those pages in one file, each under
+  its title and URL, cut at 200 pages or 2 MB with a comment saying so (and an
+  `X-Folio-Llms-Truncated` header); and a Markdown copy of each page at its
+  address plus `.md` (`/p/<id>.md`, `/index.md` for the home page), served as
+  `text/markdown`. A copy is the page's Markdown without front matter, links to
+  other public pages pointing at their `.md` and files as absolute URLs. Text
+  pages only: documents, tables, whiteboards, canvases and bases; forms, PDF and
+  Office files and artifacts are not listed. Pages with `unlisted: true` are left
+  out of the two lists but their `.md` opens by link, like the page. The
+  visibility rule is the HTML site's own: a restricted page (or one below it),
+  `.agent` and templates are in none of these and their `.md` is a 404. Page heads
+  link to the page's `.md` and to `llms.txt`. Switch it off with `"llms": false`
+  in `.folio/site.json` (checkbox on the **Site** tab of Site & PDF settings; on by
+  default). It is also off while "Allow search engines to index this site" is off
+  and in the public demo.
 - **Not yet.** There is no PDF preview before saving, no editor for the SEO
   fields of a single page (they are front matter keys), no redirect from the
   other addresses to the primary one, and no place for analytics snippets.
@@ -853,6 +910,21 @@ like any other page. About 60,000 characters of instructions are used; if
 there is more, whole pages at the end are left out and the assistant is told
 so.
 
+**Writing rules.** A page named `writing-rules` in `.agent` holds the team's
+style rules (administrators can add a starter with "Create writing rules" in
+the `.agent` section of the sidebar). It is a normal page: edit it, review it in
+Git. With it in place, a page's header shows **Check against writing rules**:
+the assistant, in Ask mode (read only), compares the page with every rule and
+lists the findings (rule, quoted fragment, suggested rewrite) in the assistant
+panel. **Fix with Agent** under the findings asks Agent mode to apply the
+rewrites, touching only the quoted fragments. The button is not shown when the
+space has no writing rules, and is disabled, with the reason in its tooltip,
+when no Folio AI key works or another run is in progress. The MCP tool
+`check_page_writing_rules` returns the rules and a page's text to an external
+agent so it can lint a draft before writing. Members who are not administrators
+can use the check and the tool, although they cannot open `.agent`; a rules
+page restricted to named people is hidden from everyone else.
+
 **Answer quality and analytics.** Every saved assistant answer can be rated
 👍 or 👎 (one rating per answer, changeable). After every third answer in a
 conversation the panel asks "Did the assistant solve your question?" (Yes,
@@ -909,10 +981,10 @@ work continues; come back and read on from where it stopped.
 ## 12. Integration for external tools (MCP)
 
 The `/mcp` endpoint with a personal access token (`folio_pat_…`), scopes
-`read` and `write`. 45 tools: listing spaces and trees, reading a page,
+`read` and `write`. 49 tools: listing spaces and trees, reading a page,
 search (plus `search` and `fetch` for ChatGPT deep research), creating and updating pages, resolving a Folio link, backlinks
 with context, a page's metadata (outline, tags, properties, links), a space's
-unresolved links and orphan pages, the link graph of a space or a page's neighbourhood, the rows of an Obsidian base (and creating or replacing one), publishing an interactive artifact, listing a space's templates and creating pages from them or saving a page as a template, a space's tags and property keys, renaming a tag across a space, setting a page's properties, history and reading a page at a given
+unresolved links and orphan pages, the link graph of a space or a page's neighbourhood, the rows of an Obsidian base (and creating or replacing one), publishing an interactive artifact, listing a space's templates and creating pages from them or saving a page as a template, checking a page against the space's writing rules, a space's tags and property keys, renaming a tag across a space, setting a page's properties, history and reading a page at a given
 commit, working with whiteboards (and converting an Obsidian canvas into one), a full set of operations on data tables (rows, columns, views), and building forms with the table their answers go to.
 See [MCP.md](MCP.md).
 

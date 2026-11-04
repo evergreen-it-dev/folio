@@ -28,6 +28,7 @@ import type { PublicPageSeo, PublicSiteMeta } from './pageMeta.js';
 import {
   canonicalPageUrl,
   canonicalSiteBase,
+  findPublicMovedPage,
   getPublicSpace,
   isPublicPage,
   publicHomePageId,
@@ -35,6 +36,7 @@ import {
   siteIndexable,
   type PublicSpace,
 } from './publicSites.js';
+import { llmsEnabled, llmsTxtUrl, markdownPageUrl, MARKDOWN_KINDS } from './publicLlmsLinks.js';
 import { excerptFromMarkdown } from './shareMeta.js';
 import { readSiteSettings, siteAssetUrl, statSiteAsset } from './spaceAppearance.js';
 import * as storage from './storage.js';
@@ -111,6 +113,8 @@ export interface PublicSiteHead {
   /** What renderIndexHtml needs; undefined for a `/public/<slug>` of a space that is not published (404, plain shell). */
   site?: PublicSiteMeta;
   status: 200 | 404;
+  /** Set when the page id in the URL is gone but meant a page that is on the site: the same address with that page's id (answer 301). */
+  redirectTo?: string;
 }
 
 /** An absolute URL for a front matter image: absolute http(s) as is, root-relative on the site origin, relative to the page's folder under /files/. */
@@ -183,7 +187,12 @@ export async function resolvePublicSiteHead(hostname: string | undefined, pathna
     if (route.kind === 'home') entry = homePageId ? await publicEntry(record, homePageId) : undefined;
     else if (route.kind === 'page') {
       entry = await publicEntry(record, route.id);
-      if (!entry) status = 404;
+      if (!entry) {
+        // A link to an id the page used to have (derived from its path): send it on, permanently, instead of a dead end.
+        const moved = await findPublicMovedPage(record, route.id);
+        if (moved) return { status: 404, redirectTo: pathname.replace(/\/p\/[^/]+\/?$/, `/p/${encodeURIComponent(moved.id)}`) };
+        status = 404;
+      }
     } else if (route.kind === 'missing') status = 404;
 
     const fields = entry ? await pageSeoFields(entry) : { unlisted: false };
@@ -207,6 +216,13 @@ export async function resolvePublicSiteHead(hostname: string | undefined, pathna
       lang: site.lang,
       favicon,
       noindex: !indexable || fields.unlisted || status === 404,
+      // Agent-readable copies (publicLlms.ts): this page's Markdown and the site's llms.txt, when the site has them on.
+      ...(status === 200 && route.kind !== 'other' && llmsEnabled(record, site)
+        ? {
+            llmsUrl: llmsTxtUrl(base),
+            ...(entry && MARKDOWN_KINDS.has(entry.kind) ? { markdownUrl: markdownPageUrl(base, entry.id, homePageId) } : {}),
+          }
+        : {}),
     };
     return { site: { slug: record.slug, name: record.name, hostMode, seo }, status };
   } catch {

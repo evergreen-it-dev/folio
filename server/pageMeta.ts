@@ -121,6 +121,10 @@ export interface PublicPageSeo {
   lang?: string;
   /** Favicon URL (a site asset); /favicon.svg stays when undefined. */
   favicon?: string;
+  /** Absolute URL of this page's Markdown copy (<link rel=alternate type=text/markdown>); none when the site's agent files are off. */
+  markdownUrl?: string;
+  /** Absolute URL of the site's llms.txt (<link rel=alternate type=text/plain>). */
+  llmsUrl?: string;
   noindex: boolean;
 }
 
@@ -155,6 +159,8 @@ function applySeoExtras(html: string, seo: PublicPageSeo): string {
     if (!out.includes(tag)) out = insertBeforeHeadClose(out, tag);
   }
   if (seo.canonical) out = insertBeforeHeadClose(out, `<link rel="canonical" href="${escapeHtmlAttr(seo.canonical)}" />`);
+  if (seo.markdownUrl) out = insertBeforeHeadClose(out, `<link rel="alternate" type="text/markdown" href="${escapeHtmlAttr(seo.markdownUrl)}" />`);
+  if (seo.llmsUrl) out = insertBeforeHeadClose(out, `<link rel="alternate" type="text/plain" href="${escapeHtmlAttr(seo.llmsUrl)}" title="llms.txt" />`);
   if (seo.noindex) out = insertBeforeHeadClose(out, '<meta name="robots" content="noindex" />');
   return out;
 }

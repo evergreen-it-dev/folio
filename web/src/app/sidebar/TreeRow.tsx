@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ClipboardList, CloudOff, Copy, CopyPlus, Files, FileText, FileType2, Folder, LayoutDashboard, LayoutTemplate, Link as LinkIcon, MoreHorizontal, Move, Pencil, Plus, Presentation, RefreshCw, Sheet, Table2, Trash2, Upload, Waypoints, Database, AppWindow, Columns2, Lock } from 'lucide-react';
 import { officeFormat, type PageKind, type PageMeta, type TreeNode } from '@shared/contracts';
+import { isDirIndexName } from '@shared/mdx';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { Menu, MenuItem } from '../ui/Menu';
@@ -310,7 +311,7 @@ export function TreeRow({
     });
   }
   // The space's front door can't be a template (the server answers 400); a local page isn't on the server yet.
-  const isSpaceRoot = parentPath === '' && (node.path === 'index.md' || node.path === 'README.md');
+  const isSpaceRoot = parentPath === '' && isDirIndexName(node.path);
 
   const rename = useMutation({
     mutationFn: (title: string) => api.renamePage(node.id, { title }),

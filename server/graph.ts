@@ -181,7 +181,7 @@ async function spaceNames(slugs: string[]): Promise<Map<string, string>> {
 /** The title of a node that is not a page: a file's name, an unresolved target's name without `.md`. */
 function baseName(path: string, stripMd: boolean): string {
   const name = path.slice(path.lastIndexOf('/') + 1) || path;
-  return stripMd ? name.replace(/\.md$/i, '') : name;
+  return stripMd ? name.replace(/\.mdx?$/i, '') : name;
 }
 
 /**

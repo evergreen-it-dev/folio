@@ -277,4 +277,40 @@ describe('RunManager (server/assistant/runs.ts)', () => {
     expect(row?.timing.tools[0]?.tool).toBe('create_page');
     expect(row?.timing.agentReadyMs).toBeGreaterThanOrEqual(0);
   });
+  it('keeps the displayMessage as the conversation\'s user message while the model is sent the full prompt', async () => {
+    const user = await authStore.createUser({
+      email: `assistant-display-${Date.now()}@test.local`,
+      name: 'Display Tester',
+      passwordHash: 'x',
+      isAdmin: false,
+    });
+    const conversation = await assistantStore.insertConversation({
+      userId: user.id,
+      title: 'Display conversation',
+      cursorAgentId: `agent-display-${Date.now()}`,
+      model: 'auto',
+    });
+    const prompt = 'Check the page "Plan" (id abc) against the writing rules. Call check_page_writing_rules ...';
+    const { runId } = await runs.startRun({
+      user,
+      conversation,
+      message: prompt,
+      displayMessage: 'Check against writing rules: Plan',
+      runMode: 'ask',
+      currentPath: null,
+      space: null,
+      pageId: null,
+      apiKey: 'test-key',
+    });
+    expect(cursorMock.runCursorAssistant).toHaveBeenLastCalledWith(expect.objectContaining({ message: prompt }));
+    const events: AssistantRunEvent[] = [];
+    runs.subscribe(runId, 0, (event) => events.push(event));
+    cursorMock.resolve('Looks fine.');
+    await waitUntil(() => events.some((e) => e.type === 'complete'));
+    const stored = await assistantStore.listMessages(conversation.id);
+    expect(stored.map((m) => [m.role, m.content])).toEqual([
+      ['user', 'Check against writing rules: Plan'],
+      ['assistant', 'Looks fine.'],
+    ]);
+  });
 });

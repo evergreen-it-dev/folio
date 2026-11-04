@@ -227,7 +227,7 @@ export interface SpaceInfo {
    * client turn the indicator into a link vs. plain text, without the
    * client having to re-derive admin-ness itself.
    */
-  agentRules?: { used: boolean; pages: number; path?: string };
+  agentRules?: { used: boolean; pages: number; path?: string; writingRules?: boolean };
 }
 
 // ---------- scan settings (Obsidian vault compatibility, wave 1a) ----------
@@ -444,6 +444,8 @@ export const siteSettingsSchema = z
     ogImage: z.string().regex(SITE_ASSET_NAME_RE).optional(),
     favicon: z.string().regex(SITE_ASSET_NAME_RE).optional(),
     logo: z.string().regex(SITE_ASSET_NAME_RE).optional(),
+    /** Agent-readable files of the site (llms.txt, llms-full.txt, `<page>.md`, the <link rel="alternate"> in the head). On unless this is `false`. */
+    llms: z.boolean().optional(),
   })
   .passthrough();
 export type SiteSettings = z.infer<typeof siteSettingsSchema>;
@@ -2582,6 +2584,11 @@ export interface AssistantConversationsResponse {
  */
 export const sendAssistantMessageBodySchema = z.object({
   message: z.string().trim().min(1).max(12_000),
+  /**
+   * What the chat shows (and stores, and titles the conversation with) as this user message when `message` is an
+   * internal instruction prompt built by the app ("Check against writing rules"). The model still gets `message`.
+   */
+  displayMessage: z.string().trim().min(1).max(500).optional(),
   conversationId: z.string().uuid().nullable().optional(),
   startNew: z.boolean().optional(),
   runMode: z.enum(['ask', 'agent']).default('ask'),
@@ -3037,6 +3044,16 @@ export type PageTimerActionBody = z.infer<typeof pageTimerActionBodySchema>;
  * server/agentPath.ts for the actual access-control rule.
  */
 export const AGENT_FOLDER = '.agent';
+
+/**
+ * The team's writing rules: ONE ordinary page inside the space's `.agent` folder (so the assistant already
+ * receives it in every run, see server/assistant/agentContext.ts). "Check against writing rules" (page
+ * header + MCP `check_page_writing_rules`) judges a page against exactly this file. Fixed name, no
+ * configuration: a space either has `.agent/writing-rules.md` or it does not.
+ * `SpaceInfo.agentRules.writingRules` is true when the page exists (sent to every member, like `used`).
+ */
+export const WRITING_RULES_STEM = 'writing-rules';
+export const WRITING_RULES_PATH = `${AGENT_FOLDER}/${WRITING_RULES_STEM}.md`;
 // ---------- forms (Round FORMS) — "Google Forms in miniature", answers land
 // in a paired data table. File format + parse/serialize live in
 // shared/forms/codec.ts (mirrors shared/tables/codec.ts); this section is

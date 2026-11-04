@@ -38,6 +38,7 @@ import type { Dirent } from 'node:fs';
 import * as matterNS from 'gray-matter';
 import { extractBoardId, extractH1 } from '../storage.js';
 import { officeFormat } from '../../shared/contracts.js';
+import { isDirIndexName, stripDocExt } from '../../shared/mdx.js';
 import { artifactStem, isArtifactDirName } from '../artifact/manifest.js';
 import { query } from '../db/pool.js';
 import { getTrashRoot } from './paths.js';
@@ -81,7 +82,7 @@ async function countPageFiles(absDir: string): Promise<number> {
       count += await countPageFiles(abs);
     } else if (d.isFile()) {
       const lower = d.name.toLowerCase();
-      if (lower.endsWith('.md') || lower.endsWith('.excalidraw.svg') || lower.endsWith('.pdf') || officeFormat(lower)) count++;
+      if (lower.endsWith('.md') || lower.endsWith('.mdx') || lower.endsWith('.excalidraw.svg') || lower.endsWith('.pdf') || officeFormat(lower)) count++;
     }
   }
   return count;
@@ -96,7 +97,7 @@ interface DetectedTarget {
 async function detectTarget(spaceDirAbs: string): Promise<DetectedTarget | null> {
   const top = await listVisible(spaceDirAbs);
   if (top.length === 0) return null;
-  if (top.some((d) => d.isFile() && (d.name === 'index.md' || d.name === 'README.md')) || top.length > 1) {
+  if (top.some((d) => d.isFile() && isDirIndexName(d.name)) || top.length > 1) {
     return { relInside: '', shape: 'space' }; // content sits directly at the space level -> the whole content root moved here
   }
   const only = top[0];
@@ -110,7 +111,7 @@ async function detectTarget(spaceDirAbs: string): Promise<DetectedTarget | null>
   for (;;) {
     const entries = await listVisible(cur);
     if (entries.length === 0) return { relInside: rel, shape: 'folder' }; // empty dir was the target
-    if (entries.some((d) => d.isFile() && (d.name === 'index.md' || d.name === 'README.md')) || entries.length > 1) {
+    if (entries.some((d) => d.isFile() && isDirIndexName(d.name)) || entries.length > 1) {
       return { relInside: rel, shape: 'folder' };
     }
     const child = entries[0];
@@ -169,8 +170,8 @@ async function fieldsForFile(absFile: string, relInside: string): Promise<Backfi
     const { id, title } = await readDocIdTitle(absFile, base.slice(0, -'.form.md'.length));
     return { pageId: id, kind: 'form', title, childrenCount: 0 };
   }
-  if (lower.endsWith('.md')) {
-    const { id, title } = await readDocIdTitle(absFile, base.slice(0, -'.md'.length));
+  if (lower.endsWith('.md') || lower.endsWith('.mdx')) {
+    const { id, title } = await readDocIdTitle(absFile, stripDocExt(base));
     return { pageId: id, kind: 'doc', title, childrenCount: 0 };
   }
   if (lower.endsWith('.pdf')) {
@@ -197,7 +198,7 @@ async function fieldsForDir(absDir: string, fallbackTitle: string, shape: 'folde
   let indexId: string | null = null;
   let title = fallbackTitle;
   let hasIndex = false;
-  for (const name of ['index.md', 'README.md']) {
+  for (const name of ['index.md', 'index.mdx', 'README.md', 'README.mdx']) {
     try {
       await fs.access(path.join(absDir, name));
     } catch {

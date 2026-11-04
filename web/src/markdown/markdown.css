@@ -965,3 +965,36 @@ html[data-theme='dark'] .folio-hint { background: #e7e5e4; color: #1c1917; }
   html:not([data-theme='light']) .folio-offer { background: #e7e5e4; color: #1c1917; }
 }
 html[data-theme='dark'] .folio-offer { background: #e7e5e4; color: #1c1917; }
+
+/* MDX components (mdx.ts): a JSX component of an `.mdx` page — <Aside>, <Tabs>, <Card> — shown as a labelled box
+   with its Markdown body inside; nested components nest. Folio does not run them; the box says what they are. */
+.folio-markdown .folio-mdx { margin: 1.1em 0; }
+.folio-markdown .folio-mdx__box {
+  border: 1px solid var(--md-border);
+  border-left: 3px solid color-mix(in srgb, var(--md-border) 40%, #6b7bd6);
+  border-radius: 8px;
+  padding: 0.55em 1em 0.7em;
+  background: color-mix(in srgb, var(--md-border) 12%, transparent);
+}
+.folio-markdown .folio-mdx__box .folio-mdx__box { background: transparent; margin: 0.4em 0; }
+.folio-markdown .folio-mdx__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5em;
+  font-size: 0.8em;
+  line-height: 1.5;
+  margin-bottom: 0.2em;
+}
+.folio-markdown .folio-mdx__tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.05em 0.5em;
+  border-radius: 999px;
+  background: color-mix(in srgb, #6b7bd6 16%, transparent);
+  color: color-mix(in srgb, #6b7bd6 85%, #000);
+}
+.folio-markdown .folio-mdx__title { font-weight: 600; font-size: 1.15em; }
+.folio-markdown .folio-mdx__attrs { opacity: 0.65; background: none; padding: 0; font-size: 0.95em; }
+.folio-markdown .folio-mdx__box > :last-child { margin-bottom: 0; }

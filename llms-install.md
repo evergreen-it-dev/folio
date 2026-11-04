@@ -41,7 +41,7 @@ The public demo is at `https://demo.foliowiki.online`. It does not issue persona
 
 ## 5. Check that it works
 
-1. In Cline's MCP Servers list, `folio` should be connected with 45 tools.
+1. In Cline's MCP Servers list, `folio` should be connected with 49 tools.
 2. Call `list_spaces`. It returns the spaces the token can see (slug, name, page count, role).
 3. Call `search_pages` with a word from the wiki, then `read_page` with an id from the result.
 

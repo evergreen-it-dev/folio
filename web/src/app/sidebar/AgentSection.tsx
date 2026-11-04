@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Bot, ChevronDown, ChevronRight, FileText, LayoutDashboard, Plus, Table2 } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, FileText, LayoutDashboard, Plus, SpellCheck, Table2 } from 'lucide-react';
 import { AGENT_FOLDER } from '@shared/contracts';
 import type { PageKind } from '@shared/contracts';
 import { api } from '../api';
@@ -74,6 +74,20 @@ export function AgentSection({ space, activeId, activeFolderPath }: AgentSection
     onError: (err) => showToast(errorText(err, 'sidebar.createPageFailed')),
   });
 
+  // "Create writing rules": offered until the space has `.agent/writing-rules.md` (SpaceInfo.agentRules.writingRules).
+  const { data: spacesData } = useQuery({ queryKey: ['spaces'], queryFn: api.listSpaces });
+  const hasWritingRules = spacesData?.spaces.find((s) => s.slug === space)?.agentRules?.writingRules === true;
+  const createRules = useMutation({
+    mutationFn: () => api.createWritingRules(space),
+    onSuccess: (page) => {
+      queryClient.invalidateQueries({ queryKey: ['tree', space] });
+      queryClient.invalidateQueries({ queryKey: ['spaces'] });
+      setOpen(true);
+      navigate(`/s/${space}/p/${page.id}`);
+    },
+    onError: (err) => showToast(errorText(err, 'sidebar.agent.createRulesFailed')),
+  });
+
   return (
     <div className="mt-2 px-2">
       <div
@@ -140,6 +154,18 @@ export function AgentSection({ space, activeId, activeFolderPath }: AgentSection
         <div className="flex flex-col gap-0.5">
           <p className="px-3 pb-1 text-[11px] leading-snug text-neutral-400 dark:text-neutral-500">{t('sidebar.agent.about')}</p>
           <AgentDemoNote className="px-3 pb-1" />
+          {spacesData && !hasWritingRules && (
+            <button
+              type="button"
+              onClick={() => createRules.mutate()}
+              disabled={createRules.isPending}
+              title={t('sidebar.agent.createRulesHint')}
+              className="mx-3 mb-1 flex items-center gap-1.5 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-600 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            >
+              <SpellCheck size={12} aria-hidden="true" />
+              {t('sidebar.agent.createRules')}
+            </button>
+          )}
           {children.length === 0 ? (
             <div className="px-3 py-1.5 text-xs text-neutral-400">{t('sidebar.agent.empty')}</div>
           ) : (

@@ -17,7 +17,9 @@ import {
   robotsAndSitemapUrls,
   siteFieldErrors,
   siteString,
+  siteSwitchOn,
   withSiteField,
+  withSiteSwitch,
 } from './appearanceLogic';
 import type { AppearanceController } from './useAppearance';
 import '../i18n/register';
@@ -174,6 +176,23 @@ export function SiteTab({ space, spaceName, controller, publishOnly }: { space: 
             )}
           </div>
 
+          <div className="md:col-span-2">
+            <label className="flex items-start gap-2 text-sm text-neutral-800 dark:text-neutral-100">
+              <input
+                id="seo-llms"
+                type="checkbox"
+                className="mt-0.5"
+                checked={siteSwitchOn(values, 'llms')}
+                disabled={locked}
+                onChange={(e) => controller.setValue('site.json', withSiteSwitch(controller.value('site.json'), 'llms', e.target.checked))}
+              />
+              <span>
+                {t('spaceSettings.seo.llms')}
+                <span className="block text-xs text-neutral-500 dark:text-neutral-400">{t('spaceSettings.seo.llmsHint')}</span>
+              </span>
+            </label>
+          </div>
+
           <div className="md:col-span-2 grid gap-4 md:grid-cols-3">
             <AssetPicker
               id="seo-og-image"
@@ -231,6 +250,11 @@ export function SiteTab({ space, spaceName, controller, publishOnly }: { space: 
               <a href={links.sitemap} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400">
                 sitemap.xml <ExternalLink size={11} aria-hidden="true" />
               </a>
+              {siteSwitchOn(values, 'llms') && (
+                <a href={links.llms} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400">
+                  llms.txt <ExternalLink size={11} aria-hidden="true" />
+                </a>
+              )}
             </p>
           )}
         </div>

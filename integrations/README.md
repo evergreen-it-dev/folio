@@ -1,6 +1,6 @@
 # Folio integrations
 
-Ready-made files for connecting AI tools to a Folio wiki over MCP. Folio is a remote MCP server with 45 tools (search, pages, data tables, forms, bases, whiteboards, history). Clients connect either with a **personal access token** (create one in Folio: user menu, **API tokens**) or with **OAuth**, where the client opens Folio's sign-in and consent screen.
+Ready-made files for connecting AI tools to a Folio wiki over MCP. Folio is a remote MCP server with 49 tools (search, pages, data tables, forms, bases, whiteboards, history). Clients connect either with a **personal access token** (create one in Folio: user menu, **API tokens**) or with **OAuth**, where the client opens Folio's sign-in and consent screen.
 
 Every config here holds placeholders only: `https://your-folio.example.com`, `${env:FOLIO_TOKEN}`. Put the real address in and keep tokens in environment variables or the client's secret store. Never commit a token.
 

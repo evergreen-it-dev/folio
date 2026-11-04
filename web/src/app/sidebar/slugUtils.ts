@@ -1,4 +1,5 @@
 import { officeFormat, type PageKind } from '@shared/contracts';
+import { docExtOf, isDirIndexName } from '@shared/mdx';
 
 /** url-git-friendly: lowercase latin letters, digits, hyphen — must not START with a hyphen. Mirrors the SERVER slug-api's own validation (DEV-PLAN Round 22). */
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -43,7 +44,6 @@ export function isValidFileName(value: string, kind: PageKind): boolean {
 // doc comment: "index.md, or README.md when index.md is absent there".
 // PageMeta/TreeNode don't expose `isIndex` to the client, so this infers it
 // from the basename alone, same rule.
-const INDEX_BASENAMES = new Set(['index.md', 'README.md']);
 
 export interface PageSlugInfo {
   /** Editable slug shown to the user: the directory's own name for a directory-index page, otherwise the file's basename with its extension stripped. */
@@ -83,7 +83,8 @@ export function extensionForKind(kind: PageKind, path?: string): string {
     const fmt = path ? officeFormat(path) : undefined;
     return `.${fmt ?? 'docx'}`;
   }
-  return '.md';
+  // A document keeps the suffix it has (`.mdx` stays `.mdx` through a slug change); a new one is `.md`.
+  return (path && docExtOf(path)) || '.md';
 }
 
 /** i18n key for the default title a newly created page of this kind gets. Never called for 'pdf'/'office' — those pages always have an uploaded filename, never a generated "New …" title. */
@@ -112,7 +113,7 @@ function stripExtension(base: string, kind: PageKind): string {
  */
 export function getPageSlugInfo(path: string, kind: PageKind): PageSlugInfo {
   const base = basename(path);
-  if (kind !== 'board' && INDEX_BASENAMES.has(base)) {
+  if (kind !== 'board' && isDirIndexName(base)) {
     const segments = path.split('/');
     segments.pop(); // drop "index.md"/"README.md"
     return { slug: segments.pop() ?? '', isDirectoryIndex: true };

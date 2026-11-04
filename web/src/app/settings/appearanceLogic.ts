@@ -178,6 +178,20 @@ export function withSiteField(content: string, key: string, value: string): stri
   return serializeSiteJson(next);
 }
 
+/** A boolean switch of site.json that is ON unless it says `false`: turning it on removes the key, turning it off writes `false`. */
+export function withSiteSwitch(content: string, key: string, on: boolean): string {
+  const parsed = parseSiteJson(content);
+  if (!parsed.ok) return content;
+  const next = { ...parsed.value };
+  if (on) delete next[key];
+  else next[key] = false;
+  return serializeSiteJson(next);
+}
+
+export function siteSwitchOn(value: SiteJson, key: string): boolean {
+  return value[key] !== false;
+}
+
 export function siteString(value: SiteJson, key: string): string {
   const raw = value[key];
   return typeof raw === 'string' ? raw : '';
@@ -260,7 +274,7 @@ export function canonicalBaseOf(response: SpacePublicSettingsResponse, primaryHo
 }
 
 /** robots.txt is host-wide; the sitemap of a path-mode site lives under the site's own prefix, of a host-mode site at its root. */
-export function robotsAndSitemapUrls(response: SpacePublicSettingsResponse): { robots: string; sitemap: string } {
+export function robotsAndSitemapUrls(response: SpacePublicSettingsResponse): { robots: string; sitemap: string; llms: string } {
   const base = canonicalBaseOf(response);
   const trimmed = base.replace(/\/+$/, '');
   let origin = trimmed;
@@ -269,7 +283,7 @@ export function robotsAndSitemapUrls(response: SpacePublicSettingsResponse): { r
   } catch {
     // keep the raw base
   }
-  return { robots: `${origin}/robots.txt`, sitemap: `${trimmed}/sitemap.xml` };
+  return { robots: `${origin}/robots.txt`, sitemap: `${trimmed}/sitemap.xml`, llms: `${trimmed}/llms.txt` };
 }
 
 /** First `max` characters with an ellipsis, for the search-result preview. */

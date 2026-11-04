@@ -38,6 +38,7 @@ import { buildPageDoc } from './pageDoc.js';
 import {
   buildPublicSiteInfo,
   getPublicSpace,
+  findPublicMovedPage,
   getSpacePublicSettings,
   isPublicPage,
   mainHost,
@@ -100,7 +101,13 @@ export function registerPublicSiteRoutes(app: FastifyInstance): void {
 
   app.get('/api/public/spaces/:slug/pages/:id', async (request): Promise<PublicPagePayload> => {
     const site = await requirePublicSpace(request);
-    const entry = await requirePublicPage(request, site);
+    // An id that no longer exists but meant a page that does (storage.findMovedPage) answers with THAT page: the
+    // payload's own id differs from the one asked for, which tells the site to move the address bar to it.
+    const entry = await requirePublicPage(request, site).catch(async (err: unknown) => {
+      const moved = await findPublicMovedPage(site, (request.params as { id: string }).id);
+      if (moved) return moved;
+      throw err;
+    });
     return { page: await buildPageDoc(entry, { kind: 'public', space: site.slug }), spaceName: site.name };
   });
 

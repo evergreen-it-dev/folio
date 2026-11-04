@@ -194,7 +194,11 @@ when someone edits it. A page's title comes from its first `#` heading, then
 from a front matter `title:`, then from the file name, and Folio does not add a
 heading to a page that has none. An `id` that another tool put in front matter
 (Docusaurus and Jest use `id: intro`) never moves a page between spaces. MDX
-files (`.mdx`) are not pages; the scan logs how many it skipped. Pasted images
+files (`.mdx`: Nimbus, Starlight, Astro, Docusaurus) are pages like `.md`
+ones: `import`/`export` lines and JSX components such as `<Aside>` or `<Tabs>`
+are folded into compact blocks in Live edit, drawn as labelled boxes in Reading,
+and saved back byte for byte — Folio does not run MDX, it only keeps it intact.
+Pasted images
 stay in Folio's asset store until a space administrator turns on "Store images
 in the repository". See also [What is not there yet](docs/LIMITATIONS.md).
 
@@ -216,6 +220,12 @@ edited as the author.
 What you type is not lost between Live edit and Reading: the browser keeps a
 local copy until the server confirms it has your edits. If it cannot confirm
 them, the header says **Not saved** and closing the tab asks first.
+
+**Comments on text.** Select a passage in a document and press **Comment**: the
+thread sits beside the page, anyone who can see the page can reply, and an
+editor (or the person who started it) resolves it. Comments are kept in the
+database, not in the Markdown, so Git history stays clean. Agents read and
+answer them through MCP.
 
 ---
 
@@ -585,6 +595,19 @@ Folio pages, not as configuration.
 The instructions apply to every run in the space, in Ask and Agent modes
 alike.
 
+**Writing rules, checked before you ship.** Put a page named
+`writing-rules` in `.agent` (administrators get a "Create writing rules"
+button that adds a starter: plain language, one idea per paragraph, headings
+as nouns, no marketing words, define acronyms, numbered steps) and every page
+of the space can be linted against it, whoever wrote it. Open a page and choose
+**Check against writing rules**: the assistant runs read-only and lists each
+finding with the rule it breaks, the quoted fragment and a suggested rewrite;
+**Fix with Agent** hands the findings to Agent mode, which edits only those
+fragments. The check needs the rules page and a working Folio AI key; without
+them the button is missing or disabled with the reason. External agents (Claude
+Code, Cursor) call the MCP tool `check_page_writing_rules` to get the same
+rules and the page before they write.
+
 ### Bring your own key
 
 Folio does not resell AI and does not mark it up. The assistant runs on a
@@ -612,11 +635,11 @@ Without a key everything else in Folio works as usual.
 
 ## Built for agents
 
-**MCP server.** 45 tools over `/mcp`: list and search spaces, read and write
+**MCP server.** 49 tools over `/mcp`: list and search spaces, read and write
 pages, build forms, edit data table columns and views, convert a canvas to a board, read a page's outline, tags, properties and links, list a space's tags and
 property keys, rename a tag, set page properties, find unresolved links
 and orphan pages, read the link graph, query, create and edit Obsidian bases, create and edit whiteboards, publish interactive artifacts, list templates and create pages from them, query and update data tables,
-read history.
+read history, read and write comment threads, check a page against the space's writing rules.
 Connect with a personal access token, or through OAuth 2.1 from clients that
 run in a vendor's cloud (claude.ai, Claude Desktop, ChatGPT). `search` and
 `fetch` are there for ChatGPT deep research.

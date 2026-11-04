@@ -11,7 +11,9 @@ import {
   repoFileUrl,
   robotsAndSitemapUrls,
   setDraft,
+  siteSwitchOn,
   withSiteField,
+  withSiteSwitch,
 } from './appearanceLogic';
 import { collapseUnchanged, diffLines } from './lineDiff';
 
@@ -101,9 +103,20 @@ describe('assets and addresses', () => {
       sitesDomain: null,
       mainHost: 'folio.example.com',
     };
-    expect(robotsAndSitemapUrls(base)).toEqual({ robots: 'https://folio.example.com/robots.txt', sitemap: 'https://folio.example.com/public/docs/sitemap.xml' });
+    expect(robotsAndSitemapUrls(base)).toEqual({ robots: 'https://folio.example.com/robots.txt', sitemap: 'https://folio.example.com/public/docs/sitemap.xml', llms: 'https://folio.example.com/public/docs/llms.txt' });
     const onDomain = { ...base, urls: { ...base.urls, domain: 'https://docs.acme.com' } };
-    expect(robotsAndSitemapUrls(onDomain)).toEqual({ robots: 'https://docs.acme.com/robots.txt', sitemap: 'https://docs.acme.com/sitemap.xml' });
+    expect(robotsAndSitemapUrls(onDomain)).toEqual({ robots: 'https://docs.acme.com/robots.txt', sitemap: 'https://docs.acme.com/sitemap.xml', llms: 'https://docs.acme.com/llms.txt' });
+  });
+});
+
+describe('site.json switches', () => {
+  it('are on unless the file says false: off writes false, on removes the key and keeps the rest', () => {
+    expect(siteSwitchOn({}, 'llms')).toBe(true);
+    const off = withSiteSwitch('{"v":1,"title":"Acme"}', 'llms', false);
+    expect(JSON.parse(off)).toEqual({ v: 1, title: 'Acme', llms: false });
+    expect(siteSwitchOn(JSON.parse(off), 'llms')).toBe(false);
+    expect(withSiteSwitch(off, 'llms', true)).toBe(withSiteField('', 'title', 'Acme'));
+    expect(withSiteSwitch('{oops', 'llms', false)).toBe('{oops');
   });
 });
 

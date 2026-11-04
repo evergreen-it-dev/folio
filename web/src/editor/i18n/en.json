@@ -101,7 +101,8 @@
     "highlightNone": "No highlight",
     "quote": "Quote",
     "link": "Link",
-    "status": "Status"
+    "status": "Status",
+    "comment": "Comment"
   },
   "toolbar": {
     "aria": "Command toolbar",
@@ -111,6 +112,12 @@
     "hint": "Toolbar hidden. Bring it back with the button beside the mode switch, or {{key}}; «/» inserts a block.",
     "indent": "Nest list item",
     "dedent": "Un-nest list item"
+  },
+  "mdx": {
+    "titleJsx": "MDX component — edit it in the source",
+    "titleEsm": "MDX import — edit it in the source",
+    "badgeJsx": "MDX component",
+    "badgeEsm": "MDX import"
   },
   "html": {
     "title": "HTML block — edit it in the source"

@@ -259,7 +259,10 @@ function serializeMessage(row: { id: string; role: 'user' | 'assistant'; content
 export interface StartRunInput {
   user: User;
   conversation: AssistantConversationRow;
+  /** What the model is sent. */
   message: string;
+  /** What the conversation keeps and shows as the user's message, when it is not `message` itself (an app-built prompt). */
+  displayMessage?: string;
   runMode: AssistantRunMode;
   currentPath: string | null;
   space: string | null;
@@ -289,7 +292,7 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string; c
   // POSTs for the same conversation can't both pass the check above.
   activeByConversation.set(conversationId, runId);
   try {
-    const userMessage = await assistantStore.insertMessage(conversationId, 'user', input.message);
+    const userMessage = await assistantStore.insertMessage(conversationId, 'user', input.displayMessage ?? input.message);
     await dbInsertRun({
       id: runId,
       conversationId,

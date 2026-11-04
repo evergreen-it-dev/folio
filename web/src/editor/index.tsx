@@ -6,6 +6,7 @@ import { EditorView, keymap } from '@codemirror/view';
 import { yUndoManagerKeymap } from 'y-codemirror.next';
 import { trackEdit } from '../analytics';
 import { api } from '../app/api';
+import { usePageComments } from '../app/comments/usePageCommentsUi';
 import { useConnectivity } from '../app/offline/connectivity';
 import { usePagePresence, usePublishPagePresence } from '../app/presence';
 import { Markdown } from '../markdown';
@@ -20,6 +21,8 @@ import {
   type ConnectionStatus,
 } from './collab';
 import { folioCollab } from './collab-sync';
+import { commentHighlights } from './comment-highlights';
+import { useCommentsInView, type EditorComments } from './comment-host';
 import { useEmojiFavorites } from '../emoji';
 import { editorServicesFacet, type EditorServices } from './editor-services';
 import { emojiFavouritesFacet } from './emoji-complete';
@@ -100,6 +103,12 @@ export interface PageEditorProps {
   shareToken?: string;
   readOnly?: boolean;
   /**
+   * Offer inline comments (app/comments): the button in the chrome row, the side
+   * panel, the highlights. Off by default — only a doc page of the app turns it
+   * on; a share link or a compare column does not.
+   */
+  comments?: boolean;
+  /**
    * Starting mode for the very first visit, before a choice is stored.
    *
    * Round 21 made that 'reading': a page is read far more often than it is
@@ -155,6 +164,7 @@ export function PageEditor({
   collabParams,
   shareToken,
   readOnly,
+  comments: commentsOffered = false,
   defaultMode = 'reading',
   chromeStart,
   chromeLead,
@@ -221,6 +231,15 @@ export function PageEditor({
     return () => session.ytext.unobserve(onEdit);
   }, [session, pageId, space, readOnly]);
   const markdown = useDocumentText(session, mode === 'reading');
+  const comments = usePageComments({
+    enabled: commentsOffered && !shareToken,
+    pageId,
+    session,
+    synced,
+    reading: mode === 'reading',
+    markdown,
+    rootRef,
+  });
   const mermaid = useMermaidModal();
   const queryClient = useQueryClient();
   // A stable memo, so the view is never rebuilt for this. `createChildPage`
@@ -273,7 +292,7 @@ export function PageEditor({
 
   const lead = typeof chromeLead === 'function' ? chromeLead(mode) : chromeLead;
 
-  return (
+  const editor = (
     <div className="folio-editor" data-mode={mode} ref={rootRef}>
       <div className="folio-editor__chrome">
         {lead != null && <div className="folio-editor__chrome-lead">{lead}</div>}
@@ -285,6 +304,7 @@ export function PageEditor({
         {mode !== 'reading' && chromeStart != null && (
           <div className="folio-editor__chrome-start">{chromeStart}</div>
         )}
+        {comments.button}
         <ConnectionBadge status={status} peers={peers} />
         {readOnly ? (
           <span className="folio-editor__readonly">{t('readonly')}</span>
@@ -339,12 +359,24 @@ export function PageEditor({
           shareToken={shareToken}
           services={services}
           emojiFavourites={favorites}
+          comments={comments.editor}
         />
       ) : (
         <p className="folio-editor__hint">{t('connecting')}</p>
       )}
 
       {mermaid.request ? <MermaidModal request={mermaid.request} onClose={mermaid.close} /> : null}
+    </div>
+  );
+
+  // The panel is the editor's sibling, not its child: `.folio-editor` is a size container (a fixed-position
+  // descendant would be placed against it) and scrolls its own text. Chosen by the prop alone, never by whether
+  // comments exist yet, so the editor is not remounted when the list arrives.
+  if (!commentsOffered) return editor;
+  return (
+    <div className="folio-editor-frame">
+      {editor}
+      {comments.panel}
     </div>
   );
 }
@@ -636,6 +668,7 @@ interface HostProps {
   shareToken?: string;
   services: EditorServices;
   emojiFavourites: readonly string[];
+  comments?: EditorComments;
 }
 
 /**
@@ -643,7 +676,7 @@ interface HostProps {
  * and page-context changes are applied by reconfiguring a compartment so the
  * caret and scroll position survive a source/live switch.
  */
-function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepairTitle, guardTitle, shareToken, services, emojiFavourites }: HostProps) {
+function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepairTitle, guardTitle, shareToken, services, emojiFavourites, comments }: HostProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const modeCompartment = useMemo(() => new Compartment(), []);
@@ -675,6 +708,7 @@ function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepa
           // Reconfigured below whenever mode or page context changes.
           modeCompartment.of(livePreviewConfig(false, { space: '', pagePath: '', pageId: '' })),
           emojiCompartment.of(emojiFavouritesFacet.of(emojiFavourites)),
+          commentHighlights,
           keymap.of(yUndoManagerKeymap),
           // Not y-codemirror's own yCollab: its sync plugin is switched off for
           // good by the first exception, and the editor then keeps taking text
@@ -697,6 +731,9 @@ function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepa
       view.destroy();
     };
   }, [session, services, modeCompartment, emojiCompartment, guardTitle]);
+
+  // After the view effect above: a fresh view is given its comment ranges once it exists.
+  useCommentsInView(viewRef, session, comments);
 
   const queryClient = useQueryClient();
   // The H1 IS the title: after the user edits it, the server re-indexes the

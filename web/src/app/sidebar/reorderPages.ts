@@ -1,4 +1,5 @@
 import { officeFormat, type TreeNode } from '@shared/contracts';
+import { stripDocExt } from '@shared/mdx';
 import { dirname } from './treeUtils';
 
 export type ReorderDirection = 'up' | 'down';
@@ -270,7 +271,7 @@ export function canContain(node: TreeNode): boolean {
 }
 
 function isIndexPath(path: string): boolean {
-  return path === 'index.md' || path.endsWith('/index.md');
+  return /(^|\/)index\.mdx?$/.test(path);
 }
 
 /** Filename stem using the same whole-suffix rules as server/storage.ts. */
@@ -296,7 +297,7 @@ function pageStem(node: TreeNode): string {
     const fmt = officeFormat(base);
     if (fmt) return base.slice(0, -(fmt.length + 1));
   }
-  return base.slice(0, -'.md'.length);
+  return stripDocExt(base);
 }
 
 /**

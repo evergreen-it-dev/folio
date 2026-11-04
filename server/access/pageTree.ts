@@ -5,7 +5,7 @@
  * getTree / getSubtree build the sidebar from. Imports nothing on purpose.
  */
 
-/** Characters `relPathStem` strips per page kind (`doc`: `.md`). */
+/** Characters `relPathStem` strips per page kind (`doc`: `.md`, or `.mdx`). */
 const SUFFIX_LENGTH: Record<string, number> = {
   board: '.excalidraw.svg'.length,
   table: '.table.md'.length,
@@ -35,7 +35,8 @@ export function childPrefixOf(page: TreePage): string | undefined {
     const slash = page.path.lastIndexOf('/');
     return slash === -1 ? undefined : page.path.slice(0, slash + 1);
   }
-  return `${page.path.slice(0, page.path.length - (SUFFIX_LENGTH[page.kind] ?? '.md'.length))}/`;
+  const docSuffix = /\.mdx$/i.test(page.path) ? '.mdx'.length : '.md'.length;
+  return `${page.path.slice(0, page.path.length - (SUFFIX_LENGTH[page.kind] ?? docSuffix))}/`;
 }
 
 /** True when `descendant` lies below `ancestor` (never for the page itself). */

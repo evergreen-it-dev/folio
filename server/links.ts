@@ -155,9 +155,9 @@ export function rewriteRelativeLinks(
   newTargetRelPath: string,
   wiki?: WikiMoveContext,
 ): string {
-  const oldIsIndexMd = /(^|\/)index\.md$/i.test(oldTargetRelPath);
-  const oldDirForImplicit = oldIsIndexMd ? oldTargetRelPath.slice(0, -'/index.md'.length) : null;
-  const newDirForImplicit = oldIsIndexMd ? newTargetRelPath.slice(0, -'/index.md'.length) : null;
+  const oldIsIndexMd = /(^|\/)index\.mdx?$/i.test(oldTargetRelPath);
+  const oldDirForImplicit = oldIsIndexMd ? oldTargetRelPath.replace(/\/?index\.mdx?$/i, '') : null;
+  const newDirForImplicit = oldIsIndexMd ? newTargetRelPath.replace(/\/?index\.mdx?$/i, '') : null;
 
   const rewritten = mapMarkdownLinks(body, (full: string, bracketText: string, hrefRaw: string) => {
     const trimmed = hrefRaw.trim();
@@ -320,8 +320,8 @@ export async function findDocsMentioning(space: string, relPaths: string[], dirs
     const parts = rel.split('/');
     const file = parts[parts.length - 1];
     if (file) names.add(file);
-    if (/^(index|readme)\.md$/i.test(file) && parts.length > 1) names.add(parts[parts.length - 2]);
-    else if (/\.md$/i.test(file) && file.length > '.md'.length) stems.add(file.slice(0, -'.md'.length));
+    if (/^(index|readme)\.mdx?$/i.test(file) && parts.length > 1) names.add(parts[parts.length - 2]);
+    else if (/\.mdx?$/i.test(file) && file.length > '.md'.length) stems.add(file.replace(/\.mdx?$/i, ''));
   }
   if (names.size === 0 && stems.size === 0) return [];
   const like = (n: string) => `%${n.replace(/[\\%_]/g, '\\$&')}%`;

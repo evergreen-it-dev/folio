@@ -25,6 +25,7 @@ import {
   type FormatEdit,
   type InlineFormat,
 } from './format';
+import { commentOnSelection, commentsBridge } from './comment-highlights';
 import { createIcon, type IconName } from './icons';
 import { t } from './i18n';
 import { languageChangedEffect } from './i18n-reload';
@@ -32,7 +33,7 @@ import { openMenu, type MenuEntry } from './popup-menu';
 import { insertStatus } from './status-widget';
 
 /** Everything the bar can offer: the toggles, plus the two block-ish commands. */
-type BarCommand = InlineFormat | 'quote' | 'link' | 'status';
+type BarCommand = InlineFormat | 'quote' | 'link' | 'status' | 'comment';
 
 const ICONS: Record<BarCommand, IconName> = {
   bold: 'bold',
@@ -44,6 +45,7 @@ const ICONS: Record<BarCommand, IconName> = {
   quote: 'quote',
   link: 'link',
   status: 'tag',
+  comment: 'comment',
 };
 
 const HOTKEYS: Record<BarCommand, string> = {
@@ -57,6 +59,8 @@ const HOTKEYS: Record<BarCommand, string> = {
   // NOT ⌘K: that one opens the quick switcher app-wide. See LINK_KEY below.
   link: '⇧K',
   status: '',
+  // Mod-Alt-m, spelled out in title(): modLabel() + a key cannot say it.
+  comment: '',
 };
 
 function modLabel(): string {
@@ -67,6 +71,7 @@ function modLabel(): string {
 
 function title(kind: BarCommand): string {
   const label = t(`format.${kind}`);
+  if (kind === 'comment') return `${label} (${modLabel() === '⌘' ? '⌘⌥M' : 'Ctrl+Alt+M'})`;
   const key = HOTKEYS[kind];
   return key ? `${label} (${modLabel()}${key})` : label;
 }
@@ -91,6 +96,8 @@ export interface FormatBarOptions {
    * not render a tag, so its bar leaves this out.
    */
   onStatus?(): void;
+  /** Start an inline comment on the selection (comment-highlights.ts); CodeMirror hosts only, and only where the user may comment. */
+  onComment?(): void;
   /**
    * The colour chevron beside the highlight button (the owner, 24.09.2026:
    * "give highlight a choice of color"). `highlightColor` answers which swatch
@@ -130,6 +137,7 @@ export function buildFormatBar({
   onQuote,
   onLink,
   onStatus,
+  onComment,
   onHighlightColor,
   highlightColor,
 }: FormatBarOptions): HTMLElement {
@@ -187,7 +195,7 @@ export function buildFormatBar({
   }
   // Separated from the toggles above: these two write a construct rather than
   // switching one on and off, and the divider is what says so.
-  if (onLink || onStatus || (quote && onQuote)) {
+  if (onLink || onStatus || onComment || (quote && onQuote)) {
     const sep = document.createElement('span');
     sep.className = 'cm-folio-format__sep';
     bar.appendChild(sep);
@@ -195,6 +203,7 @@ export function buildFormatBar({
   if (onLink) add('link', onLink, false);
   if (onStatus) add('status', onStatus, false);
   if (quote && onQuote) add('quote', onQuote, false);
+  if (onComment) add('comment', onComment, false);
   return bar;
 }
 
@@ -335,6 +344,7 @@ function tooltipsFor(state: EditorState): readonly Tooltip[] {
   const range = state.selection.main;
   if (range.empty || state.selection.ranges.length > 1) return [];
   if (state.readOnly) return [];
+  const canComment = state.facet(commentsBridge)?.canComment === true;
   return [
     {
       pos: range.from,
@@ -349,6 +359,7 @@ function tooltipsFor(state: EditorState): readonly Tooltip[] {
           onQuote: () => quoteCommand(view),
           onLink: () => linkCommand(view),
           onStatus: () => void insertStatus(view),
+          onComment: canComment ? () => void commentOnSelection(view) : undefined,
           onHighlightColor: (pick) => highlightColorCommand(pick)(view),
           highlightColor: () => highlightColorOf(view.state),
         }),

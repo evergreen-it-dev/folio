@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, House, LogIn, Menu as MenuIcon, X } from 'lucide-react';
@@ -52,6 +52,13 @@ export function PublicSiteView({ site, pageId }: PublicSiteViewProps) {
 
   const nodes = useMemo(() => (treeQuery.data ? getTopLevelNodes({ tree: treeQuery.data.tree }) : []), [treeQuery.data]);
   const page = pageQuery.data?.page;
+  // The server answered an id that no longer exists with the page it used to mean (server/storage.ts findMovedPage):
+  // move the address bar to the page's current address, so the link that is shared from here is the stable one.
+  const navigate = useNavigate();
+  const movedTo = page && effectiveId && page.id !== effectiveId ? page.id : undefined;
+  useEffect(() => {
+    if (movedTo) navigate(publicPageUrl(site, movedTo), { replace: true });
+  }, [movedTo, navigate, site]);
   // The site's own title (.folio/site.json) wins over the space's name.
   const spaceName = site.title ?? pageQuery.data?.spaceName ?? site.name;
   const siteName = site.title ?? site.name;

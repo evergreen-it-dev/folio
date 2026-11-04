@@ -377,6 +377,7 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
         onClick={() => setMobileOpen(true)}
         aria-label={t('outline.show')}
         title={t('outline.show')}
+        data-outline-fab=""
         className="fixed right-4 bottom-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-white text-neutral-600 shadow-lg ring-1 ring-neutral-200 min-[1100px]:hidden dark:bg-neutral-900 dark:text-neutral-300 dark:ring-neutral-700"
       >
         <ListTree size={18} />

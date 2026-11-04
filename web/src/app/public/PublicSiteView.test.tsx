@@ -334,7 +334,7 @@ describe('PublicSiteView', () => {
     stubFetch();
     renderSite(SITE, '/public/docs/p/gone');
 
-    expect(await screen.findByText("This page doesn't exist on this site.")).toBeTruthy();
+    expect(await screen.findByText(/This page moved or was removed/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Back to the home page' }).getAttribute('href')).toBe('/public/docs');
   });
 

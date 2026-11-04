@@ -9,6 +9,7 @@
 import path from 'node:path';
 import type { PageChangeAction, PageChangeInfo, PageChangeState, PageMeta, User } from '../shared/contracts.js';
 import { officeFormat } from '../shared/contracts.js';
+import { docExtOf } from '../shared/mdx.js';
 import * as storage from './storage.js';
 import type { PageIndexEntry } from './storage.js';
 import * as collab from './collab.js';
@@ -54,7 +55,7 @@ function slugOf(entry: PageIndexEntry): string {
                 ? '.base'
               : entry.kind === 'artifact'
                 ? '.artifact'
-                : '.md';
+                : docExtOf(entry.relPath) || '.md';
   return basename.endsWith(extension) ? basename.slice(0, -extension.length) : basename;
 }
 

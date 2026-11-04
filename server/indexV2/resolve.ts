@@ -80,14 +80,14 @@ export function tolerantLinkPaths(resolvedPath: string): string[] {
     }
   }
   if (decoded !== resolvedPath) out.push(decoded);
-  for (const p of new Set([resolvedPath, decoded])) if (p && !/\.md$/i.test(p)) out.push(`${p}.md`);
+  for (const p of new Set([resolvedPath, decoded])) if (p && !/\.mdx?$/i.test(p)) out.push(`${p}.md`, `${p}.mdx`);
   return out;
 }
 
 /** Every path a markdown-style link to `resolvedPath` may open, in the order they are tried. */
 export function markdownLinkCandidates(resolvedPath: string): string[] {
-  const isMd = /\.md$/i.test(resolvedPath);
-  const out = isMd ? [resolvedPath] : [resolvedPath, resolvedPath ? `${resolvedPath}/index.md` : 'index.md'];
+  const isMd = /\.mdx?$/i.test(resolvedPath);
+  const out = isMd ? [resolvedPath] : [resolvedPath, resolvedPath ? `${resolvedPath}/index.md` : 'index.md', resolvedPath ? `${resolvedPath}/index.mdx` : 'index.mdx'];
   out.push(...tolerantLinkPaths(resolvedPath));
   return [...new Set(out.filter(Boolean))];
 }
@@ -102,7 +102,7 @@ export function isWikiSyntax(syntax: LinkSyntax): boolean {
 
 /** The `.md` file an unresolved wikilink would create (`[[Not there]]` -> `Not there.md`). */
 export function unresolvedWikiPath(linkPath: string): string {
-  return /\.md$/i.test(linkPath) ? linkPath : `${linkPath}.md`;
+  return /\.mdx?$/i.test(linkPath) ? linkPath : `${linkPath}.md`;
 }
 
 const EMPTY_PATH_INDEX: PagePathIndex = { paths: new Set(), byLower: new Map(), byBase: new Map() };
@@ -194,8 +194,8 @@ export function appLinkRoute(ref: AppLinkRef): string {
 
 /** The page a folder route (or the space home, `dir` '') opens — storage.ts resolve()'s order: the path, its index.md / README.md, a same-named page. */
 export function appDirCandidates(dir: string): string[] {
-  if (!dir) return ['index.md', 'README.md'];
-  return [dir, `${dir}/index.md`, `${dir}/README.md`, `${dir}.md`, `${dir}.table.md`, `${dir}.form.md`, `${dir}.excalidraw.svg`];
+  if (!dir) return ['index.md', 'index.mdx', 'README.md', 'README.mdx'];
+  return [dir, `${dir}/index.md`, `${dir}/index.mdx`, `${dir}/README.md`, `${dir}/README.mdx`, `${dir}.md`, `${dir}.mdx`, `${dir}.table.md`, `${dir}.form.md`, `${dir}.excalidraw.svg`];
 }
 
 /** Pages of ANY space an app link may name (resolution phase only). */
@@ -280,7 +280,7 @@ function classifyCanvasPath(linkPath: string, pages: PageLookup): LinkTarget {
   const id = pages.idAt(resolved);
   if (id) return { kind: 'page', targetPath: resolved, targetPageId: id };
   if (pages.files) return { kind: pages.files.has(resolved) ? 'asset' : 'unresolved', targetPath: resolved, targetPageId: null };
-  return { kind: /\.md$/i.test(resolved) ? 'unresolved' : 'asset', targetPath: resolved, targetPageId: null };
+  return { kind: /\.mdx?$/i.test(resolved) ? 'unresolved' : 'asset', targetPath: resolved, targetPageId: null };
 }
 
 /**
@@ -349,5 +349,5 @@ export function classifyLinkTarget(syntax: LinkSyntax, linkPath: string, sourceD
     }
     return { kind: 'unresolved', targetPath: resolved, targetPageId: null };
   }
-  return { kind: /\.md$/i.test(resolved) ? 'unresolved' : 'asset', targetPath: resolved, targetPageId: null };
+  return { kind: /\.mdx?$/i.test(resolved) ? 'unresolved' : 'asset', targetPath: resolved, targetPageId: null };
 }

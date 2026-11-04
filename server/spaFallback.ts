@@ -24,8 +24,8 @@ import type { FastifyStaticOptions } from '@fastify/static';
 // web/src/app/stale-chunk.ts).
 // `/robots.txt` and `/sitemap.xml` (public sites, 14.10.2026) are answered by
 // publicSeo.ts; a miss there must never be index.html with 200 — a crawler
-// would take the HTML for the file.
-const NEVER_SPA_FALLBACK = ['/api/', '/files/', '/a/', '/art/', '/collab', '/assets/', '/robots.txt', '/sitemap.xml'];
+// would take the HTML for the file. Same for `/llms.txt` and `/llms-full.txt` (publicLlms.ts).
+const NEVER_SPA_FALLBACK = ['/api/', '/files/', '/a/', '/art/', '/collab', '/assets/', '/robots.txt', '/sitemap.xml', '/llms.txt', '/llms-full.txt'];
 
 export function shouldServeSpaFallback(method: string | undefined, url: string): boolean {
   if (method !== 'GET') return false;

@@ -66,8 +66,8 @@ function assistantInputSchema(tool: { name: string; inputSchema: unknown }): Rec
   return { ...schema, properties, ...(required ? { required } : {}) } as unknown as Record<string, SDKJsonValue>;
 }
 
-/** Not offered to a public-site run at all (the MCP server refuses them for a public actor too): history shows authors and old revisions, the property list shows properties, and templates are never public. */
-const NOT_ON_PUBLIC_SITE_TOOL_NAMES = new Set(['page_history', 'page_at_sha', 'list_properties', 'list_templates']);
+/** Not offered to a public-site run at all (the MCP server refuses them for a public actor too): history shows authors and old revisions, the property list shows properties, and templates are never public; comments show their authors. */
+const NOT_ON_PUBLIC_SITE_TOOL_NAMES = new Set(['page_history', 'page_at_sha', 'list_properties', 'list_templates', 'list_comments', 'check_page_writing_rules']);
 
 export interface AssistantToolsHandle {
   tools: Record<string, SDKCustomTool>;

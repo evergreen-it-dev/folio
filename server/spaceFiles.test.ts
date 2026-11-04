@@ -105,7 +105,7 @@ describe('files of a space: index, resolution, route (real PG)', () => {
     await s.put('.folio/site.json', '{}');
     await s.put('_templates/logo.svg', '<svg/>');
     await s.put('build/out.js', 'ignored');
-    await s.put('readme.mdx', 'an unsupported dialect is still a file');
+    await s.put('readme.markdown', 'an unsupported dialect is still a file');
     await storage.setSpaceScanSettings(s.slug, { scanIgnore: ['build/'] });
     const stats = await storage.scanSpace(s.slug);
 
@@ -115,7 +115,7 @@ describe('files of a space: index, resolution, route (real PG)', () => {
       'assets/nested/notes.md',
       'assets/report.pdf',
       'notes/attachment.csv',
-      'readme.mdx',
+      'readme.markdown',
     ]);
     expect(stats.indexedFiles).toBe(6);
     // pages stay pages; nothing under assets/ became one

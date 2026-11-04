@@ -129,3 +129,11 @@ html[data-theme='dark'] ::selection { background: #23445c; color: #f5f5f5; }
 html:not([data-folio-report='on']) .HelpDialog__btn[href*='github.com/excalidraw/excalidraw/issues'] {
   display: none !important;
 }
+
+/* The floating outline button must not cover the comments panel while that is a
+   floating card / bottom sheet (<1280px); from 1280px the panel sits beside the text. */
+@media (max-width: 1279.98px) {
+  body:has([data-comments-panel]) [data-outline-fab] {
+    display: none;
+  }
+}

@@ -187,7 +187,7 @@ const BAD_STEM = /[/\\#|^:[\]%\u0000-\u001f]/;
  * root). Null when the name cannot be a file name.
  */
 export function wikilinkCreateTarget(pagePath: string, linkPath: string): WikilinkCreateTarget | null {
-  const clean = linkPath.trim().replace(/\.md$/i, '');
+  const clean = linkPath.trim().replace(/\.mdx?$/i, '');
   if (!clean) return null;
   let parentPath: string;
   let name: string;

@@ -45,7 +45,7 @@ function appendTopLevel(tree: readonly TreeNode[], child: TreeNode): TreeNode[] 
   const single = tree.length === 1 ? tree[0] : undefined;
   const wrapsRoot =
     single !== undefined &&
-    ((single.kind === 'folder' && single.path === '') || (single.path === 'index.md' && single.children.length > 0));
+    ((single.kind === 'folder' && single.path === '') || ((single.path === 'index.md' || single.path === 'index.mdx') && single.children.length > 0));
   if (wrapsRoot) return [{ ...single, children: [...single.children, child] }];
   return [...tree, child];
 }

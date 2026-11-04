@@ -13,6 +13,13 @@ import {
   updateSpaceVisibilityBodySchema,
   updateUserBodySchema,
 } from '@shared/contracts';
+import type {
+  CommentThread,
+  CommentThreadStatus,
+  CreateCommentThreadBody,
+  PageComment,
+  PageCommentsResponse,
+} from '@shared/comments';
 import type { z } from 'zod';
 import { visitorHeaders } from '../analytics';
 import { getConnectivity, reportRequest } from './offline/connectivity';
@@ -501,6 +508,13 @@ export const api = {
   connectGitSpace: (space: string, body: ConnectSpaceGitBody) =>
     request<SpaceInfo>(`/api/spaces/${encodeURIComponent(space)}/connect-git`, { method: 'POST', body: JSON.stringify(body) }),
 
+  /** POST /api/spaces/:space/writing-rules — the starter `.agent/writing-rules.md` (space admins; 409 when it already exists). */
+  createWritingRules: async (space: string) => {
+    const page = await request<PageMeta>(`/api/spaces/${encodeURIComponent(space)}/writing-rules`, { method: 'POST' });
+    notifyPageChanges();
+    return page;
+  },
+
   createPage: async (body: CreatePageBody) => {
     const page = await request<PageMeta>('/api/pages', { method: 'POST', body: JSON.stringify(body) });
     notifyPageChanges();
@@ -598,6 +612,10 @@ export const api = {
    * this") match exactly what the collab socket will grant, instead of
    * guessing from the share link's static mode alone.
    */
+  /** GET /api/spaces/:space/moved-page/:id - the page of `space` an id that no longer exists used to mean (404 when none). */
+  getMovedPage: (space: string, id: string) =>
+    request<PageMeta>(`/api/spaces/${encodeURIComponent(space)}/moved-page/${encodeURIComponent(id)}`),
+
   getMyPageRole: (id: string) => request<{ role: SpaceRole | null }>(`/api/pages/${encodeURIComponent(id)}/my-role`),
 
   updatePageAccess: (id: string, body: UpdatePageAccessBody) =>
@@ -1459,6 +1477,33 @@ export const api = {
   getPageTimer: (target: { pageId?: string; space: string }) => request<PageTimerResponse>(pageTimerUrl(target)),
   postPageTimer: (target: { pageId?: string; space: string }, body: PageTimerActionBody) =>
     request<PageTimerResponse>(pageTimerUrl(target), { method: 'POST', body: JSON.stringify(body) }),
+
+  // ---------- inline comments (shared/comments.ts, docs/spec.md §4.4) ----------
+  // No realtime channel of their own: a client that changed something bumps
+  // `commentsRev` in its Yjs awareness state and its peers refetch the list
+  // (app/comments/usePageComments.ts). The GET is idempotent, so request()'s retry covers it.
+
+  /** GET /api/pages/:id/comments — every thread with its comments, plus what the caller may do. */
+  listPageComments: (pageId: string) => request<PageCommentsResponse>(`/api/pages/${encodeURIComponent(pageId)}/comments`),
+
+  /** POST /api/pages/:id/comments — a new thread anchored to a range of the page's Y.Text. */
+  createCommentThread: (pageId: string, body: CreateCommentThreadBody) =>
+    request<CommentThread>(`/api/pages/${encodeURIComponent(pageId)}/comments`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** POST /api/comment-threads/:threadId/comments — a reply. */
+  replyToCommentThread: (threadId: string, body: string) =>
+    request<PageComment>(`/api/comment-threads/${encodeURIComponent(threadId)}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
+
+  /** PATCH /api/comments/:id — edit one's own comment. */
+  editComment: (commentId: string, body: string) =>
+    request<PageComment>(`/api/comments/${encodeURIComponent(commentId)}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
+
+  /** DELETE /api/comments/:id — deleting a thread's opening comment deletes the whole thread. */
+  deleteComment: (commentId: string) => request<void>(`/api/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
+
+  /** PATCH /api/comment-threads/:id — resolve or reopen. */
+  setCommentThreadStatus: (threadId: string, status: CommentThreadStatus) =>
+    request<CommentThread>(`/api/comment-threads/${encodeURIComponent(threadId)}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 
   /** GET /api/notifications — up to 50 rows, newest first; `unread` is counted over ALL rows, not only the returned page. */
   listNotifications: () => request<NotificationListResponse>('/api/notifications'),

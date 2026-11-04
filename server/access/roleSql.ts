@@ -136,7 +136,7 @@ export function grantedPagesSql(user: string, minRole?: 'editor'): string {
  * (storage.ts relPathStem; access/pageTree.ts childPrefixOf is the TypeScript
  * twin and pageTree.test.ts checks all three agree). A kind always comes from
  * its file's suffix (storage.ts pageFileKind), so a fixed length per kind is
- * exact. `doc` is the ELSE branch.
+ * exact. `doc` is the ELSE branch: 3 for `.md`, 4 for `.mdx`.
  */
 const KIND_SUFFIX_LENGTH: ReadonlyArray<[string, number]> = [
   ['board', '.excalidraw.svg'.length],
@@ -162,7 +162,7 @@ const KIND_SUFFIX_LENGTH: ReadonlyArray<[string, number]> = [
  * git sync or trash restore changes the path, and the inheritance follows.
  */
 export function childPrefixSql(alias: string): string {
-  const suffix = `CASE ${alias}.kind ${KIND_SUFFIX_LENGTH.map(([kind, length]) => `WHEN '${kind}' THEN ${length}`).join(' ')} ELSE 3 END`;
+  const suffix = `CASE ${alias}.kind ${KIND_SUFFIX_LENGTH.map(([kind, length]) => `WHEN '${kind}' THEN ${length}`).join(' ')} ELSE CASE WHEN lower(right(${alias}.path, 4)) = '.mdx' THEN 4 ELSE 3 END END`;
   return `(CASE WHEN ${alias}.is_index
               THEN CASE WHEN strpos(${alias}.path, '/') = 0 THEN NULL
                         ELSE left(${alias}.path, length(${alias}.path) - strpos(reverse(${alias}.path), '/') + 1) END

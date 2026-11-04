@@ -29,10 +29,13 @@ import { ReplaceFileDropZone } from '../files/ReplaceFileDropZone';
 import { TablePageView, tableRole, type TableViewState } from './TablePageView';
 import { FormPageView } from './FormPageView';
 import { BasePageView } from '../../bases/BasePageView';
-import { NotFound } from './NotFound';
+import { PageGone } from './PageGone';
 import { NoAccess } from './NoAccess';
 import { EmbeddedNotice } from './EmbeddedNotice';
 import '../i18n/register';
+
+/** How often an open page asks whether it still exists (see the `page-alive` query in PageContent). */
+const PAGE_ALIVE_POLL_MS = 45_000;
 
 export interface PageContentProps {
   id: string;
@@ -223,6 +226,37 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
   }, [openedId, openedKind]);
   useRecordRecentVisit(data && !embedded ? { space: data.space, id: data.id, title: data.title, icon: data.icon } : undefined);
 
+  // A page that is open when its id disappears (the instance was reset, the page was deleted from another tab):
+  // the collab socket just fails to reconnect and the editor would sit there, so ask the server now and then
+  // whether the page is still there. A 404 re-reads the page, which turns into the "moved or removed" screen.
+  // Only a definitive 404 counts; a dropped connection or a 5xx leaves the open page alone.
+  const aliveQuery = useQuery({
+    queryKey: ['page-alive', id],
+    queryFn: () => api.getMyPageRole(id),
+    enabled: Boolean(data) && !isLocalPage && !embedded,
+    refetchInterval: PAGE_ALIVE_POLL_MS,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+  const vanished = aliveQuery.error instanceof ApiError && aliveQuery.error.status === 404;
+  useEffect(() => {
+    if (vanished) void queryClient.invalidateQueries({ queryKey: ['page', id] });
+  }, [vanished, id, queryClient]);
+
+  // The id is gone but meant a page that exists (an id derived from its path, server/storage.ts findMovedPage):
+  // follow it instead of showing a dead end.
+  const pageGone = (isError || !data) && error instanceof ApiError && error.status === 404;
+  const movedQuery = useQuery({
+    queryKey: ['moved-page', routeSpace ?? '', id],
+    queryFn: () => api.getMovedPage(routeSpace ?? '', id),
+    enabled: pageGone && !embedded && Boolean(routeSpace),
+    retry: false,
+  });
+  const movedTo = movedQuery.data?.id;
+  useEffect(() => {
+    if (movedTo && routeSpace) navigate(`/s/${encodeURIComponent(routeSpace)}/p/${encodeURIComponent(movedTo)}${route.search}${route.hash}`, { replace: true });
+  }, [movedTo, routeSpace, navigate, route.search, route.hash]);
+
   if (isLoading) {
     // Offline there is nothing to wait for: either the page is on this
     // device (and `data` is already here) or it is not.
@@ -232,11 +266,17 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     return <div className="p-8 text-sm text-neutral-400">{t('routes.page.loading')}</div>;
   }
 
-  if (isError || !data) {
+  // A page already on screen stays on screen through a failed background refetch (a dropped connection, a 5xx):
+  // only a definitive 404 / 403 takes it away. Before, any error unmounted the editor.
+  const definitive = error instanceof ApiError && (error.status === 404 || error.status === 403);
+  if (!data || (isError && definitive)) {
     // 404: the page really is not there. 403: it exists, the caller has no
     // right to it (a private space without membership, or a restricted page).
     if (error instanceof ApiError && error.status === 404) {
-      return embedded ? <EmbeddedNotice kind="notFound" /> : <NotFound message={t('routes.page.notFound')} />;
+      if (embedded) return <EmbeddedNotice kind="notFound" />;
+      // A moment of "loading" while the server says whether an old id meant another page: no flash of the dead end before the redirect.
+      if (movedQuery.isLoading || movedTo) return <div className="p-8 text-sm text-neutral-400">{t('routes.page.loading')}</div>;
+      return <PageGone space={routeSpace} />;
     }
     if (error instanceof ApiError && error.status === 403) {
       return embedded ? <EmbeddedNotice kind="noAccess" /> : <NoAccess space={routeSpace} page />;
@@ -421,6 +461,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
               lightFootprint={data.lightFootprint === true}
               collabUrl={collabUrl}
               readOnly={!editable}
+              comments={!embedded}
               defaultMode={startEditing ? 'live' : 'reading'}
               // Reading is reading (owner, 15.10.2026): in reading mode the properties are shown, never added,
               // edited or removed — even by an editor; Live and Source edit them.

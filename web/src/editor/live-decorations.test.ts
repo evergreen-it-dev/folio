@@ -964,3 +964,57 @@ describe('parsePagetreeLine', () => {
     expect(parsePagetreeLine('')).toBeNull();
   });
 });
+
+describe('MDX blocks (live, .mdx pages only)', () => {
+  const mdxBlocks = (source: string, cursor: number | Span = 0, live = true): BlockSpec[] =>
+    computeBlockSpecs({ ...snapshot(source, cursor), live, mdx: true });
+  const mdxOnly = (specs: BlockSpec[]) => specs.filter((s): s is Extract<BlockSpec, { kind: 'mdx' }> => s.kind === 'mdx');
+
+  // From the Nimbus starter docs (MIT, Copyright (c) 2025 Cloudflare, Inc.).
+  const page = [
+    'import { ForecastPipeline } from "@/components/diagrams/ForecastPipeline";',
+    '',
+    'Intro paragraph.',
+    '',
+    '<Aside type="tip" title="Preview as you write">',
+    '  The dev server reloads the page on every save.',
+    '',
+    '  | A | B |',
+    '  |---|---|',
+    '  | 1 | 2 |',
+    '</Aside>',
+    '',
+    '<ForecastPipeline client:visible />',
+    '',
+    'Tail.',
+  ].join('\n');
+
+  it('folds the import line and each component into one block, with the exact source', () => {
+    const specs = mdxOnly(mdxBlocks(page, page.length));
+    expect(specs.map((s) => [s.mdxKind, page.slice(s.from, s.to) === s.source])).toEqual([
+      ['esm', true],
+      ['jsx', true],
+      ['jsx', true],
+    ]);
+    expect(specs[1].source.startsWith('<Aside type="tip"')).toBe(true);
+    expect(specs[1].source.endsWith('</Aside>')).toBe(true);
+  });
+
+  it('claims what is inside a component: the table in the Aside gets no widget of its own', () => {
+    const specs = mdxBlocks(page, page.length);
+    expect(specs.some((s) => s.kind === 'table')).toBe(false);
+    // without the MDX flag the same page is Markdown to the letter: nothing is folded as MDX
+    expect(blocks(page, page.length).some((s) => s.kind === 'mdx')).toBe(false);
+  });
+
+  it('the caret inside a block shows its source — and still keeps the inner Markdown from becoming widgets', () => {
+    const caret = page.indexOf('The dev server');
+    const specs = mdxBlocks(page, caret);
+    expect(mdxOnly(specs).map((s) => s.mdxKind)).toEqual(['esm', 'jsx']); // the Aside is open; the import and the self-closing one are folded
+    expect(specs.some((s) => s.kind === 'table')).toBe(false);
+  });
+
+  it('source mode folds nothing', () => {
+    expect(mdxBlocks(page, 0, false)).toEqual([]);
+  });
+});

@@ -164,7 +164,7 @@ async function resolveConversationForMessage(userId: string, input: SendAssistan
     const model = await assistantStore.getModel(userId);
     conversation = await assistantStore.insertConversation({
       userId,
-      title: input.message.slice(0, 80),
+      title: (input.displayMessage ?? input.message).slice(0, 80),
       cursorAgentId: `agent-${randomUUID()}`,
       model,
     });
@@ -197,6 +197,7 @@ async function startRunForRequest(request: FastifyRequest): Promise<{ runId: str
     user,
     conversation,
     message: input.message,
+    displayMessage: input.displayMessage,
     runMode: input.runMode,
     currentPath: input.currentPath ?? null,
     space: navigation.space,

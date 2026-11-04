@@ -35,7 +35,7 @@ You need a Folio account and your Folio address. Claude Code runs on your machin
      --config folio_token=<your-token>
    ```
 
-4. In a session run `/mcp`. `folio` should be connected, with 45 tools.
+4. In a session run `/mcp`. `folio` should be connected, with 49 tools.
 5. Ask:
 
    > In the Acme Handbook space, find the release process page and tell me which checklist items are still open. Then create a page called "Release notes" under Engineering with a short summary of the roadmap items that are Done or In review.

@@ -873,7 +873,7 @@ export async function hasConflictMarkers(dir: string, rootRelPath: string): Prom
       const full = path.join(abs, entry.name);
       if (entry.isDirectory()) {
         if (await walk(full)) return true;
-      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+      } else if (entry.isFile() && /\.mdx?$/i.test(entry.name)) {
         const content = await readFile(full, 'utf8').catch(() => '');
         if (content.includes('<<<<<<<')) return true;
       }

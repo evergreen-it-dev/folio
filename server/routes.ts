@@ -96,6 +96,7 @@ import * as confluenceImport from './confluenceImport.js';
 import { recordAudit } from './audit.js';
 import { badRequest, conflict, forbidden, gone, notFound, tooManyRequests } from './errors.js';
 import { resolveTextLanguage } from './serverText.js';
+import { createStarterWritingRules } from './writingRules.js';
 import { parseBody, queryString } from './validate.js';
 import * as session from './auth/session.js';
 import { assertDemoAgentRootIntact, assertNotDemo, assertNotDemoAccount } from './demo.js';
@@ -230,8 +231,8 @@ const renameSpaceBodySchema = z.object({
  * Pulled out as a pure function so the viewer-vs-admin shape is unit
  * testable without a running Fastify app or a DB — see routes.test.ts.
  */
-export function buildAgentRulesInfo(pages: number, canAdminister: boolean): NonNullable<SpaceInfo['agentRules']> {
-  return { used: pages > 0, pages, ...(canAdminister ? { path: AGENT_FOLDER } : {}) };
+export function buildAgentRulesInfo(pages: number, canAdminister: boolean, writingRules = false): NonNullable<SpaceInfo['agentRules']> {
+  return { used: pages > 0, pages, ...(canAdminister ? { path: AGENT_FOLDER } : {}), ...(writingRules ? { writingRules: true } : {}) };
 }
 
 /**
@@ -397,6 +398,8 @@ export function registerRoutes(app: FastifyInstance): void {
     // is equivalent without an extra query per space).
     const adminSlugs = new Set(memberSpaces.filter((s) => user.isAdmin || myRoles[s.slug] === 'admin').map((s) => s.slug));
     const agentCounts = await storage.countAgentPages(memberSpaces.map((s) => s.slug));
+    // Which of those spaces keep a writing-rules page (a boolean, like the count — nothing from inside `.agent`).
+    const writingRulesSpaces = await storage.spacesWithWritingRules(memberSpaces.map((s) => s.slug));
     // Same "only while actually conflicted" gate as buildAdminSpacesList —
     // this list is polled (Sidebar/ConflictBanner/SpaceSwitcher all share
     // the ['spaces'] query), so a `git grep` per space would be wasted work
@@ -410,7 +413,7 @@ export function registerRoutes(app: FastifyInstance): void {
         };
         // The ignore list names folders of the repository: space admins only (the effective `lightFootprint` flag is not a secret).
         if (!adminSlugs.has(s.slug)) delete info.scanIgnore;
-        info.agentRules = buildAgentRulesInfo(agentCounts.get(s.slug) ?? 0, adminSlugs.has(s.slug));
+        info.agentRules = buildAgentRulesInfo(agentCounts.get(s.slug) ?? 0, adminSlugs.has(s.slug), writingRulesSpaces.has(s.slug));
         return info;
       }),
     );
@@ -911,6 +914,24 @@ export function registerRoutes(app: FastifyInstance): void {
     return meta;
   });
 
+  /**
+   * "Create writing rules": the starter `.agent/writing-rules.md` (shared/contracts.ts WRITING_RULES_PATH,
+   * server/writingRules.ts). Space admins only — the same rule as any write into `.agent`. 409 when the space
+   * already has the page. The starter text follows the caller's language.
+   */
+  app.post('/api/spaces/:space/writing-rules', async (request, reply) => {
+    const { space } = request.params as { space: string };
+    await session.requireSpaceRole(request, space, 'admin');
+    session.requireWriteScope(request);
+    const user = request.authUser!;
+    gitSync.recordEditor(space, { name: user.name, email: user.email });
+    const meta = await createStarterWritingRules(space, resolveTextLanguage(user.lang, request.headers['accept-language']));
+    await recordPageChange(user.id, 'page.create', meta.id, space, undefined, snapshotPageChange(await storage.requireEntry(meta.id)));
+    gitSync.noteActivity(space);
+    reply.status(201);
+    return meta;
+  });
+
   app.get('/api/pages/:id', async (request) => {
     const { id } = request.params as { id: string };
     const entry = await session.requirePageRole(request, id, 'viewer');
@@ -1066,6 +1087,19 @@ export function registerRoutes(app: FastifyInstance): void {
     const entry = await storage.requireEntry(id);
     const role = await session.effectivePageRole(request.authUser!, entry);
     return { role: role ?? null };
+  });
+
+  /**
+   * "Where did this link go": the page of `:space` an unknown id used to mean (an id derived from its path, see
+   * storage.findMovedPage) - the app follows it instead of showing a dead end. 404 for anything the caller could not
+   * open anyway, so it reveals nothing a 404 would not.
+   */
+  app.get('/api/spaces/:space/moved-page/:id', async (request) => {
+    const { space, id } = request.params as { space: string; id: string };
+    await session.requireSpaceRole(request, space, 'viewer');
+    const moved = await storage.findMovedPage(space, id);
+    if (!moved || !session.roleAtLeast(await session.effectivePageRole(request.authUser!, moved), 'viewer')) throw notFound('page');
+    return storage.toPageMeta(moved);
   });
 
   app.put('/api/pages/:id/access', async (request) => {
@@ -1896,7 +1930,7 @@ export function registerPublicShareRoutes(app: FastifyInstance): void {
     const all = await indexRead.getPageLinks(pageId, { kind: 'user', userId: '00000000-0000-0000-0000-000000000000', isInstanceAdmin: true });
     const links: PageLinkRef[] = [];
     for (const link of all) {
-      const isFile = link.kind === 'asset' || (link.kind === 'page' && !/\.md$/i.test(link.targetPath) && /\.[a-z0-9]+$/i.test(link.targetPath));
+      const isFile = link.kind === 'asset' || (link.kind === 'page' && !/\.mdx?$/i.test(link.targetPath) && /\.[a-z0-9]+$/i.test(link.targetPath));
       if (!isFile || !link.targetPath) continue;
       if (!(await shareMayReadFile(scope, scope.root.space, link.targetPath))) continue;
       links.push({ ...link, kind: 'asset', targetPageId: null, fragment: null, fragmentKind: null, fragmentResolved: null, displayText: null, context: '' });

@@ -8,7 +8,7 @@
  */
 import { syntaxTree } from '@codemirror/language';
 import { Facet, StateField, type EditorState, type Extension, type Range } from '@codemirror/state';
-import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate, type WidgetType } from '@codemirror/view';
 import {
   computeBlockSpecs,
   computeInlineSpecs,
@@ -17,10 +17,13 @@ import {
 } from './live-decorations';
 import { blockWidgetNav } from './block-nav';
 import { blockAnchorField } from './editor-services';
+import { BlockSlotWidget } from './block-slot';
 import { DetailsWidget } from './details-widget';
 import { emptyPageHint } from './empty-hint';
 import { currentLanguage, languageChangedEffect } from './i18n-reload';
 import { HtmlBlockWidget } from './html-widget';
+import { MdxBlockWidget } from './mdx-widget';
+import { isMdxPagePath } from '../markdown/mdx';
 import { linkEditingGuard } from './link-guard';
 import { PagetreeWidget } from './pagetree-widget';
 import { BaseFenceWidget } from './base-widget';
@@ -43,6 +46,11 @@ export interface PageContext {
   shareToken?: string;
   /** Attachments the index resolved by name (see resolveAssetSrc); absent until the page's links arrive. */
   attachment?: (src: string) => string | undefined;
+}
+
+/** True when the page this editor holds is an `.mdx` file: its ESM lines and JSX components fold into blocks. */
+export function isMdxState(state: EditorState): boolean {
+  return isMdxPagePath(state.facet(pageContextFacet).pagePath);
 }
 
 const EMPTY_CONTEXT: PageContext = { space: '', pagePath: '', pageId: '' };
@@ -83,23 +91,32 @@ function inlineDecoration(spec: InlineSpec, lang: string): Range<Decoration> | n
   }
 }
 
+/** A block widget, placed in a slot that holds its margins so CodeMirror measures its real height (block-slot.ts). */
+function block(widget: WidgetType): Decoration {
+  return Decoration.replace({ widget: new BlockSlotWidget(widget), block: true });
+}
+
 function blockDecoration(spec: BlockSpec, ctx: PageContext, lang: string): Range<Decoration> {
   switch (spec.kind) {
     case 'mermaid':
-      return Decoration.replace({ widget: new MermaidWidget(spec.code), block: true }).range(spec.from, spec.to);
+      return block(new MermaidWidget(spec.code)).range(spec.from, spec.to);
     case 'table':
-      return Decoration.replace({ widget: new TableWidget(spec.source, lang), block: true }).range(spec.from, spec.to);
+      return block(new TableWidget(spec.source, lang)).range(spec.from, spec.to);
     case 'html': {
       const widget = new HtmlBlockWidget(spec.html, ctx.space, ctx.pagePath, lang);
-      return Decoration.replace({ widget, block: true }).range(spec.from, spec.to);
+      return block(widget).range(spec.from, spec.to);
+    }
+    case 'mdx': {
+      const widget = new MdxBlockWidget(spec.mdxKind, spec.source, ctx.space, ctx.pagePath, lang);
+      return block(widget).range(spec.from, spec.to);
     }
     case 'pagetree': {
       const widget = new PagetreeWidget(ctx.pageId, spec.depth, lang);
-      return Decoration.replace({ widget, block: true }).range(spec.from, spec.to);
+      return block(widget).range(spec.from, spec.to);
     }
     case 'base': {
       const widget = new BaseFenceWidget(spec.code, ctx.space, ctx.pageId, lang);
-      return Decoration.replace({ widget, block: true }).range(spec.from, spec.to);
+      return block(widget).range(spec.from, spec.to);
     }
     case 'details': {
       const widget = new DetailsWidget(
@@ -110,7 +127,7 @@ function blockDecoration(spec: BlockSpec, ctx: PageContext, lang: string): Range
         ctx.pagePath,
         lang,
       );
-      return Decoration.replace({ widget, block: true }).range(spec.from, spec.to);
+      return block(widget).range(spec.from, spec.to);
     }
     case 'image': {
       const widget = new ImageWidget(
@@ -119,7 +136,7 @@ function blockDecoration(spec: BlockSpec, ctx: PageContext, lang: string): Range
         resolveAssetSrc(spec.src, ctx.space, ctx.pagePath, ctx.shareToken, ctx.attachment),
         spec.width,
       );
-      return Decoration.replace({ widget, block: true }).range(spec.from, spec.to);
+      return block(widget).range(spec.from, spec.to);
     }
   }
 }
@@ -135,6 +152,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
     // limited to the viewport; the scan only descends into block containers.
     ranges: [{ from: 0, to: state.doc.length }],
     live: true,
+    mdx: isMdxState(state),
   });
   return Decoration.set(
     specs.map((spec) => blockDecoration(spec, ctx, currentLanguage())),

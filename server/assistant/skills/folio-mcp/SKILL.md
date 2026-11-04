@@ -41,6 +41,7 @@ audit of the current user of the session, without a separate token.
 | `list_tags` | The tag tree of a space (`a/b` under `a`) with page counts (`pages` exact, `total` with children); `prefix`, `limit`. Counts only pages the user can open |
 | `list_templates` | The templates of a space (the pages of `_templates/`, which `list_tree` and `search_pages` never show): id, path, title, kind, description. Empty when the space has none |
 | `list_properties` | The property (front matter) keys used in a space: type (declared or inferred), number of pages, a few sample values. Look here before setting a property or writing a base filter |
+| `check_page_writing_rules` | The space's writing rules (`.agent/writing-rules.md`) plus the text of one page (`page`): `hasRules`, `rules.markdown`, `page.markdown`. Judge the page against each rule; per violation give the rule, the exact fragment and a rewrite. Reads only |
 | `page_history` | The git commit history of a page: sha/author/date/message |
 | `page_at_sha` | The content of a page at the given commit (a sha from `page_history`) |
 | `folio_table_list` | The data tables of one space or of all available ones |

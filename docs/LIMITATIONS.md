@@ -124,6 +124,15 @@ what is not there.
    git or on disk) — the sidecar then stays at the old path until it is moved by
    hand. Space files that are not pages (images and other attachments) have no
    properties.
+9a. **MDX is kept, not run.** A `.mdx` page shows its components as labelled boxes
+    with their Markdown body, not as the site will draw them (no component styles,
+    no switchable tabs, no imported diagrams), and `{expressions}` stay text.
+    `import`/`export` lines and brace comments on their own line are hidden in
+    Reading. A component is recognised by a line starting with a capitalised tag up
+    to its closing tag; inline JSX, text after a closing tag on the same line and an
+    unclosed component stay plain paragraph text, and lower-case HTML is Markdown's
+    own. Search and backlinks see imports and tags as ordinary page text. `.markdown`
+    files are still skipped (the scan logs how many).
 
 ## Git
 

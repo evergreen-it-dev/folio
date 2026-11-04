@@ -57,7 +57,7 @@ export function splitFragment(href: string): { path: string; hash: string } {
 
 /** True if the (fragment/query-stripped) path looks like a link to another markdown page. */
 export function isMarkdownPath(path: string): boolean {
-  return /\.md$/i.test(path);
+  return /\.mdx?$/i.test(path);
 }
 
 /**

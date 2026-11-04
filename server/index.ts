@@ -24,6 +24,7 @@ import { registerGroupRoutes } from './groups/routes.js';
 import { registerPublicSiteRoutes, registerPublicSiteAdminRoutes } from './publicSiteRoutes.js';
 import { publicSiteForShell } from './publicSites.js';
 import { resolvePublicSiteHead } from './publicSiteMeta.js';
+import { registerPublicLlmsRoutes } from './publicLlms.js';
 import { registerPublicSeoRoutes } from './publicSeo.js';
 import { registerSpaceAppearanceRoutes } from './spaceAppearanceRoutes.js';
 import { registerPageTimerRoutes } from './pageTimerRoutes.js';
@@ -34,6 +35,7 @@ import { registerTrashRoutes } from './trash/routes.js';
 import { registerPageChangeRoutes } from './pageChangesRoutes.js';
 import { registerTagRoutes } from './tagsRoutes.js';
 import { registerSavedSearchRoutes } from './savedSearchesRoutes.js';
+import { registerCommentRoutes } from './commentsRoutes.js';
 import { registerAssistantRoutes } from './assistant/routes.js';
 import { registerPublicAssistantRoutes } from './assistant/publicRoutes.js';
 import { registerAssistantAdminRoutes } from './assistant/adminRoutes.js';
@@ -138,6 +140,12 @@ app.setNotFoundHandler(async (request, reply) => {
   // that is not on the site answers 404 with the same shell (the SPA still
   // renders its not-found view; a crawler sees the status).
   const head = await resolvePublicSiteHead(request.hostname, pathname, requestOrigin);
+  // An id the page used to have: the same address with the current one, permanently.
+  if (head?.redirectTo) {
+    const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
+    reply.redirect(`${head.redirectTo}${query}`, 301);
+    return;
+  }
   const site = head ? head.site : await publicSiteForShell(request.hostname, pathname);
   const indexHtml = renderIndexHtml(fs.readFileSync(indexPath, 'utf8'), requestOrigin, pathname, site);
   const shareMatch = matchShareRoute(pathname);
@@ -212,6 +220,9 @@ async function main(): Promise<void> {
   // Public sites, SEO (14.10.2026): GET /robots.txt, /sitemap.xml (both by Host) and
   // /public/:slug/sitemap.xml. Real routes, so they win over the SPA fallback.
   registerPublicSeoRoutes(app);
+  // Public sites, agent files (03.11.2026): GET /llms.txt, /llms-full.txt, /index.md, /p/:id.md (by Host) and the same
+  // under /public/:slug/. Same visibility filter as the HTML site.
+  registerPublicLlmsRoutes(app);
 
   // Round 8 follow-up (prod bug: images inside a shared page were 401ing for a
   // guest — this route used to live inside the session-gated scope below).
@@ -323,6 +334,8 @@ async function main(): Promise<void> {
     // 14.10.2026 (Obsidian wave 3): tag pages + rename, and the person's saved searches.
     registerTagRoutes(protectedScope);
     registerSavedSearchRoutes(protectedScope);
+    // 02.11.2026: inline comment threads on doc pages (anchors are opaque Y.RelativePosition bytes).
+    registerCommentRoutes(protectedScope);
     // Chat link previews: the person's own links, and the instance admin's status page.
     registerChatIntegrationProtectedRoutes(protectedScope);
   });

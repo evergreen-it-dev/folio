@@ -681,7 +681,7 @@ describe('storage integration (real fs under a throwaway data/spaces/<temp> dir,
     await deleteTestSpace(space.slug);
   });
 
-  it('reports the .mdx/.markdown files it skips instead of silently indexing nothing', async () => {
+  it('indexes .mdx files as pages and reports the .markdown files it still skips instead of silently indexing nothing', async () => {
     const space = await storage.createSpace(`Vitest MDX ${Date.now()}`, null);
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
@@ -689,14 +689,18 @@ describe('storage integration (real fs under a throwaway data/spaces/<temp> dir,
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, 'intro.mdx'), "import Tabs from '@theme/Tabs';\n\n# Intro\n", 'utf8');
     await fs.writeFile(path.join(dir, 'tabs.MDX'), '# Tabs\n', 'utf8');
-    let stats = await storage.scanSpace(space.slug);
-    expect(stats.skippedUnsupported).toBe(2);
-    expect((await storage.listEntries(space.slug)).some((e) => e.relPath.startsWith('docs/'))).toBe(false);
-
     await fs.writeFile(path.join(dir, 'old.markdown'), '# Old\n', 'utf8');
+    let stats = await storage.scanSpace(space.slug);
+    expect(stats.skippedUnsupported).toBe(1);
+    const byPath = new Map((await storage.listEntries(space.slug)).map((e) => [e.relPath, e]));
+    expect(byPath.get('docs/intro.mdx')?.kind).toBe('doc');
+    expect(byPath.get('docs/intro.mdx')?.title).toBe('Intro');
+    expect(byPath.get('docs/tabs.MDX')?.title).toBe('Tabs');
+    expect(byPath.has('docs/old.markdown')).toBe(false);
+
     await fs.writeFile(path.join(dir, 'real.md'), '# Real\n', 'utf8');
     stats = await storage.scanSpace(space.slug);
-    expect(stats.skippedUnsupported).toBe(3);
+    expect(stats.skippedUnsupported).toBe(1);
     expect((await storage.listEntries(space.slug)).map((e) => e.relPath)).toContain('docs/real.md');
 
     await deleteTestSpace(space.slug);

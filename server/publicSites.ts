@@ -139,6 +139,13 @@ export async function isPublicPage(page: { id: string; space: string; relPath: s
   return Boolean(row?.is_public) && !row?.restricted;
 }
 
+/** The public page of `site` an unknown id used to mean (storage.findMovedPage: an id derived from its path), or undefined. */
+export async function findPublicMovedPage(site: { slug: string }, id: string): Promise<storage.PageIndexEntry | undefined> {
+  if (!id || id.startsWith('dir:')) return undefined;
+  const moved = await storage.findMovedPage(site.slug, id);
+  return moved && moved.space === site.slug && (await isPublicPage(moved)) ? moved : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Hosts and URLs
 // ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@
  */
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
 import { CALLOUT_KINDS, calloutKind, matchCalloutLine, type CalloutFold, type CalloutKind } from '@shared/ofm/callout';
+import { scanMdxBlocks } from '@shared/mdx';
 import { parseStatusAt, type StatusColor } from '@shared/status';
 import { isBgToken, isTableAttrLine } from '../markdown/tableSyntax';
 import { computeOfmSpecs, ofmOwns } from './ofm-live';
@@ -83,6 +84,8 @@ export type BlockSpec =
   | { kind: 'image'; from: number; to: number; alt: string; src: string; width?: string }
   | { kind: 'table'; from: number; to: number; source: string }
   | { kind: 'html'; from: number; to: number; html: string }
+  /** An `.mdx` page's `import`/`export` lines (`esm`) or one JSX component (`jsx`), folded into a compact block (mdx-widget.tsx). */
+  | { kind: 'mdx'; from: number; to: number; mdxKind: 'esm' | 'jsx'; source: string }
   | { kind: 'pagetree'; from: number; to: number; depth: number }
   /** Obsidian Bases: a ```base fence shown as its view (base-widget.tsx). */
   | { kind: 'base'; from: number; to: number; code: string }
@@ -98,6 +101,8 @@ export interface ComputeOptions {
   ranges: readonly Span[];
   /** When false only styling is emitted (source mode): no folding, no widgets. */
   live: boolean;
+  /** The page is an `.mdx` file: its ESM lines and JSX components fold into blocks. */
+  mdx?: boolean;
 }
 
 /** True when any selection range overlaps or abuts [from, to]. */
@@ -572,15 +577,26 @@ export function computeInlineSpecs({ doc, tree, ranges, live }: ComputeOptions):
  * reveals the plain markdown source. A mermaid fence whose source *is* revealed
  * gets a preview widget below it instead.
  */
-export function computeBlockSpecs({ doc, tree, selection, ranges, live }: ComputeOptions): BlockSpec[] {
+export function computeBlockSpecs({ doc, tree, selection, ranges, live, mdx }: ComputeOptions): BlockSpec[] {
   if (!live) return [];
   const specs: BlockSpec[] = [];
+  const claimed: Span[] = [];
+
+  // MDX comes first: a component swallows whole Markdown blocks (a table in a `<Tab>`, an image in a `<Card>`), so
+  // its range is claimed even while the caret is inside it — the source then stays plain text, with no widget of the
+  // Markdown inside it competing for the same characters.
+  if (mdx) {
+    for (const block of scanMdxBlocks(doc.sliceString(0, doc.length))) {
+      claimed.push({ from: block.from, to: block.to });
+      if (touches(selection, block.from, block.to)) continue;
+      specs.push({ kind: 'mdx', from: block.from, to: block.to, mdxKind: block.kind, source: block.source });
+    }
+  }
 
   // Multi-fragment `<details>` goes first, because it swallows whole top-level
   // blocks: a table or an image inside the body would otherwise get its own
   // replacement *inside* the disclosure's range, and overlapping block
   // decorations take CodeMirror down. Claimed ranges are skipped outright below.
-  const claimed: Span[] = [];
   for (const details of collectDetailsBlocks(doc, tree)) {
     // Caret inside: the whole construct falls back to plain markdown source,
     // and the blocks in its body behave exactly as they did before it existed.

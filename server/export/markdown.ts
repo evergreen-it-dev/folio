@@ -35,7 +35,7 @@ import { officeFormat } from '../../shared/contracts.js';
 import { baseNameOf, embedTargetKind, parseImageEmbedAlias, wikilinkParts } from '../../shared/ofm/wikilink.js';
 import { loadSpaceFiles } from '../indexV2/store.js';
 import type { FileLookup } from '../indexV2/resolve.js';
-import { resolveWikilinkPath } from '../wikilinks.js';
+import { buildPagePathIndex, resolveWikilinkPath, type PagePathIndex } from '../wikilinks.js';
 import { boardStructureYaml } from './boardText.js';
 import { buildCanvasPayload } from '../canvasView.js';
 import { canvasOutline } from '../../shared/canvas/index.js';
@@ -215,6 +215,18 @@ interface RewriteCtx {
   /** this page's own natural-slug -> final-anchor map, for same-page `#fragment` links */
   ownAnchors: Map<string, string>;
   shareToken?: string;
+  /**
+   * Where a link to another page of the space points. Default: the signed-in app (`/s/<space>/p/<id>`). A public
+   * site passes its own page URLs; returning undefined leaves the link as the author wrote it (the target is not public).
+   */
+  pageUrl?: (pageId: string, fragment: string) => string | undefined;
+  /**
+   * Turn `[[Page]]` / `[[Page|label]]` into plain Markdown links (`[label](url)`) - to the page's URL when it
+   * resolves to a page `pageUrl` knows, else to the label as plain text. Off by default: the share-link export keeps
+   * wikilinks as written for the PDF/DOCX stage. Needs `pagePaths`.
+   */
+  wikilinks?: boolean;
+  pagePaths?: PagePathIndex;
   /** The space's files: an attachment that is not at the path as written is looked up by name (Obsidian: `x.png` -> `Attachments/x.png`), as the index did. */
   files?: FileLookup;
 }
@@ -223,8 +235,12 @@ interface RewriteCtx {
 function pageIdForPath(resolved: string, idByPath: Map<string, string>): string | undefined {
   const direct = idByPath.get(resolved);
   if (direct) return direct;
-  if (/\.md$/i.test(resolved)) return undefined;
-  return idByPath.get(resolved ? `${resolved}/index.md` : 'index.md') ?? idByPath.get(resolved ? `${resolved}/README.md` : 'README.md');
+  if (/\.mdx?$/i.test(resolved)) return undefined;
+  for (const name of ['index.md', 'index.mdx', 'README.md', 'README.mdx']) {
+    const hit = idByPath.get(resolved ? `${resolved}/${name}` : name);
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 export function rewriteHref(hrefRaw: string, ctx: RewriteCtx): string {
@@ -262,6 +278,7 @@ export function rewriteHref(hrefRaw: string, ctx: RewriteCtx): string {
       }
       return `#${inDoc.anchor}`;
     }
+    if (ctx.pageUrl) return ctx.pageUrl(pageId, frag) ?? hrefRaw;
     return `${ctx.baseUrl}/s/${ctx.space}/p/${pageId}${frag}`;
   }
 
@@ -300,6 +317,32 @@ function rewriteImageEmbeds(line: string, ctx: RewriteCtx): string {
   });
 }
 
+const WIKILINK_RE = /(!?)\[\[([^\[\]\r\n]+)\]\](?!\()/g;
+
+/** What `[[Target#Heading|alias]]` reads as: the alias, else the target as written (`Target > Heading`). */
+function wikilinkLabel(parts: ReturnType<typeof wikilinkParts>): string {
+  const own = parts.alias ?? [parts.path, parts.fragment?.replace(/^\^/, '')].filter(Boolean).join(' > ');
+  return own.replace(/\s+/g, ' ').trim();
+}
+
+/** `[[Page]]` -> `[Page](url)` when the page has a URL here, else the plain label. Embeds (`![[...]]`) and wikilinks in inline code stay as written. */
+function rewriteWikilinks(line: string, ctx: RewriteCtx): string {
+  if (!ctx.wikilinks || !ctx.pagePaths || !line.includes('[[')) return line;
+  return line.replace(WIKILINK_RE, (whole, bang: string, inner: string, offset: number) => {
+    if (bang) return whole;
+    if ((line.slice(0, offset).match(/`/g) ?? []).length % 2 === 1) return whole;
+    const parts = wikilinkParts(inner);
+    const label = wikilinkLabel(parts);
+    if (!parts.path) return label || whole; // `[[#Heading]]`: this very page
+    const resolved = resolveWikilinkPath(ctx.pagePaths!, ctx.dirPath, parts.path);
+    const pageId = resolved === null ? undefined : pageIdForPath(resolved, ctx.idByPath);
+    if (!pageId) return label;
+    const inDoc = ctx.included.get(pageId);
+    const url = inDoc ? `#${inDoc.anchor}` : ctx.pageUrl?.(pageId, '');
+    return url ? `[${label.replace(/[\[\]]/g, (c) => `\\${c}`)}](${/[\s()]/.test(url) ? `<${url}>` : url})` : label;
+  });
+}
+
 /** Rewrites every inline link/image and every reference definition outside fenced code. */
 export function rewriteLinks(body: string, ctx: RewriteCtx): string {
   return mapLines(body, (line, inFence) => {
@@ -308,13 +351,14 @@ export function rewriteLinks(body: string, ctx: RewriteCtx): string {
     const ref = REF_DEF_RE.exec(line);
     if (ref) return `${ref[1]}${rewriteHref(ref[2], ctx)}${ref[3]}`;
 
-    return rewriteImageEmbeds(line, ctx).replace(INLINE_LINK_RE, (whole, bang: string, text: string, href: string, title: string) => {
+    const rewritten = rewriteImageEmbeds(line, ctx).replace(INLINE_LINK_RE, (whole, bang: string, text: string, href: string, title: string) => {
       const angled = href.startsWith('<') && href.endsWith('>');
       const bare = angled ? href.slice(1, -1) : href;
       const next = rewriteHref(bare, ctx);
       if (next === bare) return whole;
       return `${bang}[${text}](${angled ? `<${next}>` : next}${title})`;
     });
+    return rewriteWikilinks(rewritten, ctx);
   });
 }
 
@@ -433,6 +477,24 @@ export interface AssembleOptions {
   now?: Date;
   /** Overridable so the byte cap is testable without a 5 MB fixture; production takes the default. */
   maxBytes?: number;
+  /** See RewriteCtx.pageUrl. */
+  pageUrl?: RewriteCtx['pageUrl'];
+  /** See RewriteCtx.wikilinks. */
+  wikilinks?: boolean;
+  /** Precomputed space lookups (loadAssembleLookups), for callers that assemble many pages of one space in a row. */
+  lookups?: AssembleLookups;
+}
+
+export interface AssembleLookups {
+  idByPath: Map<string, string>;
+  pagePaths: PagePathIndex;
+  files: FileLookup | undefined;
+}
+
+export async function loadAssembleLookups(space: string): Promise<AssembleLookups> {
+  const idByPath = new Map((await storage.listEntries(space)).map((e) => [e.relPath, e.id]));
+  const files = await loadSpaceFiles(space).catch(() => undefined);
+  return { idByPath, pagePaths: buildPagePathIndex(idByPath.keys()), files };
 }
 
 export interface AssembledExport {
@@ -467,8 +529,7 @@ export async function assembleMarkdown(collected: CollectedSubtree, opts: Assemb
   const flatten = opts.flatten !== false;
   const collating = pages.length > 1;
 
-  const idByPath = new Map((await storage.listEntries(space)).map((e) => [e.relPath, e.id]));
-  const files = await loadSpaceFiles(space).catch(() => undefined);
+  const { idByPath, pagePaths, files } = opts.lookups ?? (await loadAssembleLookups(space));
 
   const taken = new Set<string>();
   const staged: StagedSection[] = [];
@@ -523,6 +584,9 @@ export async function assembleMarkdown(collected: CollectedSubtree, opts: Assemb
       included,
       ownAnchors: s.anchors,
       shareToken: opts.shareToken,
+      pageUrl: opts.pageUrl,
+      wikilinks: opts.wikilinks,
+      pagePaths,
       files,
     }).trim(),
   );

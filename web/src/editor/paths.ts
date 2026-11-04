@@ -1,4 +1,5 @@
 /** Path helpers shared by the live-preview widgets. Pure, no DOM, unit-tested. */
+import { isDirIndexName, stripDocExt } from '@shared/mdx';
 
 /** Directory part of a space-relative page path ("a/b/page.md" -> "a/b", "page.md" -> ""). */
 export function dirname(pagePath: string): string {
@@ -21,8 +22,8 @@ export function dirname(pagePath: string): string {
 export function childPageDir(pagePath: string): string {
   const dir = dirname(pagePath);
   const base = dir ? pagePath.slice(dir.length + 1) : pagePath;
-  if (base === 'index.md' || base === 'README.md') return dir;
-  const stem = base.endsWith('.table.md') ? base.slice(0, -'.table.md'.length) : base.replace(/\.md$/, '');
+  if (isDirIndexName(base)) return dir;
+  const stem = base.endsWith('.table.md') ? base.slice(0, -'.table.md'.length) : stripDocExt(base);
   return dir ? `${dir}/${stem}` : stem;
 }
 

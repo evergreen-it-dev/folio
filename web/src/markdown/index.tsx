@@ -5,6 +5,8 @@ import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import type { PageMeta } from '@shared/contracts';
 import { splitMermaidFences } from './mermaidSplit';
+import { stripFrontmatter } from './frontmatter';
+import { isMdxPagePath, mdxToMarkdown } from './mdx';
 import { splitPagetreeDirectives } from './pagetreeSplit';
 import { splitFormDirectives } from './formSplit';
 import { renderMarkdownToHtml } from './pipeline';
@@ -268,9 +270,11 @@ export function Markdown({ markdown, space, pagePath, pageId, shareLinksPageId, 
   // ```mermaid fences already are (splitPagetreeDirectives runs on
   // splitMermaidFences's own output) — both need a real React island instead
   // of the string-based rehype pipeline.
+  // An `.mdx` page is rewritten into plain Markdown first (mdx.ts): ESM lines out, JSX components as labelled boxes.
+  const isMdx = isMdxPagePath(pagePath);
   const segments = useMemo(
-    () => splitFormDirectives(splitPagetreeDirectives(splitMermaidFences(markdown))),
-    [markdown],
+    () => splitFormDirectives(splitPagetreeDirectives(splitMermaidFences(isMdx ? mdxToMarkdown(stripFrontmatter(markdown)) : markdown))),
+    [markdown, isMdx],
   );
   const headings = useMemo(() => extractHeadings(markdown), [markdown]);
   const rendered = useMemo(() => {

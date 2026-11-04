@@ -19,6 +19,7 @@ export type ServerTextKey =
   | 'starterTemplate.meeting-notes.description'
   | 'starterTemplate.how-to.description'
   | 'starterTemplate.decision-record.description'
+  | 'writingRules.template'
   | 'table.defaultView'
   | 'table.firstField'
   | 'import.emptyPage'

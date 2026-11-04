@@ -557,7 +557,7 @@ PostgreSQL, not in Git.
 
 ### Agents
 
-- **MCP** at `/mcp`, 45 tools, each with explicit `title` and
+- **MCP** at `/mcp`, 49 tools, each with explicit `title` and
   `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint`
   annotations, plus a short `instructions` text on `initialize`. `search` and `fetch` are read-only twins of `search_pages` and `read_page` with the same access rules; they exist because ChatGPT deep research and company knowledge only accept tools with exactly those names. Ready-made client setups live in `integrations/` (placeholders only), and `.claude-plugin/marketplace.json` makes the Claude Code plugin installable from this repository. It accepts a
   personal access token (`folio_pat_…`) or an OAuth access token

@@ -1,5 +1,11 @@
 import { AGENT_FOLDER, officeFormat, type TreeNode } from '@shared/contracts';
+import { isDirIndexName, stripDocExt } from '@shared/mdx';
 import type { TreeResponse } from '../api';
+
+/** The space's front-door file: `index.md` / `index.mdx` at the root. */
+function isRootIndexPath(path: string): boolean {
+  return path === 'index.md' || path === 'index.mdx';
+}
 
 /** Directory containing a node's file (space-root files -> ""). Duplicated from markdown/resolvePath's dirOf to keep app/ and markdown/ independent modules. */
 export function dirname(path: string): string {
@@ -20,7 +26,7 @@ function filenameStem(node: TreeNode): string {
     const fmt = officeFormat(base);
     if (fmt) return base.slice(0, -(fmt.length + 1));
   }
-  return base.replace(/\.md$/i, '');
+  return stripDocExt(base);
 }
 
 /** Uses filenames only when sibling files would otherwise have identical visible H1 titles. */
@@ -45,10 +51,10 @@ export function getTopLevelNodes({ tree }: TreeResponse): TreeNode[] {
   if (tree.length === 1 && tree[0].kind === 'folder' && tree[0].path === '') {
     return tree[0].children;
   }
-  if (tree.length === 1 && tree[0].path === 'index.md' && tree[0].children.length > 0) {
+  if (tree.length === 1 && isRootIndexPath(tree[0].path) && tree[0].children.length > 0) {
     return tree[0].children;
   }
-  return tree.filter((n) => n.path !== 'index.md');
+  return tree.filter((n) => !isRootIndexPath(n.path));
 }
 
 /**
@@ -80,7 +86,7 @@ export function childDirOf(node: TreeNode): string {
   if (node.kind === 'folder') return node.path;
   const dir = dirname(node.path);
   const base = dir ? node.path.slice(dir.length + 1) : node.path;
-  if (base === 'index.md' || base === 'README.md') return dir;
+  if (isDirIndexName(base)) return dir;
   const officeFmt = node.kind === 'office' ? officeFormat(base) : undefined;
   const stem =
     node.kind === 'board' && base.endsWith('.excalidraw.svg')
@@ -99,7 +105,7 @@ export function childDirOf(node: TreeNode): string {
               ? base.slice(0, -'.artifact'.length)
               : officeFmt
               ? base.slice(0, -(officeFmt.length + 1))
-              : base.replace(/\.md$/, '');
+              : stripDocExt(base);
   return dir ? `${dir}/${stem}` : stem;
 }
 
@@ -121,7 +127,7 @@ export function childDirOf(node: TreeNode): string {
  */
 export function findSpaceRootPage({ tree, home }: TreeResponse): TreeNode | undefined {
   if (home && home.kind !== 'folder') return home;
-  return tree.find((node) => node.kind !== 'folder' && (node.path === 'index.md' || node.path === 'README.md'));
+  return tree.find((node) => node.kind !== 'folder' && isDirIndexName(node.path));
 }
 
 /** Recursively finds a node by id. */

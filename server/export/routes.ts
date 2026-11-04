@@ -43,7 +43,7 @@ export function slugOf(entry: PageIndexEntry): string {
     const fmt = officeFormat(entry.relPath);
     return fmt ? base.slice(0, -(fmt.length + 1)) : base;
   }
-  const stem = base.replace(/\.md$/i, '');
+  const stem = base.replace(/\.mdx?$/i, '');
   /**
    * Round 23 follow-up (owner: "the file must not be named index.pdf"): the
    * file of a directory page is called `index.md`, so the stem is "index",

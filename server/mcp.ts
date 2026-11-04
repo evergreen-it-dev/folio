@@ -45,6 +45,8 @@ import * as storage from './storage.js';
 import { resolveTextLanguage } from './serverText.js';
 import type { PageIndexEntry } from './storage.js';
 import * as collab from './collab.js';
+import * as commentStore from './comments.js';
+import { COMMENT_BODY_MAX, COMMENT_QUOTE_MAX, type CommentThread } from '../shared/comments.js';
 import * as gitSync from './gitSync.js';
 import * as indexRead from './indexV2/read.js';
 import * as graph from './graph.js';
@@ -56,6 +58,7 @@ import { getPublicSpace, isPublicPage, publicReadablePageIds } from './publicSit
 import * as session from './auth/session.js';
 import { recordAudit } from './audit.js';
 import { isAgentPath } from './agentPath.js';
+import { checkPageAgainstRules } from './writingRules.js';
 import { publicUrlOrOrigin } from './publicUrl.js';
 import * as tableService from './tables/service.js';
 import { encodeCell, withNewColumnDefaults } from '../shared/tables/index.js';
@@ -149,6 +152,8 @@ export const MCP_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'folio_table_delete_view',
   'convert_canvas_to_board',
   'publish_artifact',
+  'add_comment',
+  'reply_comment',
 ]);
 
 /**
@@ -549,6 +554,21 @@ function toFieldInputs(fields: z.infer<typeof mcpFormFieldSchema>[] | undefined)
 function unknownViewColumns(columns: TableColumn[], ids: string[]): string[] {
   const known = new Set(columns.map((c) => c.id));
   return [...new Set(ids.filter((id) => !known.has(id)))];
+}
+
+/** A thread as a tool answers it: the text it hangs on and the conversation. The anchors are Y.RelativePosition bytes only the editor can use, so they stay out. */
+function agentThread(thread: CommentThread) {
+  const person = (a: { name: string; username: string | null } | null) => (a ? { name: a.name, username: a.username } : null);
+  return {
+    id: thread.id,
+    status: thread.status,
+    quotedText: thread.quotedText,
+    createdBy: person(thread.createdBy),
+    createdAt: thread.createdAt,
+    resolvedBy: person(thread.resolvedBy),
+    resolvedAt: thread.resolvedAt,
+    comments: thread.comments.map((c) => ({ id: c.id, author: person(c.author), body: c.body, createdAt: c.createdAt, editedAt: c.editedAt })),
+  };
 }
 
 /** Built fresh per HTTP request by index.ts's /mcp mount, closing directly over that request's already-resolved actor (see the module doc comment for why not one shared instance). */
@@ -1170,8 +1190,8 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
       const { entry, error } = await checkPageRole(actor, id, 'viewer');
       if (error || !entry) return errorResult(error ?? 'page not found');
       const parentPathForChildren = entry.isIndex
-        ? entry.relPath.replace(/\/?(index|README)\.md$/i, '')
-        : entry.relPath.replace(/\.(table\.md|excalidraw\.svg|pdf|docx|xlsx|pptx|md)$/i, '');
+        ? entry.relPath.replace(/\/?(index|README)\.mdx?$/i, '')
+        : entry.relPath.replace(/\.(table\.md|excalidraw\.svg|pdf|docx|xlsx|pptx|mdx?)$/i, '');
       return structuredResult({ ...storage.toPageMeta(entry), parentPathForChildren, note: 'Work within this page unless the user says otherwise.' });
     },
   );
@@ -2192,6 +2212,104 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
         if (publishErr instanceof HttpError) return errorResult(publishErr.message);
         throw publishErr;
       }
+    },
+  );
+
+  server.registerTool(
+    'list_comments',
+    {
+      outputSchema: outputSchemas.list_comments,
+      annotations: READ_ONLY,
+      title: 'List the comments of a page',
+      description: `Lists the inline comment threads of a document page: for each, the quoted text it is attached to, its status (open or resolved) and the comments in order, oldest first. \`canComment\` tells whether the caller may reply. Comments are not part of the page's markdown. Not available on a public site. ${CONTENT_IS_DATA_NOTE}`,
+      inputSchema: {
+        page: z.string().describe('Page id'),
+        status: z.enum(['open', 'resolved']).optional().describe('Only threads in this status; omitted: all'),
+      },
+    },
+    async ({ page, status }) => {
+      if (publicSpaceOf(actor) !== undefined) return errorResult(NOT_ON_PUBLIC_SITE);
+      const { entry, error } = await checkPageRole(actor, page, 'viewer');
+      if (error || !entry) return errorResult(error ?? 'page not found');
+      const rights = await commentStore.commentRights(actor.user, entry);
+      const threads = (await commentStore.listThreads(entry.id)).filter((t) => status === undefined || t.status === status).map(agentThread);
+      return structuredResult({ threads, canComment: rights.canComment, canModerate: rights.canModerate });
+    },
+  );
+
+  server.registerTool(
+    'check_page_writing_rules',
+    {
+      outputSchema: outputSchemas.check_page_writing_rules,
+      annotations: READ_ONLY,
+      title: "Check a page against the space's writing rules",
+      description: `Returns the writing rules of a page's space (the team's page .agent/writing-rules.md, readable by every member of the space) together with the page's current text, so you can lint a draft BEFORE writing it: judge the text against each rule and report or fix every violation (rule, the exact fragment, a rewrite). Nothing is changed. \`hasRules: false\` when the space has no writing rules. To check text you have not saved yet, read the rules from one existing page of the space and apply them to your draft. Not available on a public site. ${CONTENT_IS_DATA_NOTE}`,
+      inputSchema: { page: z.string().describe('Page id of a document in the space whose rules apply') },
+    },
+    async ({ page }) => {
+      if (publicSpaceOf(actor) !== undefined) return errorResult(NOT_ON_PUBLIC_SITE);
+      const { entry, error } = await checkPageRole(actor, page, 'viewer');
+      if (error || !entry) return errorResult(error ?? 'page not found');
+      if (entry.kind !== 'doc') return errorResult('writing rules apply to documents only');
+      return structuredResult({ ...(await checkPageAgainstRules(actor.user, entry)) });
+    },
+  );
+
+  server.registerTool(
+    'add_comment',
+    {
+      outputSchema: outputSchemas.add_comment,
+      annotations: WRITE_ADDITIVE,
+      title: 'Comment on a passage of a page',
+      description:
+        'Starts an inline comment thread on a document page, attached to the FIRST occurrence of `quote` in the page\'s current text (the markdown as read_page returns it, including any formatting characters — copy it exactly). Fails when the quote is not on the page. The comment is authored by the connected user and does not change the page. Requires a write-scoped token and a signed-in account that can read the page. Not available on a public site. Returns the new thread.',
+      inputSchema: {
+        page: z.string().describe('Page id'),
+        quote: z.string().min(1).max(COMMENT_QUOTE_MAX).describe('Exact text from the page to attach the comment to; the first occurrence is used'),
+        body: z.string().trim().min(1).max(COMMENT_BODY_MAX).describe('The comment, plain text (@username mentions are kept as written)'),
+      },
+    },
+    async ({ page, quote, body }) => {
+      if (!hasWriteScope) return errorResult('this action requires a token with write scope');
+      if (publicSpaceOf(actor) !== undefined) return errorResult(NOT_ON_PUBLIC_SITE);
+      const { entry, error } = await checkPageRole(actor, page, 'viewer');
+      if (error || !entry) return errorResult(error ?? 'page not found');
+      if (entry.kind !== 'doc') return errorResult('comments are only available on documents');
+      if (!(await commentStore.commentRights(actor.user, entry)).canComment) return errorResult('commenting requires a signed-in account that can read the page');
+      const anchor = await collab.anchorQuote(entry.id, quote);
+      if (!anchor) return errorResult('the quote was not found in the page text; copy it exactly from read_page (markdown source, same line breaks)');
+      const thread = await commentStore.createThread(entry.id, actor.user.id, { ...anchor, body });
+      recordAudit(actor.user.id, 'comment.created', entry.id, { source: 'mcp', tool: 'add_comment', threadId: thread.id });
+      return structuredResult({ thread: agentThread(thread) });
+    },
+  );
+
+  server.registerTool(
+    'reply_comment',
+    {
+      outputSchema: outputSchemas.reply_comment,
+      annotations: WRITE_ADDITIVE,
+      title: 'Reply to a comment thread',
+      description:
+        'Adds a reply to an inline comment thread (a thread id from list_comments). The reply is authored by the connected user. Requires a write-scoped token and a signed-in account that can read the page. Not available on a public site. Returns the new comment.',
+      inputSchema: {
+        threadId: z.string().describe('Comment thread id, from list_comments'),
+        body: z.string().trim().min(1).max(COMMENT_BODY_MAX).describe('The reply, plain text (@username mentions are kept as written)'),
+      },
+    },
+    async ({ threadId, body }) => {
+      if (!hasWriteScope) return errorResult('this action requires a token with write scope');
+      if (publicSpaceOf(actor) !== undefined) return errorResult(NOT_ON_PUBLIC_SITE);
+      const thread = await commentStore.getThread(threadId);
+      if (!thread) return errorResult('comment thread not found');
+      // A thread of a page the caller cannot read is "not found" too.
+      const { entry, error } = await checkPageRole(actor, thread.pageId, 'viewer');
+      if (error || !entry) return errorResult('comment thread not found');
+      if (!(await commentStore.commentRights(actor.user, entry)).canComment) return errorResult('commenting requires a signed-in account that can read the page');
+      const comment = await commentStore.addReply(threadId, actor.user.id, body);
+      if (!comment) return errorResult('comment thread not found');
+      recordAudit(actor.user.id, 'comment.created', entry.id, { source: 'mcp', tool: 'reply_comment', threadId, commentId: comment.id });
+      return structuredResult({ comment: { id: comment.id, threadId, body: comment.body, createdAt: comment.createdAt } });
     },
   );
 

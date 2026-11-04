@@ -25,6 +25,29 @@ export const pageMetaOutput = z.looseObject({
   cover: z.string().optional().describe('Cover image URL, if the page has one'),
 });
 
+const commentPersonOutput = z.looseObject({ name: z.string(), username: z.string().nullable().describe('Handle used in @mentions') }).nullable().describe('null when the account was deleted');
+
+const commentThreadOutput = z.looseObject({
+  id: z.string().describe('Thread id — pass it to reply_comment'),
+  status: z.string().describe('open or resolved'),
+  quotedText: z.string().describe('The text of the page the thread is attached to'),
+  createdBy: commentPersonOutput,
+  createdAt: z.string().describe('ISO timestamp'),
+  resolvedBy: commentPersonOutput,
+  resolvedAt: z.string().nullable().describe('ISO timestamp; null while open'),
+  comments: z
+    .array(
+      z.looseObject({
+        id: z.string().describe('Comment id'),
+        author: commentPersonOutput,
+        body: z.string().describe('The comment text'),
+        createdAt: z.string().describe('ISO timestamp'),
+        editedAt: z.string().nullable().describe('ISO timestamp; null when never edited'),
+      }),
+    )
+    .describe('Oldest first; the first is the opening comment'),
+});
+
 const pageList = (key: string, what: string) => ({ [key]: z.array(pageMetaOutput).describe(what) });
 
 const linkRefOutput = z.looseObject({
@@ -307,6 +330,30 @@ export const outputSchemas = {
     truncated: z.boolean().describe('More pages matched than a base evaluates'),
     warnings: z.array(z.string()),
     error: z.string().optional().describe('The base file could not be read'),
+  },
+  list_comments: {
+    threads: z.array(commentThreadOutput).describe('Comment threads of the page, oldest first'),
+    canComment: z.boolean().describe('Whether the caller may add comments and replies'),
+    canModerate: z.boolean().describe('Whether the caller may resolve any thread and delete any comment (an editor of the page)'),
+  },
+  check_page_writing_rules: {
+    hasRules: z.boolean().describe('Whether the space has a writing-rules page (.agent/writing-rules.md) this caller can read'),
+    space: z.string().describe('Space slug'),
+    page: z.looseObject({ id: z.string(), title: z.string(), path: z.string(), markdown: z.string().describe('The page text; empty for a page that is not a document') }),
+    rules: z
+      .looseObject({ id: z.string().describe('Id of the rules page'), path: z.string(), title: z.string(), markdown: z.string().describe('The rules, as written by the team') })
+      .nullable()
+      .describe('null when the space has no writing rules'),
+    instructions: z.string().describe('How to apply the rules to the page'),
+  },
+  add_comment: { thread: commentThreadOutput.describe('The new thread') },
+  reply_comment: {
+    comment: z.looseObject({
+      id: z.string().describe('Comment id'),
+      threadId: z.string(),
+      body: z.string(),
+      createdAt: z.string().describe('ISO timestamp'),
+    }),
   },
   page_history: {
     revisions: z

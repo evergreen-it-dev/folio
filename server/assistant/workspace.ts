@@ -209,8 +209,8 @@ async function runtimeContextMarkdown(context: AssistantWorkspaceContext): Promi
         // Where a NEW child page of the current page would go: the directory
         // an index page owns, or the "<stem>/" claimed dir next to a leaf file.
         const parentPath = entry.isIndex
-          ? entry.relPath.replace(/\/?index\.md$/i, '').replace(/\/?README\.md$/i, '')
-          : entry.relPath.replace(/\.(table\.md|excalidraw\.svg|md)$/i, '');
+          ? entry.relPath.replace(/\/?index\.mdx?$/i, '').replace(/\/?README\.mdx?$/i, '')
+          : entry.relPath.replace(/\.(table\.md|excalidraw\.svg|mdx?)$/i, '');
         lines.push(
           '- The page that is open now (WORK WITHIN IT unless the user said otherwise):',
           `  - id: \`${meta.id}\` — pass exactly this id to read_page / update_page`,

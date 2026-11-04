@@ -41,7 +41,7 @@ export function linkTargetPath(url: string, pagePath: string): string | null {
   if (EXTERNAL.test(raw)) return null;
 
   const withoutHash = raw.split('#')[0].split('?')[0];
-  if (!withoutHash.toLowerCase().endsWith('.md')) return null;
+  if (!/\.mdx?$/i.test(withoutHash)) return null;
 
   const dir = dirname(pagePath);
   const joined = normalizeRelative(dir ? `${dir}/${withoutHash}` : withoutHash);

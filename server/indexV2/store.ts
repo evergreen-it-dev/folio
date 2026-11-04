@@ -254,8 +254,9 @@ export function targetNameKeys(pagePath: string): string[] {
   const names = new Set<string>();
   const base = segments[segments.length - 1] ?? '';
   if (base) names.add(base);
-  if (/\.md$/i.test(base) && base.length > 3) names.add(base.slice(0, -3));
-  if (/^(index|readme)\.md$/i.test(base) && segments.length > 1) names.add(segments[segments.length - 2]);
+  if (/\.mdx$/i.test(base) && base.length > 4) names.add(base.slice(0, -4));
+  else if (/\.md$/i.test(base) && base.length > 3) names.add(base.slice(0, -3));
+  if (/^(index|readme)\.mdx?$/i.test(base) && segments.length > 1) names.add(segments[segments.length - 2]);
   const out = new Set<string>();
   for (const name of names) {
     for (const v of [name, encodeURIComponent(name), name.replace(/ /g, '%20')]) out.add(v.toLowerCase());

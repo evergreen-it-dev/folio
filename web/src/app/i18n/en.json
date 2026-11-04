@@ -394,7 +394,15 @@
       "chunkFailed": "Part of the app could not be loaded. Reload the page.",
       "loading": "Loading the page…",
       "notFound": "This page wasn't found — it may have been deleted or moved.",
-      "loadFailed": "Could not load the page"
+      "loadFailed": "Could not load the page",
+      "gone": {
+        "title": "This page moved or was removed",
+        "body": "This page wasn't found — it may have been moved, renamed or deleted. Search for it, or go to the start of the space.",
+        "spaceHome": "Go to {{space}}",
+        "searchLabel": "Search this space",
+        "searchPlaceholder": "Search for the page…",
+        "noResults": "Nothing found."
+      }
     }
   },
   "outline": {
@@ -407,6 +415,35 @@
     "hide": "Hide the notes",
     "show": "Show notes",
     "tasksDone": "{{done}} of {{total}} checked"
+  },
+  "comments": {
+    "title": "Comments",
+    "toggleCount": "Comments — {{count}} open",
+    "comment": "Comment",
+    "showResolved": "Show resolved ({{count}})",
+    "hideResolved": "Hide resolved",
+    "empty": "No open comments.",
+    "emptyHint": "No open comments. Select text and press Comment to start a thread.",
+    "newPlaceholder": "Add a comment…",
+    "replyPlaceholder": "Reply…",
+    "editPlaceholder": "Edit the comment…",
+    "post": "Comment",
+    "reply": "Reply",
+    "save": "Save",
+    "hint": "{{key}}+Enter to send · Esc to cancel",
+    "resolve": "Resolve",
+    "reopen": "Reopen",
+    "resolvedBy": "Resolved by {{name}}",
+    "edit": "Edit",
+    "delete": "Delete",
+    "edited": "edited",
+    "actions": "Comment actions",
+    "deletedUser": "Deleted user",
+    "detached": "The commented text was deleted",
+    "deleteThreadTitle": "Delete this thread?",
+    "deleteThreadBody": "Deleting the first comment deletes the whole thread with its replies.",
+    "saveFailed": "Could not save the comment",
+    "cannotAnchor": "Could not attach a comment to this selection. Try selecting plain text without formatting."
   },
   "pageChrome": {
     "saveFailed": "Could not save",
@@ -953,7 +990,10 @@
       "empty": "No rules pages yet — add the first one with «+».",
       "about": "These pages go into the AI assistant’s context on every request in this space. Visible to admins only.",
       "hint": "Rules for this space’s AI assistant: added to the context of every request. Admins only.",
-      "demoNote": "Shared demo: anyone can edit these rules; they reset daily."
+      "demoNote": "Shared demo: anyone can edit these rules; they reset daily.",
+      "createRules": "Create writing rules",
+      "createRulesHint": "Adds a starter page .agent/writing-rules.md. Pages are then checked against it (“Check against writing rules” in the page header, and the MCP tool check_page_writing_rules).",
+      "createRulesFailed": "Could not create the writing rules"
     },
     "move": {
       "failed": "Could not move the page",
@@ -1379,6 +1419,16 @@
   },
   "assistant": {
     "menu": { "label": "Folio AI" },
+    "writingRules": {
+      "action": "Check against writing rules",
+      "noRules": "This space has no writing rules yet. A space admin can create them in the .agent section of the sidebar.",
+      "noKey": "The AI assistant isn’t set up yet — add a Cursor key in the account settings or ask an administrator.",
+      "busy": "The assistant is busy with another request.",
+      "fix": "Fix with Agent",
+      "fixHint": "Hands these findings to Agent mode, which edits the page",
+      "checkDisplay": "Check against writing rules: {{title}}",
+      "fixDisplay": "Fix with Agent: apply the suggested rewrites"
+    },
     "settings": {
       "title": "Folio AI (Cursor)",
       "source": "Key source",
@@ -1799,7 +1849,7 @@
   "publicSite": {
     "loadFailed": "Could not load this page.",
     "treeFailed": "Could not load the page list.",
-    "pageNotFound": "This page doesn't exist on this site.",
+    "pageNotFound": "This page moved or was removed — it isn't at this address any more. Use the search above or the page tree to find it.",
     "backHome": "Back to the home page",
     "empty": "This site has no pages yet.",
     "openMenu": "Open the page menu",
@@ -1946,6 +1996,8 @@
       "ogImage": "Social image",
       "favicon": "Favicon",
       "logo": "Logo",
+      "llms": "AI-readable copy of the site (llms.txt)",
+      "llmsHint": "Publishes llms.txt, llms-full.txt and a Markdown version of each page (add .md to the page address) for AI agents. Off when the site is hidden from search engines. Saved as \"llms\" in site.json.",
       "noImage": "None",
       "missingFile": "{{name}} (not in assets)",
       "upload": "Upload…",
