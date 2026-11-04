@@ -5,8 +5,8 @@ improvements are all welcome.
 
 ## Build it with agents
 
-Folio is vibe-coded: almost every line here was written by AI coding agents
-under human direction. That is also how we expect you to contribute. Do not
+Almost every line here was written by AI coding agents under human
+direction. That is also how we expect you to contribute. Do not
 hand-craft a feature for a week — point your agent (Claude Code, Cursor,
 Codex or any other) at this repository, describe the scenario, let it read
 [AGENTS.md](AGENTS.md) and [docs/HANDOFF.md](docs/HANDOFF.md), review what

@@ -1,6 +1,6 @@
 # Folio
 
-**The vibe-coded, open-source alternative to Notion and Confluence.**
+**The open-source alternative to Notion and Confluence.**
 Your team's wiki lives in Git. People write in the browser, together, in real
 time. AI agents read and write the same pages. One command to run it yourself.
 
@@ -11,11 +11,6 @@ Website: <https://foliowiki.online> · Featured in [Self-Host Weekly (9 Oct 2026
 No install, no sign-up: open it and pick Sam on the sign-in screen. Shared login, data resets every 24 hours; don't enter personal data or API keys.
 
 ![Folio: a page with Folio AI at work, a whiteboard and a data table](docs/images/overview.png)
-
-Folio was built to replace Confluence and Notion for a real team — and it was
-built by AI agents, in the open. The plans, specs and hand-off notes the agents
-work from are in this repository, next to the code they wrote.
-[More on that below.](#vibe-coded-and-not-hiding-it)
 
 ```bash
 git clone https://github.com/evergreen-it-dev/folio.git
@@ -906,31 +901,6 @@ optional recording of recent actions with all text masked, off with
 `SENTRY_REPLAY=0`): no DSN, no library, no connection. Details:
 [docs/INSTALL.md](docs/INSTALL.md#optional-analytics-hook-off-by-default) and
 [docs/INSTALL.md](docs/INSTALL.md#optional-error-reporting-off-by-default).
-
----
-
-## Vibe-coded, and not hiding it
-
-Folio is written by AI coding agents. A human product owner decides what to
-build, tries every change in the browser and decides what ships; agents plan
-the work, write the code and the tests, and document what they did.
-
-From the first commit on August 21, 2026 to version 0.1.0 on September 29,
-2026 took 39 days and more than 400 commits upstream. Version 0.2.0 followed on
-October 14, 2026, 54 days in. Today that is roughly 110,000 lines of TypeScript
-and another 70,000 lines of tests. It runs in production for a real team.
-
-We publish how it is made, not only what was made:
-
-| File | What it is |
-|---|---|
-| [AGENTS.md](AGENTS.md) | How the work is organized and the rules agents follow in this repository |
-| [docs/HANDOFF.md](docs/HANDOFF.md) | The current state: how Folio is put together, what must never break, what is open, and the lessons that cost us something to learn |
-| [DEV-PLAN.md](DEV-PLAN.md) | What has been built, in the order it was built, and what comes next |
-
-If you are building with agents yourself, this repository is a worked example
-of a non-trivial product made that way. If you only want a wiki, none of it
-gets in your way.
 
 ---
 
