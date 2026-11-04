@@ -13,6 +13,7 @@ import {
   updateSpaceAssetModeBodySchema,
   updateScanSettingsBodySchema,
   createSpaceGit,
+  resolveGitConflictBody,
   connectSpaceGitBodySchema,
   copyPageBodySchema,
   duplicatePageBodySchema,
@@ -57,6 +58,7 @@ import type {
   SpaceVisibility,
   SpaceGitInfo,
   ResetToRemoteResponse,
+  ResolveGitConflictResponse,
   TreeNode,
   PageMetadata,
   SpaceTagsResponse,
@@ -677,6 +679,23 @@ export function registerRoutes(app: FastifyInstance): void {
     const info = await storage.getSpaceInfo(space);
     if (!info) throw badRequest('space not found');
     return { git: info.git };
+  });
+
+  /** Explicit resolution of one deletion or binary conflict recorded by a merge; the next sync then pushes. Same gate as Sync: anyone who may edit the space. */
+  app.post('/api/spaces/:space/git/resolve-conflict', async (request): Promise<ResolveGitConflictResponse> => {
+    assertNotDemoAccount(request.authUser!, 'Resolving a git conflict');
+    const { space } = request.params as { space: string };
+    if (!(await storage.spaceExists(space))) throw notFound('space');
+    if (!(await session.canAdministerSpace(request.authUser!, space))) await session.requireSpaceRole(request, space, 'editor');
+    session.requireWriteScope(request);
+    const user = request.authUser!;
+    const body = parseBody(resolveGitConflictBody, request.body);
+    gitSync.recordEditor(space, { name: user.name, email: user.email });
+    await gitSync.resolveConflict(space, body.path, body.choice, { name: user.name, email: user.email }, user.id);
+    const info = await storage.getSpaceInfo(space);
+    if (!info || !info.git) throw badRequest('space not found');
+    const git: SpaceGitInfo = info.git.status === 'conflict' ? { ...info.git, conflicts: await gitSync.getSpaceConflicts(space) } : info.git;
+    return { git };
   });
 
   /**

@@ -18,6 +18,7 @@
  * documented simplification, not silently dropped.
  */
 import path from 'node:path';
+import * as fsp from 'node:fs/promises';
 import { query } from './db/pool.js';
 import { withSpaceLock } from './db/redis.js';
 import * as storageMod from './storage.js';
@@ -25,7 +26,7 @@ import * as git from './git.js';
 import { GitError, type GitIdentity } from './git.js';
 import { ensureAskpassScript, hasSpaceToken } from './gitCredentials.js';
 import { badRequest, notFound } from './errors.js';
-import type { PageAtShaResponse, PageHistoryEntry, SpaceGitConflict } from '../shared/contracts.js';
+import type { GitConflictChoice, PageAtShaResponse, PageHistoryEntry, SpaceGitConflict } from '../shared/contracts.js';
 // Circular import with collab.ts, which itself imports `* as gitSync from
 // './gitSync.js'` (for noteActivity). Safe here because every use below is
 // inside a function body, called long after both modules have finished
@@ -98,6 +99,42 @@ async function setSpaceStatus(
   );
 }
 
+const UNRESOLVED_MESSAGE = 'unresolved conflicts remain';
+
+async function fileExists(abs: string): Promise<boolean> {
+  return fsp.access(abs).then(
+    () => true,
+    () => false,
+  );
+}
+
+/**
+ * Every conflict that still blocks a push, pruning the ledger as it goes.
+ * A ledger entry is resolved when its file is gone (deleted on purpose), and —
+ * for text conflicts — once the markers are out of the file (or the remote
+ * already carries the identical file). Deletion and binary conflicts stay
+ * until resolveConflict records an explicit choice. Marker files the ledger
+ * does not know (merged before the ledger existed) block as text conflicts.
+ */
+async function unresolvedConflicts(dir: string, branch: string, askpass: string | undefined, space: string): Promise<git.ConflictRecord[]> {
+  const ledger = await git.readConflictLedger(dir);
+  const markers = await git.listConflictedFiles(dir);
+  const differing = markers.length > 0 ? new Set(await git.filesDifferingFromRemote(dir, branch, askpass, space)) : new Set<string>();
+  const blocking = new Set(markers.filter((p) => differing.has(p)));
+  const unresolved: git.ConflictRecord[] = [];
+  const kept: git.ConflictRecord[] = [];
+  for (const rec of ledger) {
+    if (!(await fileExists(path.join(dir, rec.path)))) continue;
+    if (rec.kind === 'text' && !blocking.has(rec.path)) continue;
+    unresolved.push(rec);
+    kept.push(rec);
+  }
+  const known = new Set(ledger.map((r) => r.path));
+  for (const p of blocking) if (!known.has(p)) unresolved.push({ path: p, kind: 'text' });
+  if (kept.length !== ledger.length) await git.writeConflictLedger(dir, kept);
+  return unresolved;
+}
+
 export interface SyncResult {
   status: string;
   ahead: number;
@@ -134,6 +171,11 @@ export async function performSync(space: string, requestedBy?: GitIdentity): Pro
         const preMerge = await git.headSha(dir);
         const { conflict } = await git.mergeFetchedRemote(dir, branch, askpass, space);
         if (conflict) {
+          // Remember every conflicted path durably BEFORE the commit below
+          // clears git's unmerged index entries: deletion and binary conflicts
+          // leave no text markers, so without the ledger the next sync would
+          // read the clone as clean and push the unresolved merge.
+          await git.recordMergeConflicts(dir);
           await git.commitConflictState(dir);
           await storageMod.scanSpace(space);
           await reconcileMergedRooms(space, dir, preMerge, roomBases, askpass);
@@ -144,26 +186,20 @@ export async function performSync(space: string, requestedBy?: GitIdentity): Pro
         await storageMod.scanSpace(space);
         await reconcileMergedRooms(space, dir, preMerge, roomBases, askpass);
 
-        // Whole-tree check (listConflictedFiles), not the rootPath-scoped
-        // hasConflictMarkers(dir, rootPath) this used to call: a conflict
-        // left in a file OUTSIDE this space's own rootPath — reachable
-        // whenever multiple spaces share one repo — used to read as clean
-        // here and get pushed straight past the conflict.
-        // Only markers this clone would ADD to the remote block the push. A
-        // file that already carries them identically on origin (pushed
-        // earlier, e.g. by another space on a shared repo) can't be fixed by
-        // not pushing, and would otherwise lock every space on that repo in
-        // `conflict` for good — "Take the version from Git" included.
-        const conflicted = await git.listConflictedFiles(dir);
-        const differing = conflicted.length > 0 ? new Set(await git.filesDifferingFromRemote(dir, branch, askpass, space)) : new Set<string>();
-        const stillConflicted = conflicted.some((p) => differing.has(p));
+        // Unresolved conflicts block the push: text conflicts (markers still
+        // in the file — whole-tree check, so a conflict outside this space's
+        // rootPath in a shared repo counts too, unless the remote already
+        // carries the same marker file) and every deletion / binary conflict
+        // recorded in the ledger until someone explicitly resolves it.
+        const unresolved = await unresolvedConflicts(dir, branch, askpass, space);
+        const stillConflicted = unresolved.length > 0;
         if (!stillConflicted) {
           await git.push(dir, branch, askpass, space);
         }
         const ab = await git.aheadBehind(dir, branch);
         const status = stillConflicted ? 'conflict' : ab.ahead > 0 ? 'ahead' : ab.behind > 0 ? 'behind' : 'clean';
-        await setSpaceStatus(space, { status, lastSyncAt: true, lastError: stillConflicted ? 'unresolved conflict markers remain in *.md' : null }, actor);
-        return { status, ahead: ab.ahead, behind: ab.behind, lastError: stillConflicted ? 'unresolved conflict markers remain in *.md' : null };
+        await setSpaceStatus(space, { status, lastSyncAt: true, lastError: stillConflicted ? UNRESOLVED_MESSAGE : null }, actor);
+        return { status, ahead: ab.ahead, behind: ab.behind, lastError: stillConflicted ? UNRESOLVED_MESSAGE : null };
       }
 
       await setSpaceStatus(space, { status: 'local', lastSyncAt: true, lastError: null }, actor);
@@ -330,26 +366,89 @@ export async function resetSpaceToRemote(space: string, requestedBy?: GitIdentit
 export async function getSpaceConflicts(space: string): Promise<SpaceGitConflict[]> {
   const dir = storageMod.getRepoDir(space);
   const rootPath = storageMod.getRootPath(space);
-  let paths: string[];
+  const found: Array<{ path: string; kind: SpaceGitConflict['kind']; deletedBy?: 'folio' | 'git' }> = [];
   try {
-    paths = await git.listConflictedFiles(dir);
+    for (const rec of await git.readConflictLedger(dir)) {
+      if (rec.kind !== 'text' && (await fileExists(path.join(dir, rec.path)))) found.push({ path: rec.path, kind: rec.kind, deletedBy: rec.deletedBy });
+    }
+    const have = new Set(found.map((f) => f.path));
+    for (const p of await git.listConflictedFiles(dir)) if (!have.has(p)) found.push({ path: p, kind: 'text' });
   } catch {
     return [];
   }
   const out: SpaceGitConflict[] = [];
-  for (const repoRelPath of paths) {
-    const relPath = relPathUnderRoot(rootPath, repoRelPath);
+  for (const f of found) {
+    const base: SpaceGitConflict = { path: f.path, kind: f.kind, ...(f.deletedBy ? { deletedBy: f.deletedBy } : {}) };
+    const relPath = relPathUnderRoot(rootPath, f.path);
     if (relPath !== null) {
       const id = await storageMod.getEntryIdByExactPath(space, relPath);
       if (id) {
         const entry = await storageMod.getEntry(id);
-        out.push({ path: repoRelPath, pageId: id, title: entry?.title });
+        out.push({ ...base, pageId: id, title: entry?.title });
         continue;
       }
     }
-    out.push({ path: repoRelPath });
+    out.push(base);
   }
   return out;
+}
+
+/**
+ * The explicit per-path resolution of a deletion or binary conflict recorded
+ * by the merge (text conflicts resolve by editing the markers away).
+ *  - deleted: 'keep-page' (the file as the merge left it) or 'delete-page'.
+ *  - binary:  'keep-mine' (this clone's file, as the merge left it) or 'take-git'
+ *    (the remote's version, read from the blob the merge recorded).
+ * The choice is committed right away; the next sync pushes once nothing else is
+ * unresolved. Both competing versions stay in history (the merge commit's
+ * parents), so nothing is lost.
+ */
+async function validateResolution(space: string, repoPath: string, choice: GitConflictChoice): Promise<void> {
+  const rec = (await git.readConflictLedger(storageMod.getRepoDir(space))).find((r) => r.path === repoPath);
+  if (!rec || rec.kind === 'text') throw badRequest('no unresolved deletion or binary conflict for this path');
+  const allowed: GitConflictChoice[] = rec.kind === 'deleted' ? ['keep-page', 'delete-page'] : ['keep-mine', 'take-git'];
+  if (!allowed.includes(choice)) throw badRequest(`choice "${choice}" does not fit a ${rec.kind} conflict`);
+}
+
+export async function resolveConflict(space: string, repoPath: string, choice: GitConflictChoice, requestedBy?: GitIdentity, userId: string | null = null): Promise<SyncResult> {
+  await validateResolution(space, repoPath, choice);
+  // "Delete it" goes through the ordinary page delete (trash, property sidecar, index row, links). It takes the
+  // space lock itself, so it runs before the locked section below.
+  if (choice === 'delete-page') {
+    const relPath = relPathUnderRoot(storageMod.getRootPath(space), repoPath);
+    const id = relPath !== null ? await storageMod.getEntryIdByExactPath(space, relPath) : null;
+    if (id) await storageMod.deletePage(id, userId);
+  }
+  return withSpaceLock(space, async () => {
+    const actor = requestedBy ?? authorFor(space);
+    const dir = storageMod.getRepoDir(space);
+    const branch = await storageMod.getSpaceInfo(space).then((s) => s?.git?.branch ?? 'main');
+    const ledger = await git.readConflictLedger(dir);
+    const rec = ledger.find((r) => r.path === repoPath);
+    if (!rec || rec.kind === 'text') throw badRequest('no unresolved deletion or binary conflict for this path');
+
+    // Land pending editor writes first, so they are not written over the choice afterwards.
+    await collab.flushAll();
+    const abs = path.join(dir, rec.path);
+    if (choice === 'delete-page') {
+      await fsp.rm(abs, { force: true });
+    } else if (choice === 'take-git') {
+      if (!rec.theirsSha) throw badRequest('the remote version of this file is not recorded');
+      const askpass = (await hasSpaceToken(space)) ? await ensureAskpassScript() : undefined;
+      await fsp.writeFile(abs, await git.readBlob(dir, rec.theirsSha, askpass, space));
+    }
+    await git.writeConflictLedger(dir, ledger.filter((r) => r.path !== rec.path));
+    await git.commitAll(dir, `folio: resolve conflict in ${rec.path} (${choice})`, actor);
+    await storageMod.scanSpace(space);
+
+    const askpass = (await hasSpaceToken(space)) ? await ensureAskpassScript() : undefined;
+    const unresolved = await unresolvedConflicts(dir, branch, askpass, space);
+    const ab = await git.aheadBehind(dir, branch);
+    const status = unresolved.length > 0 ? 'conflict' : ab.ahead > 0 ? 'ahead' : ab.behind > 0 ? 'behind' : 'clean';
+    const lastError = unresolved.length > 0 ? UNRESOLVED_MESSAGE : null;
+    await setSpaceStatus(space, { status, lastSyncAt: true, lastError }, actor);
+    return { status, ahead: ab.ahead, behind: ab.behind, lastError };
+  });
 }
 
 // --- periodic background fetch (every ~3 min per space with a remote,

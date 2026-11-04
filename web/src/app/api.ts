@@ -110,6 +110,8 @@ import type {
   RenameTagResult,
   RepoBranches,
   ResetToRemoteResponse,
+  ResolveGitConflictResponse,
+  GitConflictChoice,
   SavedSearch,
   SavedSearchesResponse,
   SearchHit,
@@ -497,6 +499,11 @@ export const api = {
    */
   resetSpaceToRemote: (space: string) =>
     request<ResetToRemoteResponse>(`/api/spaces/${encodeURIComponent(space)}/git/reset-to-remote`, { method: 'POST' }),
+  resolveGitConflict: (space: string, path: string, choice: GitConflictChoice) =>
+    request<ResolveGitConflictResponse>(`/api/spaces/${encodeURIComponent(space)}/git/resolve-conflict`, {
+      method: 'POST',
+      body: JSON.stringify({ path, choice }),
+    }),
 
   /**
    * "Connect git" on an already-existing LOCAL space (ConnectGitDialog).

@@ -746,7 +746,19 @@
     "conflictBanner": {
       "intro": "This space has unresolved git conflicts — open the pages with",
       "outro": "markers and resolve them as plain text.",
-      "affectedPages": "Affected pages:"
+      "affectedPages": "Affected pages:",
+      "resolved": "Conflict resolved. The next Sync will publish it.",
+      "resolveFailed": "Could not resolve the conflict",
+      "choiceIntro": "These files were changed on one side and deleted or replaced on the other. Choose which version to keep — nothing is published until you do:",
+      "kindBinary": "(file replaced on both sides)",
+      "kindDeletedByGit": "(edited here, deleted in git)",
+      "kindDeletedByYou": "(deleted here, edited in git)",
+      "keepPageMine": "Keep the page (your edit)",
+      "keepPageTheirs": "Keep the page (their edit)",
+      "deletePageTheirs": "Delete it (their deletion)",
+      "deletePageMine": "Delete it (your change)",
+      "keepMine": "Keep yours",
+      "takeGit": "Take the version from git"
     },
     "status": {
       "local": "local",

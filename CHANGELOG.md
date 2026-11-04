@@ -78,6 +78,18 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- **Git sync no longer publishes an unresolved deletion or binary conflict.**
+  When Folio deleted a page that Git edited (or the reverse), or both sides
+  replaced the same PDF or other non-text file, the first Sync reported the
+  conflict but a second Sync, the automatic retry or an app restart read the
+  space as clean and pushed the merge, so one side silently won. Every
+  conflicted path is now remembered until it is resolved, and nothing is pushed
+  meanwhile. The conflict banner offers a choice per file: **Keep the page** or
+  **Delete it** for a deletion, **Keep yours** or **Take the version from git**
+  for a replaced file; the next Sync then publishes. Text conflicts still
+  resolve by editing the markers, and both competing versions stay in the git
+  history. Reported in #9.
+
 - **A click or `End` under a block widget lands on the right line.** In Live
   edit, a click below or an `End` press next to a table, a Mermaid diagram, an
   HTML block or an MDX import or component put the cursor one line too low,

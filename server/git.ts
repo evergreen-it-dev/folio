@@ -8,7 +8,7 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { stat } from 'node:fs/promises';
+import { stat, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 /**
@@ -841,6 +841,7 @@ export async function resetToRemote(
 
   await execGit(dir, ['reset', '--hard', `origin/${branch}`], env);
   await execGit(dir, ['clean', '-fd'], env);
+  await writeConflictLedger(dir, []);
 
   return { backupRef, changed };
 }
@@ -882,4 +883,93 @@ export async function hasConflictMarkers(dir: string, rootRelPath: string): Prom
   }
 
   return walk(root);
+}
+
+// --- unresolved-conflict ledger ---------------------------------------------
+//
+// A conflicted merge is staged and committed (commitConflictState), which
+// removes git's unmerged index entries — and deletion / binary conflicts leave
+// no text markers behind. The ledger remembers, durably (a file inside the
+// clone's own .git, so it survives a restart and is never committed or pushed),
+// every path that conflicted until someone explicitly resolves it.
+
+export type ConflictKind = 'text' | 'deleted' | 'binary';
+
+export interface ConflictRecord {
+  /** Repo-root-relative path. */
+  path: string;
+  /** text: markers in the file; deleted: one side deleted what the other edited; binary: both sides changed a file with no mergeable text. */
+  kind: ConflictKind;
+  /** deleted only: which side removed the file ('folio' = this clone, 'git' = the remote). */
+  deletedBy?: 'folio' | 'git';
+  /** Blob of this clone's version / the remote's version (absent when that side deleted it). */
+  oursSha?: string;
+  theirsSha?: string;
+}
+
+function ledgerFile(dir: string): string {
+  return path.join(dir, '.git', 'folio-conflicts.json');
+}
+
+export async function readConflictLedger(dir: string): Promise<ConflictRecord[]> {
+  try {
+    const parsed = JSON.parse(await readFile(ledgerFile(dir), 'utf8')) as unknown;
+    return Array.isArray(parsed) ? (parsed as ConflictRecord[]).filter((r) => r && typeof r.path === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function writeConflictLedger(dir: string, records: ConflictRecord[]): Promise<void> {
+  if (records.length === 0) {
+    await rm(ledgerFile(dir), { force: true });
+    return;
+  }
+  await writeFile(ledgerFile(dir), JSON.stringify(records, null, 2), 'utf8');
+}
+
+/**
+ * Reads the merge's unmerged index entries (call right after a conflicted
+ * mergeFetchedRemote, BEFORE commitConflictState clears them) and adds each
+ * path to the ledger. Existing records for the same path are replaced.
+ */
+export async function recordMergeConflicts(dir: string): Promise<ConflictRecord[]> {
+  const { stdout } = await execGit(dir, ['ls-files', '-u', '-z']);
+  const byPath = new Map<string, Map<number, string>>();
+  for (const row of stdout.split('\0').filter(Boolean)) {
+    const tab = row.indexOf('\t');
+    if (tab < 0) continue;
+    const [, sha, stage] = row.slice(0, tab).split(' ');
+    const p = row.slice(tab + 1);
+    if (!byPath.has(p)) byPath.set(p, new Map());
+    byPath.get(p)!.set(Number(stage), sha);
+  }
+  const fresh: ConflictRecord[] = [];
+  for (const [p, stages] of byPath) {
+    const ours = stages.get(2);
+    const theirs = stages.get(3);
+    if (stages.has(1) && ours && !theirs) fresh.push({ path: p, kind: 'deleted', deletedBy: 'git', oursSha: ours });
+    else if (stages.has(1) && theirs && !ours) fresh.push({ path: p, kind: 'deleted', deletedBy: 'folio', theirsSha: theirs });
+    else {
+      const text = await readFile(path.join(dir, p), 'utf8').catch(() => '');
+      const hasMarkers = /^<<<<<<< /m.test(text) && /^>>>>>>> /m.test(text);
+      fresh.push({ path: p, kind: hasMarkers ? 'text' : 'binary', oursSha: ours, theirsSha: theirs });
+    }
+  }
+  const keep = (await readConflictLedger(dir)).filter((r) => !byPath.has(r.path));
+  const all = [...keep, ...fresh];
+  await writeConflictLedger(dir, all);
+  return all;
+}
+
+/** Binary-safe `git cat-file blob <sha>`. */
+export async function readBlob(dir: string, sha: string, askpassScript?: string, spaceSlug?: string): Promise<Buffer> {
+  const { stdout } = await execFileAsync('git', ['cat-file', 'blob', sha], {
+    cwd: dir,
+    timeout: GIT_TIMEOUT_MS,
+    maxBuffer: MAX_BUFFER,
+    encoding: 'buffer',
+    env: { ...process.env, ...remoteAuthEnv(askpassScript, spaceSlug) },
+  });
+  return stdout;
 }

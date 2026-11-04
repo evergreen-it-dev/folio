@@ -1852,6 +1852,18 @@ export interface SpaceGitConflict {
   path: string;
   pageId?: string;
   title?: string;
+  /** text: markers in the file; deleted: one side deleted what the other edited; binary: both sides changed the same non-text file. Absent from older servers = text. */
+  kind?: 'text' | 'deleted' | 'binary';
+  /** kind 'deleted' only: which side removed the file ('folio' = this instance, 'git' = the remote). */
+  deletedBy?: 'folio' | 'git';
+}
+
+/** POST /api/spaces/:space/git/resolve-conflict — the explicit choice for one deletion or binary conflict. */
+export const gitConflictChoice = z.enum(['keep-page', 'delete-page', 'keep-mine', 'take-git']);
+export type GitConflictChoice = z.infer<typeof gitConflictChoice>;
+export const resolveGitConflictBody = z.object({ path: z.string().min(1), choice: gitConflictChoice });
+export interface ResolveGitConflictResponse {
+  git: SpaceGitInfo;
 }
 
 /**
