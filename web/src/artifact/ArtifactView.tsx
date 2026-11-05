@@ -11,6 +11,7 @@
  * (download, replace) arrives as props.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { AppWindow, ChevronDown, ChevronRight, Code, Download, ExternalLink, Maximize2, Minimize2, RefreshCw, TriangleAlert } from 'lucide-react';
 import { ARTIFACT_IFRAME_SANDBOX, type ArtifactCapability, type ArtifactPayload } from '@shared/contracts';
@@ -30,6 +31,8 @@ export interface ArtifactViewProps {
   downloadUrl?: string;
   /** Editors: opens the import dialog in replace mode; absent = no Replace button. */
   onReplace?: () => void;
+  /** An element outside the view (the share page's header) that takes the action buttons instead of the view's own toolbar row. */
+  toolbarHost?: HTMLElement | null;
 }
 
 /** Only http(s) links are ever put in an href: the source URL comes from a manifest anybody could have written. */
@@ -45,7 +48,7 @@ function safeHttpUrl(url: string | undefined): string | null {
 
 const DEFAULT_EMBED_HEIGHT = 640;
 
-export function ArtifactView({ payload, pageId, title, version, allowServerState = true, downloadUrl, onReplace }: ArtifactViewProps) {
+export function ArtifactView({ payload, pageId, title, version, allowServerState = true, downloadUrl, onReplace, toolbarHost }: ArtifactViewProps) {
   const { t } = useTranslation('artifact');
   const rootRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -93,6 +96,49 @@ export function ArtifactView({ payload, pageId, title, version, allowServerState
       <span className="truncate">{sourceLabel}</span>
       {sourceUrl && <ExternalLink size={11} className="shrink-0 opacity-60" aria-hidden="true" />}
     </span>
+  );
+
+  // In the header there is less room: the text shows from lg up, and the title keeps icon-only buttons explained.
+  const portaled = !!toolbarHost && !fullscreen;
+  const label = (text: string) => (
+    <>
+      <span className={portaled ? 'hidden lg:inline' : 'hidden sm:inline'}>{text}</span>
+      <span className={portaled ? 'sr-only lg:hidden' : 'sr-only sm:hidden'}>{text}</span>
+    </>
+  );
+  const actions = (
+    <div className={`${portaled ? 'text-xs text-neutral-600 dark:text-neutral-300 ' : 'ml-auto '}flex flex-wrap items-center gap-0.5`}>
+      {onReplace && (
+        <button type="button" onClick={onReplace} className={toolbarButton} title={portaled ? t('toolbar.replace') : undefined}>
+          <RefreshCw size={14} aria-hidden="true" />
+          {label(t('toolbar.replace'))}
+        </button>
+      )}
+      {payload.sourceSrc && (
+        <button type="button" onClick={() => setShowSource(true)} className={toolbarButton} title={portaled ? t('toolbar.showSource') : undefined}>
+          <Code size={14} aria-hidden="true" />
+          {label(t('toolbar.showSource'))}
+        </button>
+      )}
+      {downloadUrl && !isEmbed && (
+        <a href={downloadUrl} download className={toolbarButton} title={portaled ? t('toolbar.download') : undefined}>
+          <Download size={14} aria-hidden="true" />
+          {label(t('toolbar.download'))}
+        </a>
+      )}
+      {frameUrl && (
+        <a href={frameUrl} target="_blank" rel="noopener noreferrer" className={toolbarButton} title={portaled ? t('toolbar.openInTab') : undefined}>
+          <ExternalLink size={14} aria-hidden="true" />
+          {label(t('toolbar.openInTab'))}
+        </a>
+      )}
+      {frameUrl && (
+        <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen} className={toolbarButton} title={portaled ? t('toolbar.fullscreen') : undefined}>
+          {fullscreen ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
+          {label(fullscreen ? t('toolbar.exitFullscreen') : t('toolbar.fullscreen'))}
+        </button>
+      )}
+    </div>
   );
 
   let body: ReactNode;
@@ -144,53 +190,21 @@ export function ArtifactView({ payload, pageId, title, version, allowServerState
       ref={rootRef}
       className={`flex min-h-[480px] flex-col bg-white dark:bg-neutral-900 ${fullscreen ? 'fixed inset-0 z-50 h-dvh' : 'h-full'}`}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
-        {sourceLabel &&
-          (sourceUrl ? (
-            <a href={sourceUrl} target="_blank" rel="noopener noreferrer nofollow" title={t('source.openOriginal')} className="min-w-0 max-w-[16rem]">
-              {badge}
-            </a>
-          ) : (
-            badge
-          ))}
-        <div className="ml-auto flex flex-wrap items-center gap-0.5">
-          {onReplace && (
-            <button type="button" onClick={onReplace} className={toolbarButton}>
-              <RefreshCw size={14} aria-hidden="true" />
-              <span className="hidden sm:inline">{t('toolbar.replace')}</span>
-              <span className="sr-only sm:hidden">{t('toolbar.replace')}</span>
-            </button>
-          )}
-          {payload.sourceSrc && (
-            <button type="button" onClick={() => setShowSource(true)} className={toolbarButton}>
-              <Code size={14} aria-hidden="true" />
-              <span className="hidden sm:inline">{t('toolbar.showSource')}</span>
-              <span className="sr-only sm:hidden">{t('toolbar.showSource')}</span>
-            </button>
-          )}
-          {downloadUrl && !isEmbed && (
-            <a href={downloadUrl} download className={toolbarButton}>
-              <Download size={14} aria-hidden="true" />
-              <span className="hidden sm:inline">{t('toolbar.download')}</span>
-              <span className="sr-only sm:hidden">{t('toolbar.download')}</span>
-            </a>
-          )}
-          {frameUrl && (
-            <a href={frameUrl} target="_blank" rel="noopener noreferrer" className={toolbarButton}>
-              <ExternalLink size={14} aria-hidden="true" />
-              <span className="hidden sm:inline">{t('toolbar.openInTab')}</span>
-              <span className="sr-only sm:hidden">{t('toolbar.openInTab')}</span>
-            </a>
-          )}
-          {frameUrl && (
-            <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen} className={toolbarButton}>
-              {fullscreen ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
-              <span className="hidden sm:inline">{fullscreen ? t('toolbar.exitFullscreen') : t('toolbar.fullscreen')}</span>
-              <span className="sr-only sm:hidden">{fullscreen ? t('toolbar.exitFullscreen') : t('toolbar.fullscreen')}</span>
-            </button>
-          )}
+      {portaled && toolbarHost ? (
+        createPortal(actions, toolbarHost)
+      ) : (
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+          {sourceLabel &&
+            (sourceUrl ? (
+              <a href={sourceUrl} target="_blank" rel="noopener noreferrer nofollow" title={t('source.openOriginal')} className="min-w-0 max-w-[16rem]">
+                {badge}
+              </a>
+            ) : (
+              badge
+            ))}
+          {actions}
         </div>
-      </div>
+      )}
 
       {unsupported.length > 0 && (
         <div

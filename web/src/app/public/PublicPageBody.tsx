@@ -110,7 +110,7 @@ export function PublicPageBody({ site, page }: PublicPageBodyProps) {
   if (page.kind === 'artifact' && page.artifact) {
     // The sandboxed page itself; the state a visitor saves stays in this browser, and there is no Download/Replace without a session.
     return (
-      <div className="h-[calc(100dvh-4rem)] min-h-[30rem]">
+      <div className="h-full min-h-[30rem]">
         <ArtifactView payload={page.artifact} pageId={page.id} title={page.title} version={page.updatedAt} allowServerState={false} />
       </div>
     );

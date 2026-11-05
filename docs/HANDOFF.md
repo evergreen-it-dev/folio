@@ -779,6 +779,14 @@ PostgreSQL, not in Git.
   A change that lets it read a cookie, call `/api/…` or load an arbitrary host
   breaks the model.
 
+- An artifact's source origin and original URL (`payload.source`, set in
+  `server/artifact/service.ts`) must never reach an anonymous reader: share-link
+  and public-site guests get none, only a signed-in reader does. On a share link
+  the artifact's toolbar is portalled into the page header (`toolbarHost`); in
+  fullscreen it must fall back inside the view, because the header is outside the
+  fullscreen element and the exit button would be unreachable, and switching
+  between the two must not remount the iframe.
+
 ## Lessons that cost something
 
 Each of these was a real defect. They are here so that nobody pays twice.

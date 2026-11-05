@@ -15,6 +15,7 @@ import { TablePageView } from '../routes/TablePageView';
 import { FormPageView } from '../routes/FormPageView';
 import { CanvasPane, spaceFileUrl } from '../../canvas';
 import { ArtifactView } from '../../artifact/ArtifactView';
+import { FOLIO_PRODUCT_URL } from '../public/publicSite';
 import '../i18n/register';
 
 /**
@@ -100,6 +101,8 @@ export function SharedPageView() {
     />
   ) : null;
 
+  const [headerActions, setHeaderActions] = useState<HTMLDivElement | null>(null);
+
   if (ownAccess) {
     return <div className="min-h-screen bg-white p-8 text-sm text-neutral-400 dark:bg-neutral-950">{t('ui.loading')}</div>;
   }
@@ -107,9 +110,16 @@ export function SharedPageView() {
   return (
     <div className="flex h-full min-h-screen flex-col bg-white dark:bg-neutral-950">
       <header className="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
-        <span className="shrink-0 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+        <a
+          href={FOLIO_PRODUCT_URL}
+          target="_blank"
+          rel="noopener"
+          className="flex shrink-0 items-center gap-1.5 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-100"
+        >
+          <img src="/favicon.svg" alt="" aria-hidden="true" className="h-4 w-4" />
           Folio
-        </span>
+        </a>
+        <WhatIsFolio />
         {data && (
           <>
             <span className="shrink-0 text-neutral-300 dark:text-neutral-700" aria-hidden="true">
@@ -124,9 +134,13 @@ export function SharedPageView() {
         {data && (
           <span className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
             {data.mode === 'edit' ? <Pencil size={11} aria-hidden="true" /> : <Eye size={11} aria-hidden="true" />}
-            {t('share.public.pill', { mode: t(data.mode === 'edit' ? 'share.public.editMode' : 'share.public.viewMode') })}
+            {/* On an artifact page the header also holds the action buttons: on a phone the pill keeps just its icon. */}
+            <span className={data.page.kind === 'artifact' ? 'max-sm:sr-only' : undefined}>
+              {t('share.public.pill', { mode: t(data.mode === 'edit' ? 'share.public.editMode' : 'share.public.viewMode') })}
+            </span>
           </span>
         )}
+        <div ref={setHeaderActions} className="flex shrink-0 items-center empty:hidden" />
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -153,11 +167,40 @@ export function SharedPageView() {
                 {error instanceof ApiError && error.status === 404 ? t('share.public.invalid') : t('share.public.loadFailed')}
               </div>
             )}
-            {data && <SharedPageBody payload={data} token={token!} />}
+            {data && <SharedPageBody payload={data} token={token!} headerActions={headerActions} />}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * A tiny badge next to the mark: on hover or keyboard focus a card says what Folio is and links to the product
+ * site. CSS only (the panel's top padding, not a margin, keeps the hover while the pointer crosses the gap).
+ * Hidden on phones, where the header is tight and the logo link already leads to the site.
+ */
+function WhatIsFolio() {
+  const { t } = useTranslation('app');
+  return (
+    <span className="group relative hidden shrink-0 sm:inline-flex">
+      <a
+        href={FOLIO_PRODUCT_URL}
+        target="_blank"
+        rel="noopener"
+        className="rounded-full border border-neutral-200 px-1.5 text-[10px] leading-4 text-neutral-500 hover:text-neutral-800 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+      >
+        {t('share.public.whatIs')}
+      </a>
+      <span className="invisible absolute left-0 top-full z-50 pt-1 opacity-0 transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+        <span className="block w-max max-w-[20rem] rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs text-neutral-700 shadow-md dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">
+          <span className="block">{t('share.public.whatIsTagline')}</span>
+          <a href={FOLIO_PRODUCT_URL} target="_blank" rel="noopener" className="mt-0.5 block text-blue-600 hover:underline dark:text-blue-400">
+            foliowiki.online
+          </a>
+        </span>
+      </span>
+    </span>
   );
 }
 
@@ -285,7 +328,7 @@ function useShareDocRole(pageId: string, staticEditable: boolean, enabled: boole
   return role === 'editor' || role === 'admin';
 }
 
-function SharedPageBody({ payload, token }: { payload: SharedPagePayload; token: string }) {
+function SharedPageBody({ payload, token, headerActions }: { payload: SharedPagePayload; token: string; headerActions: HTMLElement | null }) {
   const { t } = useTranslation('app');
   const { mode, page } = payload;
   // R23 tail: a page other than the token's own. The server already forces
@@ -345,8 +388,8 @@ function SharedPageBody({ payload, token }: { payload: SharedPagePayload; token:
   if (page.kind === 'artifact' && page.artifact) {
     // Read-only whatever the link's mode; the state a guest saves stays in this browser.
     return (
-      <div className="h-[calc(100dvh-6rem)] min-h-[30rem] w-full">
-        <ArtifactView payload={page.artifact} pageId={page.id} title={page.title} version={page.updatedAt} allowServerState={false} />
+      <div className="h-full min-h-[30rem] w-full">
+        <ArtifactView payload={page.artifact} pageId={page.id} title={page.title} version={page.updatedAt} allowServerState={false} toolbarHost={headerActions} />
       </div>
     );
   }

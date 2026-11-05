@@ -131,7 +131,8 @@ function payloadFrom(entry: PageIndexEntry, info: BundleInfo, reader: ArtifactRe
   } else if (m.entry && info.files.some((f) => f.path === m.entry)) {
     payload.src = artifactFileUrl(token, m.entry);
   }
-  if (m.source) payload.source = m.source;
+  // Where the page came from (origin, original URL) is the owner's business: guests (share links, public site) don't get it.
+  if (m.source && reader.kind === 'user') payload.source = m.source;
   if (m.source?.file && info.files.some((f) => f.path === m.source!.file)) payload.sourceSrc = artifactFileUrl(token, m.source.file);
   return payload;
 }

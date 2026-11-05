@@ -78,6 +78,17 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- **An artifact on a share link fills the page and no longer shows its source.**
+  The artifact view used a fixed height taller than the real header, which left
+  an empty strip below the frame on a share link; the public site had the same
+  height. Guests of a share link or a public site no longer receive the
+  artifact's source origin and original URL, so the "From Claude" badge and the
+  link to the original are gone for them (a signed-in reader still sees both).
+  On a share link the artifact's actions (open in a new tab, fullscreen) now sit
+  in the page header instead of a separate row, and return inside the view in
+  fullscreen. Every share link's header also shows the Folio logo and a small
+  "What is Folio?" badge (hidden on phones) that links to the Folio site.
+
 - **Git sync no longer publishes an unresolved deletion or binary conflict.**
   When Folio deleted a page that Git edited (or the reverse), or both sides
   replaced the same PDF or other non-text file, the first Sync reported the

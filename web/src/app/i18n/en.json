@@ -562,6 +562,8 @@
     "createLink": "Create link",
     "public": {
       "pill": "Opened via link · {{mode}}",
+      "whatIs": "What is Folio?",
+      "whatIsTagline": "AI-friendly wiki for modern teams",
       "editMode": "Edit",
       "viewMode": "View only",
       "invalid": "This link is invalid — it was revoked or never existed.",

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import i18next from 'i18next';
 import type { ArtifactPayload } from '@shared/contracts';
 import { ArtifactView } from './ArtifactView';
@@ -27,6 +27,20 @@ const payload = (over: Partial<ArtifactPayload> = {}): ArtifactPayload => ({
 });
 
 describe('ArtifactView', () => {
+  it('puts the action buttons into toolbarHost, and takes them back into the view in fullscreen without reloading the frame', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const { container } = render(<ArtifactView payload={payload()} pageId="p1" title="Dash" toolbarHost={host} />);
+    const frame = screen.getByTitle('Dash (artifact)');
+    const fullscreenButton = () => screen.getByRole('button', { name: /^Fullscreen/ });
+    expect(host.contains(fullscreenButton())).toBe(true);
+    expect(container.contains(fullscreenButton())).toBe(false);
+    fireEvent.click(fullscreenButton());
+    expect(container.contains(screen.getByRole('button', { name: /^Exit fullscreen/ }))).toBe(true);
+    expect(screen.getByTitle('Dash (artifact)')).toBe(frame);
+    host.remove();
+  });
+
   it('shows the page in a frame that never gets allow-same-origin', () => {
     render(<ArtifactView payload={payload()} pageId="p1" title="Dash" />);
     const frame = screen.getByTitle('Dash (artifact)');
