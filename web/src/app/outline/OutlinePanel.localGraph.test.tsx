@@ -95,14 +95,14 @@ describe('OutlinePanel — local graph section', () => {
     renderAt('/s/acme/p/P1', 'text\n');
     await screen.findAllByTestId('graph-canvas');
     const trigger = screen.getAllByRole('button', { name: 'Depth' })[0];
-    expect(trigger.textContent).toBe('Links: direct');
+    expect(trigger.textContent).toBe('direct links');
     fireEvent.click(trigger);
     expect(screen.getByText('Which pages the graph shows')).toBeTruthy();
     expect(screen.getByRole('menuitemradio', { name: 'Direct links only' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemradio', { name: '+ one more step' }).getAttribute('aria-checked')).toBe('false');
     fireEvent.click(screen.getByRole('menuitemradio', { name: '+ one more step' }));
     await waitFor(() => expect(getPageGraph).toHaveBeenCalledWith('P1', 3, 'both', true));
-    expect(screen.getAllByRole('button', { name: 'Depth' })[0].textContent).toBe('Links: + one more step');
+    expect(screen.getAllByRole('button', { name: 'Depth' })[0].textContent).toBe('+ one more step');
   });
 
   it('collapses from its header, remembered globally (another page, another space): no canvas and no request while collapsed', async () => {

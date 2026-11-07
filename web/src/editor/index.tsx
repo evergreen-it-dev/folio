@@ -7,6 +7,7 @@ import { EditorView, keymap } from '@codemirror/view';
 import { yUndoManagerKeymap } from 'y-codemirror.next';
 import { trackEdit } from '../analytics';
 import { api } from '../app/api';
+import { PanelVisibilityToggle } from '../app/outline/panelVisibility';
 import { usePageComments } from '../app/comments/usePageCommentsUi';
 import { useConnectivity } from '../app/offline/connectivity';
 import { usePagePresence, usePublishPagePresence } from '../app/presence';
@@ -324,7 +325,10 @@ export function PageEditor({
         {comments.button}
         <ConnectionBadge status={status} peers={peers} />
         {readOnly ? (
-          <span className="folio-editor__readonly">{t('readonly')}</span>
+          <>
+            <span className="folio-editor__readonly">{t('readonly')}</span>
+            <PanelVisibilityToggle />
+          </>
         ) : (
           <>
             {/* Round 27: only where there is a panel to show. Reading mode
@@ -333,6 +337,7 @@ export function PageEditor({
                 layout (a phone) gets the width back instead. */}
             {mode !== 'reading' && <PanelToggle />}
             <ModeToggle mode={mode} onSelect={selectMode} />
+            <PanelVisibilityToggle />
           </>
         )}
       </div>

@@ -32,3 +32,12 @@ export function flashEditorTodo(pos: number): void {
   const view = mountedEditorView();
   if (view) flashTodoAt(view, pos);
 }
+
+/** Reading view: the same brief flash for a note (callout / checklist item) the panel's row scrolled to. */
+export function flashReadingNote(index: number): boolean {
+  const mark = document.querySelector(`[data-note-index="${index}"]`);
+  if (!mark) return false;
+  const line = mark.closest(LINE_SELECTOR) ?? mark;
+  pulse(line, 'folio-todo-flash-line');
+  return true;
+}

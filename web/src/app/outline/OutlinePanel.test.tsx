@@ -208,12 +208,12 @@ describe('OutlinePanel — Notes section', () => {
     it('a collapsed outline leaves the notes in place; its header brings it back', () => {
       render(<OutlinePanel markdown={BOTH} />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Outline' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Outline/ }));
 
       expect(screen.queryByText('Heading')).toBeNull();
       expect(screen.getByText('a note')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Outline' }).getAttribute('aria-expanded')).toBe('false');
-      fireEvent.click(screen.getByRole('button', { name: 'Outline' }));
+      expect(screen.getByRole('button', { name: /^Outline/ }).getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(screen.getByRole('button', { name: /^Outline/ }));
       expect(screen.getByText('Heading')).toBeTruthy();
     });
 
@@ -293,17 +293,17 @@ describe('OutlinePanel — TODO section', () => {
   it('lists the TODO lines and narrows them with the assignee filter', () => {
     render(<OutlinePanel markdown={TODO_MARKDOWN} />);
 
-    expect(screen.getByText('ship it TODO: @Ann')).toBeTruthy();
-    expect(screen.getByText('TODO nobody')).toBeTruthy();
+    expect(screen.getByTitle('ship it TODO: @Ann')).toBeTruthy();
+    expect(screen.getByTitle('TODO nobody')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Filter by assignee'), { target: { value: '@bob' } });
-    expect(screen.queryByText('ship it TODO: @Ann')).toBeNull();
-    expect(screen.queryByText('TODO nobody')).toBeNull();
-    expect(screen.getByText('TODO @bob and @ann')).toBeTruthy();
+    expect(screen.queryByTitle('ship it TODO: @Ann')).toBeNull();
+    expect(screen.queryByTitle('TODO nobody')).toBeNull();
+    expect(screen.getByTitle('TODO @bob and @ann')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Filter by assignee'), { target: { value: ':none' } });
-    expect(screen.getByText('TODO nobody')).toBeTruthy();
-    expect(screen.queryByText('TODO @bob and @ann')).toBeNull();
+    expect(screen.getByTitle('TODO nobody')).toBeTruthy();
+    expect(screen.queryByTitle('TODO @bob and @ann')).toBeNull();
   });
 
   it('renders nothing for a page without TODO lines', () => {

@@ -485,7 +485,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
             />
           </div>
         </div>
-        {!embedded && <OutlinePanel markdown={data.markdown ?? ''} pageId={data.id} />}
+        {!embedded && <OutlinePanel markdown={data.markdown ?? ''} pageId={data.id} title={data.title} />}
       </div>
     </div>
   );

@@ -19,7 +19,8 @@ import { scrollActiveEditorToHeading, scrollActiveEditorToOffset } from '../../e
 import { extractHeadings, HEADING_ID_PREFIX } from '../../markdown/headings';
 import { extractNotes, type NoteKind } from '../../markdown/notes';
 import { extractTodos } from '../../markdown/todos';
-import { flashEditorTodo, flashReadingTodo } from './todoFlash';
+import { flashEditorTodo, flashReadingNote, flashReadingTodo } from './todoFlash';
+import { setPanelHidden, usePanelHidden, useRegisterPanel, useToolbarButtonMounted } from './panelVisibility';
 import { useLocalStorage } from '../hooks';
 import '../i18n/register';
 import { useLiveDocText } from '../liveDocText';
@@ -37,6 +38,12 @@ const NOTE_ICONS: Record<NoteKind, LucideIcon> = {
   task: Square,
 };
 
+/** The row's text without its `@handle` tokens (they are shown after it, in the accent colour). */
+function todoBody(text: string, assignees: readonly string[]): string {
+  const stripped = text.replace(/^\s*TODO\b[:\s]*/i, '').replace(/(^|\s)@[\p{L}\p{N}_.-]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  return stripped || text;
+}
+
 /** The filter choice for "no assignee" — a value no `@handle` can collide with. */
 const NO_ASSIGNEE = ':none';
 
@@ -51,6 +58,11 @@ export interface OutlinePanelProps {
    * no editor (a share view), where `markdown` is the only source anyway.
    */
   pageId?: string;
+  /**
+   * The page's title. A leading H1 equal to it is not listed in the outline: the title is right there on the page and
+   * a first entry that repeats it only pushes the real sections down.
+   */
+  title?: string;
 }
 
 /**
@@ -116,14 +128,19 @@ export interface OutlinePanelProps {
  * but hidden from the visible list by default — see doneCount/totalTasks
  * below.
  */
-export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
+export function OutlinePanel({ markdown, pageId, title }: OutlinePanelProps) {
   const { t } = useTranslation('app');
   // Live text wins while someone is typing; the server snapshot is the
   // fallback for reading-only surfaces and for the moment before the collab
   // session connects.
   const live = useLiveDocText(pageId);
   const source = live ?? markdown;
-  const headings = useMemo(() => extractHeadings(source), [source]);
+  const allHeadings = useMemo(() => extractHeadings(source), [source]);
+  const headings = useMemo(() => {
+    const first = allHeadings[0];
+    if (first && first.level === 1 && title !== undefined && first.text.trim().toLowerCase() === title.trim().toLowerCase()) return allHeadings.slice(1);
+    return allHeadings;
+  }, [allHeadings, title]);
   const notes = useMemo(() => extractNotes(source), [source]);
   const todos = useMemo(() => extractTodos(source), [source]);
   const [outlineOpen, setOutlineOpen] = useLocalStorage('folio:outline-open', true);
@@ -141,7 +158,10 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
   // Graph view (16.10.2026): the page's local graph, a third section with its own open/closed state. Only where
   // there is a space and a page (not on a share link).
   const { space } = useParams<{ space: string }>();
-  const [panelHidden, setPanelHidden] = useLocalStorage('folio:outline-panel-hidden', false);
+  const panelHidden = usePanelHidden();
+  // The show/hide button lives in the editor's toolbar row; only where there is no such row (no editor on the page)
+  // does the panel carry its own.
+  const toolbarButton = useToolbarButtonMounted();
   const hasGraph = !!space && !!pageId;
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -184,33 +204,48 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
 
   useEffect(() => {
     if (headings.length === 0) return;
-    const targets = headings
-      .map((h) => document.getElementById(HEADING_ID_PREFIX + h.slug))
-      .filter((el): el is HTMLElement => el !== null);
-    if (targets.length === 0) return; // source/live editor mode: no heading DOM to observe
-
-    const visible = new Set<string>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const slug = entry.target.id.slice(HEADING_ID_PREFIX.length);
-          if (entry.isIntersecting) visible.add(slug);
-          else visible.delete(slug);
-        }
-        if (visible.size === 0) return;
-        // Earliest heading in document order that's currently on screen.
-        const active = headings.find((h) => visible.has(h.slug));
-        if (active) setActiveSlug(active.slug);
-      },
-      // Counts a heading as "current" only once it's within the top ~30% of
-      // the viewport, not merely anywhere on screen.
-      { rootMargin: '0px 0px -70% 0px', threshold: 0 },
-    );
-    targets.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+    let observer: IntersectionObserver | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    const attach = () => {
+      const targets = headings
+        .map((h) => document.getElementById(HEADING_ID_PREFIX + h.slug))
+        .filter((el): el is HTMLElement => el !== null);
+      if (targets.length === 0) {
+        // No heading DOM (yet): the reading view may still be loading — look again for a few seconds. In
+        // source/live there never is any, and the retries simply run out.
+        if (attempts++ < 20) retry = setTimeout(attach, 500);
+        return;
+      }
+      const visible = new Set<string>();
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const slug = entry.target.id.slice(HEADING_ID_PREFIX.length);
+            if (entry.isIntersecting) visible.add(slug);
+            else visible.delete(slug);
+          }
+          if (visible.size === 0) return;
+          // Earliest heading in document order that's currently on screen.
+          const active = headings.find((h) => visible.has(h.slug));
+          if (active) setActiveSlug(active.slug);
+        },
+        // Counts a heading as "current" only once it's within the top ~30% of
+        // the viewport, not merely anywhere on screen.
+        { rootMargin: '0px 0px -70% 0px', threshold: 0 },
+      );
+      targets.forEach((el) => observer!.observe(el));
+    };
+    attach();
+    return () => {
+      if (retry) clearTimeout(retry);
+      observer?.disconnect();
+    };
   }, [headings]);
 
-  if (headings.length === 0 && notes.length === 0 && todos.length === 0 && !hasGraph) return null;
+  const hasContent = headings.length > 0 || notes.length > 0 || todos.length > 0 || hasGraph;
+  useRegisterPanel(hasContent);
+  if (!hasContent) return null;
 
   function scrollTo(slug: string) {
     // source/live: hands off to the mounted CodeMirror view (see this file's
@@ -226,6 +261,7 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
   function scrollToNote(pos: number, index: number) {
     if (scrollActiveEditorToOffset(pos)) return;
     document.querySelector(`[data-note-index="${index}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    flashReadingNote(index);
   }
 
   const hasHeadings = headings.length > 0;
@@ -242,7 +278,7 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
   }
 
   // The same anatomy docked and in the drawer: only the touch size of a row differs.
-  const rowPad = (variant: 'docked' | 'mobile') => (variant === 'docked' ? 'py-0.5' : 'py-1.5');
+  const rowPad = (variant: 'docked' | 'mobile') => (variant === 'docked' ? 'py-0' : 'py-1');
   const closeDrawer = (variant: 'docked' | 'mobile') => {
     if (variant === 'mobile') setMobileOpen(false);
   };
@@ -250,28 +286,35 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
   function outlineSection(variant: 'docked' | 'mobile', first = false) {
     if (!hasHeadings) return null;
     return (
-      <PanelSection first={first} trailing={first ? hideButton : undefined} label={t('outline.label')} open={outlineOpen} onToggle={() => setOutlineOpen((v) => !v)} toggleTitle={outlineOpen ? t('outline.hide') : t('outline.show')}>
-        <ul className="flex flex-col">
-          {headings.map((h) => (
-            <li key={h.slug}>
-              <button
-                type="button"
-                onClick={() => {
-                  scrollTo(h.slug);
-                  closeDrawer(variant);
-                }}
-                title={h.text}
-                style={{ paddingLeft: `${(h.level - 1) * 12}px` }}
-                className={`block w-full truncate text-left text-[13px] leading-5 ${rowPad(variant)} ${
-                  activeSlug === h.slug
-                    ? 'font-medium text-neutral-900 dark:text-neutral-100'
-                    : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
-                }`}
-              >
-                {h.text}
-              </button>
-            </li>
-          ))}
+      <PanelSection first={first} trailing={first ? hideButton : undefined} label={t('outline.label')} count={headings.length} open={outlineOpen} onToggle={() => setOutlineOpen((v) => !v)} toggleTitle={outlineOpen ? t('outline.hide') : t('outline.show')}>
+        {/* A rail: one hairline on the left, the active heading marked by an accent bar on it. */}
+        <ul className="relative flex flex-col gap-px pl-0.5 before:absolute before:top-0.5 before:bottom-0.5 before:left-[5px] before:w-px before:bg-neutral-200 dark:before:bg-neutral-800">
+          {headings.map((h) => {
+            const active = activeSlug === h.slug;
+            const deep = h.level >= 3;
+            return (
+              <li key={h.slug}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    scrollTo(h.slug);
+                    closeDrawer(variant);
+                  }}
+                  title={h.text}
+                  aria-current={active ? 'location' : undefined}
+                  className={`relative block w-full rounded-[5px] pr-1.5 text-left leading-[1.35] hover:bg-black/[0.045] dark:hover:bg-white/5 ${variant === 'docked' ? 'py-[3px]' : 'py-1.5'} ${deep ? 'pl-7 text-[12.5px]' : 'pl-4 text-[13px]'} ${
+                    active
+                      ? "font-medium text-neutral-900 before:absolute before:inset-y-1 before:left-0.5 before:w-0.5 before:rounded-sm before:bg-indigo-600 before:content-[''] dark:text-neutral-100 dark:before:bg-indigo-300"
+                      : deep
+                        ? 'text-neutral-400 hover:text-neutral-900 dark:text-neutral-500 dark:hover:text-neutral-100'
+                        : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
+                  }`}
+                >
+                  <span className="line-clamp-2">{h.text}</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </PanelSection>
     );
@@ -290,7 +333,7 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
         toggleTitle={notesOpen ? t('notes.hide') : t('notes.show')}
       >
         {visibleNotes.length > 0 && (
-          <ul className="flex flex-col">
+          <ul className="flex flex-col gap-2">
             {visibleNotes.map(({ entry, index }) => {
               const Icon = NOTE_ICONS[entry.kind];
               return (
@@ -302,9 +345,9 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
                       closeDrawer(variant);
                     }}
                     title={entry.text}
-                    className={`flex w-full items-start gap-1.5 text-left text-[13px] leading-5 text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100 ${rowPad(variant)}`}
+                    className={`flex w-full items-start gap-2 text-left text-[13px] leading-[1.4] text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100 ${rowPad(variant)}`}
                   >
-                    <Icon size={12} className="mt-1 shrink-0 text-neutral-400" aria-hidden="true" />
+                    <Icon size={12} className="mt-[3px] shrink-0 text-neutral-400 dark:text-neutral-500" aria-hidden="true" />
                     <span className="line-clamp-2 min-w-0">{entry.text}</span>
                   </button>
                 </li>
@@ -349,7 +392,7 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
           )
         }
       >
-        <ul className="flex flex-col">
+        <ul className="flex flex-col gap-2">
           {visibleTodos.map((entry) => (
             <li key={entry.index}>
               <button
@@ -359,10 +402,17 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
                   closeDrawer(variant);
                 }}
                 title={entry.text}
-                className={`flex w-full items-start gap-1.5 text-left text-[13px] leading-5 text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100 ${rowPad(variant)}`}
+                className={`flex w-full items-start gap-2 text-left text-[13px] leading-[1.4] text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100 ${rowPad(variant)}`}
               >
-                <Circle size={12} className="mt-1 shrink-0 text-neutral-400" aria-hidden="true" />
-                <span className="line-clamp-2 min-w-0">{entry.text}</span>
+                <Circle size={12} className="mt-[3px] shrink-0 text-neutral-400 dark:text-neutral-500" aria-hidden="true" />
+                <span className="line-clamp-2 min-w-0">
+                  {todoBody(entry.text, entry.assignees)}
+                  {entry.assignees.map((handle) => (
+                    <span key={handle} className="ml-1 text-[11px] text-indigo-600 dark:text-indigo-300">
+                      @{handle}
+                    </span>
+                  ))}
+                </span>
               </button>
             </li>
           ))}
@@ -371,7 +421,7 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
     );
   }
 
-  const hideButton = (
+  const hideButton = toolbarButton ? undefined : (
     <button
       type="button"
       onClick={() => setPanelHidden(true)}
@@ -385,7 +435,7 @@ export function OutlinePanel({ markdown, pageId }: OutlinePanelProps) {
 
   /** The whole panel is put away: one slim rail with the button that brings it back. */
   const dockedPanel = panelHidden ? (
-    <div className="hidden w-10 shrink-0 border-l border-neutral-200 min-[1100px]:block dark:border-neutral-800">
+    toolbarButton ? null : <div className="hidden w-10 shrink-0 border-l border-neutral-200 min-[1100px]:block dark:border-neutral-800">
       <div className="flex h-10 items-center justify-center">
         <button
           type="button"

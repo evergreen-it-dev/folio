@@ -2387,6 +2387,10 @@
       "depthRow1": "Direct links only",
       "depthRow2": "+ neighbours' links",
       "depthRow3": "+ one more step",
+      "showing": "Showing:",
+      "showLabel1": "direct links",
+      "showLabel2": "+ neighbours' links",
+      "showLabel3": "+ one more step",
       "depthCaption": "Which pages the graph shows"
     },
     "filters": {

@@ -4,6 +4,19 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Changed
+
+- **A calmer right panel.** The local graph has no controls on top of it any more:
+  it fits its nodes with room to spare, shortens long labels next to the node and
+  marks the current page with a soft ring. Under it a quiet "Showing: direct
+  links" line opens the depth menu, and the section header shows how many pages
+  are on the graph. The outline runs along a thin rail with an accent mark on the
+  heading you are reading, smaller sub-headings, long headings on two lines
+  instead of cut with "…", and no repeat of the page title. Notes and the TODO
+  list share the same layout: an icon, two lines of text, the assignee at the end.
+  The button that hides the panel moved to the editor's toolbar, next to the mode
+  switch, so it no longer jumps between sections.
+
 ## [0.4.3] - 2026-11-07
 
 A lighter, more convenient interface, redesigned after user feedback: one icon

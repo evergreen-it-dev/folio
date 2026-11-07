@@ -21,7 +21,7 @@ export interface PanelSectionProps {
 
 /**
  * One section of the page's right panel: a full-width disclosure header (chevron, small-caps label, count) with
- * optional controls on its right, and a body whose left edge is the label's (chevron width + gap = pl-4).
+ * optional controls on its right, and a body that starts at the same left edge as the header (the panel's one content edge).
  */
 export function PanelSection({ label, count, open, onToggle, toggleTitle, actions, ariaLabel, first, trailing, children }: PanelSectionProps) {
   return (
@@ -42,7 +42,7 @@ export function PanelSection({ label, count, open, onToggle, toggleTitle, action
         {actions && <div className="flex shrink-0 items-center gap-0.5">{actions}</div>}
         {trailing}
       </div>
-      {open && <div className="min-w-0 pl-4 pt-0.5">{children}</div>}
+      {open && <div className="min-w-0 pt-0.5">{children}</div>}
     </section>
   );
 }

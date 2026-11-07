@@ -70,6 +70,9 @@ function prefersReducedMotion(): boolean {
 /** Above this many nodes, the first layout steps run before the first frame, so the graph does not "explode" on screen. */
 const WARM_UP_NODES = 600;
 
+/** Longest label (characters, before the ellipsis) on the small local-graph canvas. */
+const COMPACT_LABEL_CHARS = 16;
+
 export function GraphCanvas({ nodes, links, settings, onOpen, onSelect, selectedId, compact = false, ariaLabel, handleRef }: GraphCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -234,6 +237,16 @@ export function GraphCanvas({ nodes, links, settings, onOpen, onSelect, selected
       const n = id ? simNodesRef.current.get(id) : undefined;
       if (!n) continue;
       ctx.beginPath();
+      if (compact && n.view.isCenter) {
+        // The local graph's current page: a soft halo in the node's own colour instead of a hard outline.
+        ctx.arc(n.x!, n.y!, n.view.radius + 3.5 / k, 0, Math.PI * 2);
+        ctx.globalAlpha = 0.35;
+        ctx.strokeStyle = n.view.color;
+        ctx.lineWidth = 2.5 / k;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        continue;
+      }
       ctx.arc(n.x!, n.y!, n.view.radius + 2.5 / k, 0, Math.PI * 2);
       ctx.strokeStyle = theme.ring;
       ctx.lineWidth = 1.5 / k;
@@ -269,7 +282,7 @@ export function GraphCanvas({ nodes, links, settings, onOpen, onSelect, selected
         sy: n.y! * k + y,
         radiusPx: n.view.radius * k,
         degree: n.view.degree,
-        text: n.view.title.length > (compact ? 22 : 40) ? `${n.view.title.slice(0, compact ? 21 : 39)}…` : n.view.title,
+        text: n.view.title.length > (compact ? COMPACT_LABEL_CHARS + 1 : 40) ? `${n.view.title.slice(0, compact ? COMPACT_LABEL_CHARS : 39).trimEnd()}…` : n.view.title,
         isCenter: n.view.isCenter,
       });
     }
@@ -308,11 +321,39 @@ export function GraphCanvas({ nodes, links, settings, onOpen, onSelect, selected
       maxY = Math.max(maxY, n.y! + n.view.radius + 14);
     }
     const { w, h } = sizeRef.current;
-    // A compact canvas leaves room at the sides for a (truncated) centred label under a node at the edge.
-    const margin = compact ? 14 : 40;
-    const marginX = compact ? 58 : 40;
-    const k = Math.min(compact ? 1.6 : 2, Math.max(0.05, Math.min((w - marginX * 2) / Math.max(1, maxX - minX), (h - margin * 2) / Math.max(1, maxY - minY))));
-    transformRef.current = { k, x: w / 2 - ((minX + maxX) / 2) * k, y: h / 2 - ((minY + maxY) / 2) * k };
+    let k: number;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    if (compact) {
+      // Padding all round, and every node's (truncated, centred) label counted by its own width, so nothing is clipped.
+      const pad = 12;
+      let kx = 1.6;
+      for (const n of list) {
+        const text = n.view.title.length > COMPACT_LABEL_CHARS + 1 ? COMPACT_LABEL_CHARS + 1 : n.view.title.length;
+        const half = Math.max(n.view.radius + 4, (text * 5.3) / 2);
+        const dx = Math.abs(n.x! - cx);
+        if (dx > 0) kx = Math.min(kx, (w / 2 - pad - half) / dx);
+      }
+      let top = Infinity, bottom = -Infinity, rMax = 0;
+      for (const n of list) {
+        top = Math.min(top, n.y!);
+        bottom = Math.max(bottom, n.y!);
+        rMax = Math.max(rMax, n.view.radius);
+      }
+      const LABEL_PX = 16; // the label under the lowest node, screen size
+      const ky = (h - pad * 2 - LABEL_PX) / Math.max(1, bottom - top + 2 * rMax);
+      k = Math.max(0.05, Math.min(1.6, kx, ky));
+      const contentH = (bottom - top + 2 * rMax) * k + LABEL_PX;
+      const ty = (h - contentH) / 2 + rMax * k - top * k;
+      transformRef.current = { k, x: w / 2 - cx * k, y: ty };
+      fitKRef.current = k;
+      requestDraw();
+      return;
+    } else {
+      const margin = 40;
+      k = Math.min(2, Math.max(0.05, Math.min((w - margin * 2) / Math.max(1, maxX - minX), (h - margin * 2) / Math.max(1, maxY - minY))));
+    }
+    transformRef.current = { k, x: w / 2 - cx * k, y: h / 2 - cy * k };
     fitKRef.current = k;
     requestDraw();
   }, [compact, requestDraw]);
