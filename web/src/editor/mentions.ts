@@ -84,7 +84,7 @@ export function findMentionTokens(text: string): MentionToken[] {
  * one (`` `@types/node` `` is not a person), link destinations and raw HTML
  * come along because a pill over a URL or an attribute would be nonsense.
  */
-const CODE_NODES = new Set([
+export const CODE_NODES = new Set([
   'InlineCode',
   'FencedCode',
   'CodeBlock',

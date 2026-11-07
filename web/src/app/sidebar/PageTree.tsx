@@ -129,7 +129,7 @@ export function PageTree({ space, activeId, activeFolderPath, canEdit }: PageTre
   }
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-px">
       {nodes.map((node) => (
         <TreeRow
           key={node.id}

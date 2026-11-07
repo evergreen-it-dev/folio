@@ -1,25 +1,23 @@
-import { Download, ExternalLink, MoreHorizontal, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { History, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { api } from '../api';
 import { useSpaceRole } from '../auth/AuthProvider';
 import { canEditContent } from '../auth/roles';
-import { Menu } from '../ui/Menu';
 import { Breadcrumbs } from './Breadcrumbs';
 import { SearchBox } from './SearchBox';
 import { StarButton } from './StarButton';
-import { HistoryButton } from './HistoryButton';
+import { HistoryPanel } from './HistoryPanel';
 import { ShareButton } from '../share/ShareButton';
 import { ExportMenu } from '../export/ExportMenu';
-import { CreateFormButton } from './CreateFormButton';
-import { PageAccessButton } from './PageAccessButton';
-import { CompareButton } from './CompareButton';
-import { WritingRulesButton } from './WritingRulesButton';
-import { ReplaceFileButton } from '../files/ReplaceFileButton';
+import { PageAccessDialog } from './PageAccessButton';
 import { PagePresenceIndicator } from './PagePresence';
 import { NotificationsBell } from './NotificationsBell';
 import { PageTimer } from './PageTimer';
 import { ConnectivityIndicator } from './ConnectivityIndicator';
+import { PageActionsMenu, HEADER_ICON_BUTTON, type HeaderSurface } from './PageActionsMenu';
 import { useIsLocalPage } from '../offline/localPages';
+import { usePageTimer } from '../timer/pageTimerStore';
+import { isGone } from '../timer/timerMath';
 import type { ExportMenuTableInfo } from '../export/ExportMenu';
 import type { PagePresencePerson } from '../presence';
 import '../i18n/register';
@@ -55,9 +53,14 @@ export interface HeaderProps {
 }
 
 /**
- * Top bar: sidebar collapse toggle, breadcrumbs (round 8: last crumb is
- * click-to-rename for editor+), history/share/star toggles for the current
- * page, search.
+ * Top bar (07.11.2026, decluttered — the owner: «the header is still
+ * overloaded»): sidebar toggle · breadcrumbs (+ properties slot) ·
+ * connectivity · presence · the running timer's pill · bell · «Share» ·
+ * page star · «⋯». Everything else a page offers (history, export, access,
+ * compare, writing rules, a new timer, create-a-form, the file actions) is a
+ * labelled row of the «⋯» menu (PageActionsMenu.tsx). Search left the header
+ * at md+ for the sidebar's own Search row (⌘K still works everywhere, Shell);
+ * below md its icon stays here.
  *
  * Round 8 header polish: the SPACE star moved to the sidebar, next to the
  * space name (SpaceSwitcher) — only the PAGE star remains here. Two
@@ -86,6 +89,27 @@ export function Header({ space, pageId, pagePath, title, icon, table, fileAction
   const isLocal = useIsLocalPage(pageId);
   const serverPageId = isLocal ? undefined : pageId;
 
+  // Which of the header's surfaces is open — one at a time, and only for the
+  // page it was opened on. Header owns this (not the «⋯» rows, which unmount
+  // with their menu; see PageActionsMenu.tsx). Tagging it with the page makes
+  // a navigation close it with no effect: a link followed from inside an open
+  // history preview must not leave the panel open, silently re-pointed at the
+  // next page (the P1 the old key={`history-${pageId}`} remount fixed).
+  const moreRef = useRef<HTMLDivElement>(null);
+  const [surfaceState, setSurfaceState] = useState<{ kind: HeaderSurface; pageId: string | undefined } | null>(null);
+  const surface = surfaceState && surfaceState.pageId === serverPageId ? surfaceState.kind : null;
+  const openSurface = (kind: HeaderSurface) => setSurfaceState({ kind, pageId: serverPageId });
+  const closeSurface = () => setSurfaceState(null);
+  const surfaceProps = (kind: HeaderSurface) => ({
+    open: surface === kind,
+    onOpenChange: (open: boolean) => (open ? openSurface(kind) : setSurfaceState((s) => (s?.kind === kind ? null : s))),
+    anchorRef: moreRef,
+  });
+
+  // «Start a timer…» is a row of «⋯» while none runs; a running one is its pill (PageTimer).
+  const timerData = usePageTimer(isLocal ? null : { space, pageId: serverPageId }).data;
+  const canStartTimer = Boolean(timerData?.canControl && !(timerData.timer && !isGone(timerData.timer, Date.now(), timerData.offsetMs)));
+
   return (
     // `relative z-30`: the header's own popovers (connection panel,
     // notifications, «⋯») open DOWNWARD, over the page — and `backdrop-blur`
@@ -93,17 +117,16 @@ export function Header({ space, pageId, pagePath, title, icon, table, fileAction
     // counts inside it. Without a z-index on the header itself the editor's
     // sticky toolbar (z-20, later in the document) painted over them (the
     // owner, 29.09.2026: "the toolbar covers the offline notice"). Dialogs stay above at z-50+.
-    <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white/80 px-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/80">
+    <header className="relative z-30 flex h-12 shrink-0 items-center gap-1 border-b border-neutral-200 bg-white/90 px-2 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
       <button
         type="button"
         onClick={onToggleCollapse}
         aria-label={collapsed ? t('header.showSidebar') : t('header.hideSidebar')}
         // Shortcut hint (Shell.tsx handles Cmd/Ctrl+B) — same ⌘-vs-Ctrl rule as SearchBox's ⌘K.
         title={`${collapsed ? t('header.showSidebar') : t('header.hideSidebar')} (${SIDEBAR_SHORTCUT})`}
-        // max-md:min-h/w-10: touch-target floor (round 14), no-op at md+.
-        className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 max-md:min-h-10 max-md:min-w-10 dark:hover:bg-neutral-800"
+        className={HEADER_ICON_BUTTON}
       >
-        {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+        {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
       </button>
 
       {/* Round 19 QA fix (F1): explicit `flex` here (was a plain block box)
@@ -126,161 +149,101 @@ export function Header({ space, pageId, pagePath, title, icon, table, fileAction
         <div ref={propertiesSlotRef} className="flex shrink-0 items-center" data-header-properties-slot="" />
       </div>
 
-      {/* Round (page presence): rendered for all three page kinds (doc/board/
-          table) since this row is their one shared header — left of the
-          action-icon cluster(s) below, and OUTSIDE the `md:flex`-gated div so
-          it stays visible at the phone breakpoint too, unlike those icons. */}
-      {/* Offline mode (29.09.2026): first in the cluster and outside the
-          `md:flex` block — a lost connection matters most on a phone. Renders
-          nothing while the connection is fine and nothing is waiting. */}
+      {/* Offline mode (29.09.2026): first in the cluster — a lost connection
+          matters most on a phone. Renders nothing while the connection is
+          fine and nothing is waiting. Presence: everyone with this page open
+          (doc/board/table share this one header); nothing when alone. */}
       <ConnectivityIndicator />
-
       <PagePresenceIndicator people={presence} />
 
-      {/* 16.10.2026: the shared timer (header/PageTimer.tsx) — a compact icon, a countdown pill while one runs.
-          Before the bell, outside the `md:flex` block: a meeting is as likely to be run from a phone. A page
-          that exists only on this device has no server state to share, so no timer there. On a folder listing
-          (no page id) it is the space's own timer; the space home is an ordinary page with its own. */}
-      {!isLocal && <PageTimer space={space} pageId={serverPageId} />}
+      {/* 16.10.2026: the shared timer — here only its countdown pill while one
+          runs (a meeting is as likely run from a phone, so at every width).
+          Idle, it is «⋯» → «Start a timer…», whose popover opens under «⋯».
+          A page that exists only on this device has no server state to share.
+          On a folder listing (no page id) it is the space's own timer. */}
+      {!isLocal && <PageTimer key={`timer-${serverPageId ?? space}`} space={space} pageId={serverPageId} idleClassName="max-md:hidden" {...surfaceProps('timer')} />}
 
-      {/* Round 31 (notifications): next to the presence indicator and to the
-          LEFT of the group of page icons — and likewise outside the `md:flex`
-          block, because an access request does not depend on whether a page is
-          open right now, and on a phone it is needed no less. */}
-      <NotificationsBell />
-
-      {/* md+: history/share/star stay as their own always-visible icon
-          buttons, exactly as before. <md collapses the same three into one
-          "⋯" popover instead (below) — three more icons plus a still-usable
-          breadcrumb doesn't fit next to the collapse toggle and search at
-          375px. Both clusters render unconditionally (CSS `hidden`/`md:hidden`
-          decides which one is visible); Shell.headerButtons.test.tsx counts
-          these by aria-label with no viewport of its own, which is exactly
-          why a display-only split — not a mount/unmount one — is what keeps
-          that regression test meaningful at every width. */}
-      <div className="hidden shrink-0 items-center gap-1 md:flex">
-        {serverPageId && pagePath !== undefined && (
-          // key={`history-${serverPageId}`} (P1 fix): forces a remount (closing any
-          // open panel) when the underlying page changes — Header itself
-          // doesn't unmount across a same-space navigation, so without this a
-          // link followed from *inside* an open history preview would leave
-          // the panel open, silently re-pointed at whatever page you
-          // navigated to. MUST be prefixed, not bare `serverPageId`: this and
-          // ShareButton below are SIBLINGS in this div's children array
-          // (JSX's multiple direct children ARE one reconciled list,
-          // regardless of being different component types), and a bare
-          // key={serverPageId} on both gave them the exact same key — React's
-          // reconciler doesn't disambiguate colliding keys by element type,
-          // so under specific transition sequences (confirmed via a real
-          // render test, not just reasoning: Shell.headerButtons.test.tsx)
-          // it lost track of which fiber was which, producing extra, undead
-          // <button> nodes that accumulated one per page ever visited
-          // instead of unmounting. This was the real cause of the P1 "clock
-          // icons multiply" prod bug.
-          <HistoryButton
-            key={`history-${serverPageId}`}
-            pageId={serverPageId}
-            space={space}
-            pagePath={pagePath}
-            canRestore={canEditContent(role)}
-          />
-        )}
-
-        {serverPageId && canEdit && <ShareButton key={`share-${serverPageId}`} pageId={serverPageId} />}
-
-        {/* Round 23: export is a VIEWER-level capability server-side
-            (requirePageRole(..., 'viewer')), so unlike ShareButton it is not
-            gated on canEdit — a reader who can open the page can take a copy
-            of it. Same key-prefixing precaution as its siblings above. */}
-        {serverPageId && fileActions && <PageFileActions key={`file-${serverPageId}`} pageId={serverPageId} space={space} canReplace={canEdit} />}
-        {serverPageId && !fileActions && <ExportMenu key={`export-${serverPageId}`} pageId={serverPageId} pagePath={pagePath} title={title} table={table} />}
-
-        {/* Round FORMS: "Create a form" — only on a table page (the `table`
-            prop is only ever set by PageContent for kind:'table', see its
-            own doc comment) and only for an editor, same gate ShareButton
-            uses. */}
-        {serverPageId && canEdit && table && <CreateFormButton key={`create-form-${serverPageId}`} pageId={serverPageId} space={space} />}
-
-        {serverPageId && <PageAccessButton key={`access-${serverPageId}`} pageId={serverPageId} space={space} />}
-
-        {/* Compare mode: open to every role that can open the page (comparing changes nothing). A folder listing has no page id, so none here. */}
-        {serverPageId && title !== undefined && <CompareButton key={`compare-${serverPageId}`} pageId={serverPageId} space={space} title={title} />}
-
-        {serverPageId && title !== undefined && isProsePage(pagePath, table, fileActions) && (
-          <WritingRulesButton key={`writing-rules-${serverPageId}`} pageId={serverPageId} space={space} title={title} />
-        )}
-
-        {serverPageId && <StarButton kind="page" id={serverPageId} />}
-      </div>
-
-      {serverPageId && (
-        <Menu
-          key={`page-actions-${serverPageId}`}
-          triggerLabel={t('header.moreActions')}
-          align="right"
-          className="shrink-0 md:hidden"
-          trigger={<MoreHorizontal size={16} aria-hidden="true" />}
+      {/* History: an icon at md+ (below md it is a «⋯» row); opens the surface Header owns. */}
+      {serverPageId && pagePath !== undefined && (
+        <button
+          key={`history-btn-${serverPageId}`}
+          type="button"
+          aria-label={t('header.history')}
+          title={t('header.history')}
+          aria-haspopup="dialog"
+          aria-expanded={surface === 'history'}
+          onClick={() => (surface === 'history' ? closeSurface() : openSurface('history'))}
+          className={`${HEADER_ICON_BUTTON} max-md:hidden`}
         >
-          {() => (
-            <div className="flex items-center gap-1 p-1">
-              {/* Same key-prefixing precaution as the md+ cluster above, applied
-                  defensively here too — these three are conditional siblings
-                  of different types in one array, exactly the shape that bit
-                  us before. */}
-              {pagePath !== undefined && (
-                <HistoryButton
-                  key={`history-m-${serverPageId}`}
-                  pageId={serverPageId}
-                  space={space}
-                  pagePath={pagePath}
-                  canRestore={canEditContent(role)}
-                />
-              )}
-              {canEdit && <ShareButton key={`share-m-${serverPageId}`} pageId={serverPageId} />}
-              {fileActions ? (
-                <PageFileActions key={`file-m-${serverPageId}`} pageId={serverPageId} space={space} canReplace={canEdit} />
-              ) : (
-                <ExportMenu key={`export-m-${serverPageId}`} pageId={serverPageId} pagePath={pagePath} title={title} table={table} />
-              )}
-              {canEdit && table && <CreateFormButton key={`create-form-m-${serverPageId}`} pageId={serverPageId} space={space} />}
-              <PageAccessButton key={`access-m-${serverPageId}`} pageId={serverPageId} space={space} />
-              {title !== undefined && <CompareButton key={`compare-m-${serverPageId}`} pageId={serverPageId} space={space} title={title} />}
-              {title !== undefined && isProsePage(pagePath, table, fileActions) && (
-                <WritingRulesButton key={`writing-rules-m-${serverPageId}`} pageId={serverPageId} space={space} title={title} />
-              )}
-              <StarButton kind="page" id={serverPageId} />
-            </div>
-          )}
-        </Menu>
+          <History size={16} aria-hidden="true" />
+        </button>
       )}
 
-      <SearchBox onOpen={onOpenSwitcher} />
+      {/* Round 31: access requests do not depend on the open page; on a phone it is needed no less. */}
+      <NotificationsBell />
+
+      {/* KEYS — every keyed element below is a SIBLING in this header's one
+          children array, and each key is PREFIXED by its kind. A bare
+          key={serverPageId} on two siblings (HistoryButton + ShareButton, once)
+          gave them the same key; React does not tell colliding keys apart by
+          element type, and under some transition sequences it lost track of
+          which fiber was which, leaving undead buttons that accumulated one
+          per page visited (the P1 "clock icons multiply" prod bug, reproduced
+          by Shell.headerButtons.test.tsx). The page-scoped key also remounts
+          each one on navigation, dropping a previous page's state. */}
+
+      {/* «Share»: a labelled button at md+; below md it is a «⋯» row and its
+          popover opens under «⋯» (the trigger stays mounted, display:none —
+          the Menu falls back to the anchor). Editor+ only, as before. */}
+      {serverPageId && <span aria-hidden="true" className="mx-1 hidden h-[18px] w-px shrink-0 bg-neutral-200 md:block dark:bg-neutral-800" />}
+
+      {serverPageId && canEdit && <ShareButton key={`share-${serverPageId}`} pageId={serverPageId} variant="text" className="hidden md:block" {...surfaceProps('share')} />}
+
+      {/* The page star: an icon at md+, a «⋯» row below md. */}
+      {serverPageId && (
+        <div key={`star-${serverPageId}`} className="hidden shrink-0 md:flex">
+          <StarButton kind="page" id={serverPageId} />
+        </div>
+      )}
+
+      {(serverPageId || canStartTimer) && (
+        // A folder listing's «⋯» holds only «Start a timer…», which is the timer icon at md+.
+        <div className={`shrink-0 ${serverPageId ? '' : 'md:hidden'}`}>
+        <PageActionsMenu
+          key={`page-actions-${serverPageId ?? space}`}
+          anchorRef={moreRef}
+          space={space}
+          pageId={serverPageId}
+          pagePath={pagePath}
+          title={title}
+          isTable={Boolean(table)}
+          fileActions={Boolean(fileActions)}
+          isProse={isProsePage(pagePath, table, fileActions)}
+          canEdit={canEdit}
+          canStartTimer={canStartTimer}
+          onOpen={openSurface}
+        />
+        </div>
+      )}
+
+      {/* Export's formats panel: no button of its own, opened from «⋯» and
+          placed under it. Mounted for the page's whole visit so a truncation
+          warning or an export in flight survives the menu closing. Export is
+          viewer-level (requirePageRole(..., 'viewer')): not gated on canEdit. */}
+      {serverPageId && !fileActions && (
+        <ExportMenu key={`export-${serverPageId}`} pageId={serverPageId} pagePath={pagePath} title={title} table={table} {...surfaceProps('export')} />
+      )}
+
+      {serverPageId && pagePath !== undefined && surface === 'history' && (
+        <HistoryPanel key={`history-${serverPageId}`} pageId={serverPageId} space={space} pagePath={pagePath} canRestore={canEdit} onClose={closeSurface} />
+      )}
+
+      {serverPageId && surface === 'access' && <PageAccessDialog key={`access-${serverPageId}`} pageId={serverPageId} space={space} onClose={closeSurface} />}
+
+      {/* Search: the sidebar's Search row (⌘K) at md+; this icon below md only. */}
+      <div className="flex shrink-0 md:hidden">
+        <SearchBox onOpen={onOpenSwitcher} />
+      </div>
     </header>
-  );
-}
-
-const HEADER_ICON_LINK =
-  'inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 max-md:min-h-10 max-md:min-w-10 dark:hover:bg-neutral-800 dark:hover:text-neutral-200';
-
-/** A pdf/office page's two file actions, as header icons like their history/share siblings (owner, 15.09: no separate toolbar row above the file). */
-function PageFileActions({ pageId, space, canReplace }: { pageId: string; space: string; canReplace: boolean }) {
-  const { t } = useTranslation('app');
-  return (
-    <>
-      {canReplace && <ReplaceFileButton space={space} pageId={pageId} className={HEADER_ICON_LINK} />}
-      <a
-        href={api.pageFileUrl(pageId)}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={t('routes.pdf.openInNewTab')}
-        title={t('routes.pdf.openInNewTab')}
-        className={HEADER_ICON_LINK}
-      >
-        <ExternalLink size={15} aria-hidden="true" />
-      </a>
-      <a href={api.pageFileUrl(pageId, true)} aria-label={t('routes.pdf.download')} title={t('routes.pdf.download')} className={HEADER_ICON_LINK}>
-        <Download size={15} aria-hidden="true" />
-      </a>
-    </>
   );
 }

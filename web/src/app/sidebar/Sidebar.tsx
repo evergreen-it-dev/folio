@@ -28,6 +28,7 @@ import {
   Users,
   Database,
   AppWindow,
+  Search,
 } from 'lucide-react';
 import type { PageKind, PageMeta } from '@shared/contracts';
 import { emptySearchQuery, formatSearchQuery } from '@shared/searchQuery';
@@ -52,6 +53,8 @@ import { StarredSection } from './StarredSection';
 import { AgentSection } from './AgentSection';
 import { TagsSection } from './TagsSection';
 import { GraphLink } from './GraphLink';
+import { RowIconBox, kindIconProps } from './PageGlyph';
+import { SectionLabel } from './SectionLabel';
 import { MembersDialog } from './MembersDialog';
 import { ConnectGitDialog } from './ConnectGitDialog';
 import { ImageStorageDialog } from './ImageStorageDialog';
@@ -87,9 +90,9 @@ function AssistantButton() {
       aria-expanded={open}
       aria-label={t('assistant.chat.shortTitle')}
       onClick={onToggle}
-      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-neutral-600 hover:bg-neutral-200/70 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] leading-5 text-neutral-700 hover:bg-neutral-200/60 dark:text-neutral-300 dark:hover:bg-white/[0.06]"
     >
-      <Sparkles size={15} aria-hidden="true" />
+      <Sparkles size={14} className="text-violet-600 dark:text-violet-400" aria-hidden="true" />
       <span>{t('assistant.chat.shortTitle')}</span>
       {/* Visible even while the panel itself is closed — a run keeps going server-side regardless. */}
       {isRunning && <Loader2 size={13} className="ml-auto shrink-0 animate-spin text-neutral-400" aria-hidden="true" />}
@@ -315,13 +318,13 @@ export function Sidebar({ space, desktopCollapsed, mobileOpen, onMobileClose, on
         // through the tree. max-md:bg-white/dark:max-md:bg-neutral-950 pin it
         // fully opaque (matching Shell's own root colors exactly) ONLY at
         // that breakpoint, leaving the md+ tint untouched.
-        className={`flex h-full flex-col border-r border-neutral-200 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-950/40 ${
+        className={`flex h-full flex-col border-r border-neutral-200 bg-neutral-100/70 dark:border-neutral-800 dark:bg-neutral-900/50 ${
           desktopCollapsed ? 'md:hidden' : 'md:flex'
         } max-md:fixed max-md:inset-y-0 max-md:z-50 max-md:w-[85vw] max-md:max-w-80 max-md:bg-white max-md:shadow-xl max-md:transition-[left] max-md:duration-200 max-md:ease-out dark:max-md:bg-neutral-950 ${
           mobileOpen ? 'max-md:left-0' : 'max-md:-left-full'
         } md:relative md:w-[var(--sidebar-w)] md:shrink-0`}
       >
-        <div className="flex h-14 shrink-0 items-center gap-1 border-b border-neutral-200 px-3 dark:border-neutral-800">
+        <div className="flex h-12 shrink-0 items-center gap-0.5 px-2">
           <SpaceSwitcher current={space} />
           {/* Round 8: moved here from the header — see Header.tsx's docblock for why. */}
           <StarButton kind="space" id={space} />
@@ -584,33 +587,51 @@ export function Sidebar({ space, desktopCollapsed, mobileOpen, onMobileClose, on
           )}
         </div>
 
+        {/* Desktop search entry (the header search is hidden at md+): opens the quick switcher. */}
+        <button
+          type="button"
+          data-tour="search"
+          onClick={() => {
+            onMobileClose();
+            onOpenSwitcher?.();
+          }}
+          className="mx-2 mt-1 flex items-center gap-2 rounded-md py-2 pl-1 pr-2 text-left text-[13px] leading-5 text-neutral-800 hover:bg-neutral-200/60 md:py-[3px] dark:text-neutral-200 dark:hover:bg-white/[0.06]"
+        >
+          <RowIconBox>
+            <Search {...kindIconProps} />
+          </RowIconBox>
+          <span className="min-w-0 flex-1 truncate">{t('sidebar.search')}</span>
+          <kbd className="shrink-0 font-sans text-[11px] text-neutral-400 max-md:hidden">
+            {/Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent) ? '⌘K' : 'Ctrl+K'}
+          </kbd>
+        </button>
+
         <button
           type="button"
           onClick={() => navigate(`/s/${space}`)}
-          // py-2 md:py-1.5: touch-target floor (round 14), pared back in
-          // round 25 after owner feedback that R14's ≥40px rows read as
-          // "very stretched" — 36px tall on <md (8px padding + text-sm's
-          // 20px line-height, both sides) vs. 32px at md+ (py-1.5), still
-          // roomier for touch without the full 40px floor. Font-size
-          // untouched (text-sm both breakpoints).
-          className={`mx-2 mt-2 flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm md:py-1.5 ${
+          // py-2 md:py-[3px]: the touch-target floor on <md (round 14/25), the dense 26px row at md+.
+          className={`mx-2 mt-px flex items-center gap-2 rounded-md py-2 pl-1 pr-2 text-left text-[13px] leading-5 md:py-[3px] ${
             !id
-              ? 'bg-neutral-200/70 font-medium text-neutral-900 dark:bg-neutral-700/60 dark:text-neutral-50'
-              : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800/70'
+              ? 'bg-white font-medium text-neutral-950 shadow-[0_1px_2px_rgb(0_0_0/0.06)] ring-1 ring-neutral-200/90 dark:bg-white/[0.08] dark:text-white dark:shadow-none dark:ring-white/10'
+              : 'text-neutral-800 hover:bg-neutral-200/60 dark:text-neutral-200 dark:hover:bg-white/[0.06]'
           }`}
         >
-          <House size={14} className="opacity-60" aria-hidden="true" />
-          {t('sidebar.spaceHome')}
+          <RowIconBox>
+            <House {...kindIconProps} />
+          </RowIconBox>
+          <span className="min-w-0 flex-1 truncate">{t('sidebar.spaceHome')}</span>
         </button>
 
         <StarredSection space={space} />
 
-        <nav className="mt-2 flex-1 overflow-y-auto px-2 pb-3" aria-label={t('sidebar.tree.label')}>
+        <nav className="mt-4 flex-1 overflow-y-auto px-2 pb-3" aria-label={t('sidebar.tree.label')}>
+          <SectionLabel>{t('sidebar.tree.title')}</SectionLabel>
           <PageTree space={space} activeId={id} activeFolderPath={folderPath} canEdit={canEditContent(role)} />
           {/* .agent — admin-only rules pages for the AI assistant (owner spec,
               21.09.2026). Own section, own icon, never mixed into the normal
               tree above (PageTree excludes it) — and never rendered at all for
               anyone below space admin, matching what the server already hides. */}
+          <div className="mt-4 flex flex-col gap-px">
           {/* Custom page templates (the `_templates/` folder), editors only; collapsed until opened. */}
           {canEditContent(role) && <TemplatesSection space={space} activeId={id} activeFolderPath={folderPath} />}
           {canManageMembers(role) && <AgentSection space={space} activeId={id} activeFolderPath={folderPath} />}
@@ -624,16 +645,17 @@ export function Sidebar({ space, desktopCollapsed, mobileOpen, onMobileClose, on
             }}
           />
           <GraphLink space={space} onNavigate={onMobileClose} />
+          </div>
         </nav>
 
-        {canEditContent(role) && <RecentChangesButton space={space} />}
 
         {/* One provider for both the button's spinner and the panel below — a run is a
             server-side task now (05.09.2026), tracked independently of whether the panel
             is open, so the button must be able to show it's running even while closed. */}
         {/* The panel and its run tracking live in AssistantHost (App level), so page
             and space navigation never remounts or closes them; this is just the toggle. */}
-        <div className="shrink-0 border-t border-neutral-200 px-2 py-1.5 dark:border-neutral-800">
+        <div className="flex shrink-0 flex-col gap-px border-t border-neutral-200 px-2 py-1.5 dark:border-neutral-800">
+          {canEditContent(role) && <RecentChangesButton space={space} />}
           <AssistantButton />
         </div>
 

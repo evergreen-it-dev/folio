@@ -675,6 +675,26 @@ html[data-theme='dark'] .folio-markdown mark.folio-hl-gray { background-color: #
   white-space: nowrap;
 }
 
+/* The word TODO (todoMarks.ts): the yellow of the status tag. Scoped like the
+   mention pill, and independent of the editor's own .folio-todo rule. */
+.folio-markdown .folio-todo {
+  border-radius: 4px;
+  padding: 0 0.25em;
+  background: #fff0b3;
+  color: #5e4500;
+  font-weight: 650;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-markdown .folio-todo {
+    background: #4a3f1a;
+    color: #f2d466;
+  }
+}
+html[data-theme='dark'] .folio-markdown .folio-todo {
+  background: #4a3f1a;
+  color: #f2d466;
+}
+
 /* Glossary terms (round 31) --------------------------------------------------
    `*[Term]: Description` declarations (see glossaryTerms.ts) turn every later
    occurrence of the term into a real `<abbr title="...">`; the description

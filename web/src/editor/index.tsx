@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Compartment, EditorState } from '@codemirror/state';
@@ -31,6 +32,7 @@ import { i18nReload } from './i18n-reload';
 import { livePreview, livePreviewConfig } from './live-preview';
 import { markdownEditorExtensions } from './markdown-setup';
 import { mentions } from './mentions';
+import { todoHighlight } from './todo-highlight';
 import { MermaidModal, useMermaidModal } from './mermaid-modal';
 import { linkPreview } from './link-preview';
 import {
@@ -47,6 +49,7 @@ import { clearMountedEditorView, setMountedEditorView } from './scroll-to-headin
 import { assetUploads } from './uploads';
 import { attachRemotePresenceExpiry } from './remote-presence';
 import { ensureProtectedPageTitle, protectPageTitle, selectTitleOnDoubleClick } from './protected-title';
+import { keepTitleSlot, titleSlot } from './title-slot';
 import './editor.css';
 import '../markdown/status.css';
 import { clearLiveDocText, publishLiveDocText } from '../app/liveDocText';
@@ -125,16 +128,18 @@ export interface PageEditorProps {
    */
   chromeStart?: ReactNode;
   /**
-   * First item of the chrome row in EVERY mode (chromeStart is hidden in
-   * reading), lined up with the left edge of the text column. The page's
-   * "Properties (N)" toggle lives here.
+   * Rendered right under the page title — the H1 the body opens with — in every mode (the page's properties;
+   * owner, 07.11.2026: out of the chrome row, Notion-like). In live / source it is a block in the text (title-slot.ts),
+   * in reading it follows the rendered H1. A function gets the current mode (the properties are read-only in
+   * reading) and, for someone who may edit, a way to switch to Live edit.
    */
-  chromeLead?: ReactNode | ((mode: EditorMode) => ReactNode);
-  /**
-   * Rendered between the chrome row and the content, aligned like the text column (the open properties).
-   * A function gets the current mode: the properties are read-only in reading mode.
-   */
-  belowChrome?: ReactNode | ((mode: EditorMode) => ReactNode);
+  underTitle?: ReactNode | ((context: UnderTitleContext) => ReactNode);
+}
+
+export interface UnderTitleContext {
+  mode: EditorMode;
+  /** Switches to Live edit; absent when the page is read-only for this person. */
+  startEditing?: () => void;
 }
 
 /** A moment, so that the outline is not rebuilt on every letter but does not lag noticeably either. */
@@ -167,8 +172,7 @@ export function PageEditor({
   comments: commentsOffered = false,
   defaultMode = 'reading',
   chromeStart,
-  chromeLead,
-  belowChrome,
+  underTitle,
   lightFootprint = false,
 }: PageEditorProps) {
   const { t } = useTranslation(NS);
@@ -290,12 +294,25 @@ export function PageEditor({
     };
   }, [mode]);
 
-  const lead = typeof chromeLead === 'function' ? chromeLead(mode) : chromeLead;
+  // Two hosts for what goes under the title: one the reading page places after its H1, one CodeMirror draws as a
+  // block (title-slot.ts). Kept apart so a CodeMirror view being torn down never pulls the reading one out of the page.
+  const readingSlot = useMemo(() => makeTitleSlotHost(), []);
+  const editingSlot = useMemo(() => makeTitleSlotHost(), []);
+  const proseRef = useRef<HTMLDivElement>(null);
+  const hasUnderTitle = underTitle != null;
+  useLayoutEffect(() => {
+    const prose = proseRef.current;
+    if (!hasUnderTitle || mode !== 'reading' || !prose) return;
+    return keepTitleSlot(prose, readingSlot);
+  }, [hasUnderTitle, mode, readingSlot]);
+  const underTitleNode =
+    typeof underTitle === 'function'
+      ? underTitle({ mode, startEditing: readOnly ? undefined : () => selectMode('live') })
+      : underTitle;
 
   const editor = (
     <div className="folio-editor" data-mode={mode} ref={rootRef}>
       <div className="folio-editor__chrome">
-        {lead != null && <div className="folio-editor__chrome-lead">{lead}</div>}
         {/* Round 22: the chrome-start slot is the page icon and the "add a
             cover" button — authoring controls. Reading mode drops them
             entirely rather than showing them disabled: there is nothing to
@@ -320,11 +337,11 @@ export function PageEditor({
         )}
       </div>
 
-      {typeof belowChrome === 'function' ? belowChrome(mode) : belowChrome}
+      {underTitleNode != null && createPortal(underTitleNode, mode === 'reading' ? readingSlot : editingSlot)}
 
       {mode === 'reading' ? (
         <div className="folio-editor__reading">
-          <div className="folio-editor__prose">
+          <div className="folio-editor__prose" ref={proseRef}>
             {synced || markdown ? (
               <Markdown
                 markdown={markdown}
@@ -360,6 +377,7 @@ export function PageEditor({
           services={services}
           emojiFavourites={favorites}
           comments={comments.editor}
+          underTitle={hasUnderTitle ? editingSlot : undefined}
         />
       ) : (
         <p className="folio-editor__hint">{t('connecting')}</p>
@@ -379,6 +397,14 @@ export function PageEditor({
       {comments.panel}
     </div>
   );
+}
+
+/** The element the properties are portaled into under the title (reading and editing each get their own). */
+function makeTitleSlotHost(): HTMLElement {
+  const host = document.createElement('div');
+  host.className = 'folio-title-slot';
+  host.dataset.tour = 'properties'; // the «what's new» tour points here (onboarding/whatsNewSteps.ts)
+  return host;
 }
 
 /**
@@ -669,6 +695,8 @@ interface HostProps {
   services: EditorServices;
   emojiFavourites: readonly string[];
   comments?: EditorComments;
+  /** The host drawn as a block under the H1 (title-slot.ts). */
+  underTitle?: HTMLElement;
 }
 
 /**
@@ -676,7 +704,7 @@ interface HostProps {
  * and page-context changes are applied by reconfiguring a compartment so the
  * caret and scroll position survive a source/live switch.
  */
-function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepairTitle, guardTitle, shareToken, services, emojiFavourites, comments }: HostProps) {
+function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepairTitle, guardTitle, shareToken, services, emojiFavourites, comments, underTitle }: HostProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const modeCompartment = useMemo(() => new Compartment(), []);
@@ -702,8 +730,10 @@ function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepa
           i18nReload,
           linkPreview(),
           mentions(),
+          todoHighlight(),
           guardTitle ? protectPageTitle() : [],
           selectTitleOnDoubleClick(),
+          underTitle ? titleSlot(underTitle) : [],
           editorServicesFacet.of(services),
           // Reconfigured below whenever mode or page context changes.
           modeCompartment.of(livePreviewConfig(false, { space: '', pagePath: '', pageId: '' })),
@@ -730,7 +760,7 @@ function CodeMirrorHost({ session, live, space, pagePath, pageId, title, canRepa
       clearMountedEditorView(view);
       view.destroy();
     };
-  }, [session, services, modeCompartment, emojiCompartment, guardTitle]);
+  }, [session, services, modeCompartment, emojiCompartment, guardTitle, underTitle]);
 
   // After the view effect above: a fresh view is given its comment ranges once it exists.
   useCommentsInView(viewRef, session, comments);

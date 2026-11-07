@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Braces, Download, FileCode, FileText, FileType } from 'lucide-react';
 import type { ExportFormat } from '@shared/contracts';
@@ -28,6 +28,14 @@ export interface ExportMenuProps {
    * actual choice (>1 saved views).
    */
   table?: ExportMenuTableInfo;
+  /**
+   * Controlled, button-less mode (the header's «⋯» → «Export…»): the formats
+   * panel opens under `anchorRef`. With `anchorRef` the menu renders no
+   * trigger of its own; without it, ExportMenu is its usual icon button.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  anchorRef?: RefObject<HTMLElement | null>;
 }
 
 const FORMATS: readonly ExportFormat[] = ['md', 'pdf', 'docx', 'yaml'];
@@ -74,7 +82,7 @@ function ExportPanel({ onOpen, children }: { onOpen: () => void; children: React
  * download chrome be the only feedback) would be exactly the silent-failure
  * mode BoardExportMenu was written to end.
  */
-export function ExportMenu({ pageId, pagePath, title, table }: ExportMenuProps) {
+export function ExportMenu({ pageId, pagePath, title, table, open, onOpenChange, anchorRef }: ExportMenuProps) {
   const { t } = useTranslation('app');
   const errorText = useApiErrorText();
   const [pending, setPending] = useState<ExportFormat | null>(null);
@@ -144,7 +152,14 @@ export function ExportMenu({ pageId, pagePath, title, table }: ExportMenuProps) 
   const busy = pending !== null;
 
   return (
-    <Menu triggerLabel={t('export.button')} align="right" trigger={<Download size={15} aria-hidden="true" />}>
+    <Menu
+      triggerLabel={t('export.button')}
+      align="right"
+      trigger={anchorRef ? undefined : <Download size={15} aria-hidden="true" />}
+      open={open}
+      onOpenChange={onOpenChange}
+      anchorRef={anchorRef}
+    >
       {(close) => (
         <ExportPanel onOpen={resetPanel}>
           <div className="px-1.5 pb-1 pt-1.5 text-xs font-medium text-neutral-400 dark:text-neutral-500">

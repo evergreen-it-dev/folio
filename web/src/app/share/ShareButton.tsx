@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Copy, Link2, Share2, Trash2 } from 'lucide-react';
 import type { ShareLinkInfo, ShareLinkMode } from '@shared/contracts';
@@ -12,7 +12,20 @@ import '../i18n/register';
 
 export interface ShareButtonProps {
   pageId: string;
+  /** `text`: the header's labelled «Share» button; `icon` (default): the plain share icon. */
+  variant?: 'icon' | 'text';
+  /** Classes of the trigger's wrapper — the header hides it below md, where Share is a row of the «⋯» menu. */
+  className?: string;
+  /** Controlled popover (see Menu): the header opens it from its «⋯» menu too. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Where the popover is placed from while the trigger itself is not displayed. */
+  anchorRef?: RefObject<HTMLElement | null>;
 }
+
+/** The header's text button: one look with its 28px icon neighbours. */
+const TEXT_TRIGGER_CLASS =
+  'inline-flex h-7 shrink-0 items-center rounded-md border border-neutral-200 px-2.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100';
 
 /**
  * Best-effort clipboard write, as a promise that NEVER rejects — it resolves
@@ -56,7 +69,7 @@ function SharePanel({ onOpen, children }: { onOpen: () => Promise<void>; childre
  * there's nothing useful to click if the feature isn't live yet, and a
  * button that opens to an error is worse than no button.
  */
-export function ShareButton({ pageId }: ShareButtonProps) {
+export function ShareButton({ pageId, variant = 'icon', className, open, onOpenChange, anchorRef }: ShareButtonProps) {
   const { t } = useTranslation('app');
   const showToast = useToast();
   const errorText = useApiErrorText();
@@ -171,7 +184,16 @@ export function ShareButton({ pageId }: ShareButtonProps) {
 
   return (
     <>
-      <Menu triggerLabel={t('share.button')} trigger={<Share2 size={15} aria-hidden="true" />}>
+      <Menu
+        triggerLabel={t('share.button')}
+        trigger={variant === 'text' ? t('share.button') : <Share2 size={15} aria-hidden="true" />}
+        triggerClassName={variant === 'text' ? TEXT_TRIGGER_CLASS : undefined}
+        align={variant === 'text' ? 'right' : 'left'}
+        className={className}
+        open={open}
+        onOpenChange={onOpenChange}
+        anchorRef={anchorRef}
+      >
         {() => (
           <SharePanel onOpen={load}>
             {failed ? (

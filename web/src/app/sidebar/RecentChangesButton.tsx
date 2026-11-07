@@ -154,7 +154,7 @@ export function RecentChangesButton({ space }: { space: string }) {
 
   return (
     <>
-      <div className="shrink-0 border-t border-neutral-200 px-2 py-1.5 dark:border-neutral-800">
+      <div className="shrink-0">
         <button
           ref={triggerRef}
           type="button"
@@ -169,11 +169,11 @@ export function RecentChangesButton({ space }: { space: string }) {
           onMouseLeave={scheduleClose}
           onFocus={() => setOpen(true)}
           onClick={() => latest && !undo.isPending && undo.mutate(latest)}
-          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-neutral-600 hover:bg-neutral-200/70 dark:text-neutral-300 dark:hover:bg-neutral-800 ${
+          className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] leading-5 text-neutral-700 hover:bg-neutral-200/60 dark:text-neutral-300 dark:hover:bg-white/[0.06] ${
             !latest || undo.isPending ? 'cursor-default opacity-45' : ''
           }`}
         >
-          <Undo2 size={15} aria-hidden="true" />
+          <Undo2 size={14} className="text-neutral-500 dark:text-neutral-400" aria-hidden="true" />
           <span>{undo.isPending ? t('sidebar.changes.undoing') : t('sidebar.changes.undoLatest')}</span>
           {changes.length > 0 && <span className="ml-auto text-xs tabular-nums text-neutral-400">{changes.length}</span>}
         </button>

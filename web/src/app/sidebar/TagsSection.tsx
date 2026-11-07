@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Hash, MoreHorizontal, Pencil, Tags } from 'lucide-react';
+import { Hash, MoreHorizontal, Pencil, Tags } from 'lucide-react';
+import { ChevronGlyph, DisclosureChevron, RowIconBox, kindIconProps } from './PageGlyph';
 import { api } from '../api';
 import { useLocalStorage } from '../hooks';
 import { Menu, MenuItem } from '../ui/Menu';
@@ -45,17 +46,17 @@ export function TagsSection({ space, canEdit, onOpenTag }: TagsSectionProps) {
     setExpandedArray((previous) => (previous.includes(tag) ? previous.filter((item) => item !== tag) : [...previous, tag]));
 
   return (
-    <div className="mt-2">
+    <div>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-1.5 rounded-md px-1 py-1.5 text-left text-sm text-neutral-600 hover:bg-neutral-200/70 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        className="group flex w-full items-center gap-2 rounded-md py-2 pl-1 pr-2 text-left text-[13px] leading-5 text-neutral-800 hover:bg-neutral-200/60 md:py-[3px] dark:text-neutral-200 dark:hover:bg-white/[0.06]"
       >
-        {open ? <ChevronDown size={13} className="shrink-0 opacity-60" aria-hidden="true" /> : <ChevronRight size={13} className="shrink-0 opacity-60" aria-hidden="true" />}
-        <Tags size={14} className="shrink-0 opacity-70" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate font-medium">{t('tags.title')}</span>
+        <RowIconBox><Tags {...kindIconProps} /></RowIconBox>
+        <span className="min-w-0 flex-1 truncate">{t('tags.title')}</span>
         <span className="shrink-0 text-xs text-neutral-400">{tags?.length}</span>
+        <ChevronGlyph open={open} />
       </button>
 
       {open && (
@@ -98,22 +99,9 @@ function TagRow({ node, depth, expanded, onToggle, canEdit, onOpenTag, onRename 
   return (
     <div>
       <div
-        className="group flex items-center rounded-md hover:bg-neutral-200/60 dark:hover:bg-neutral-800/70"
-        style={{ paddingLeft: depth * 12 }}
+        className="group flex items-center rounded-md pr-1 hover:bg-neutral-200/60 dark:hover:bg-neutral-800/70"
+        style={{ paddingLeft: depth * 12 + 4 }}
       >
-        {hasChildren ? (
-          <button
-            type="button"
-            aria-label={t(isOpen ? 'tags.collapse' : 'tags.expand', { tag: node.tag })}
-            aria-expanded={isOpen}
-            onClick={() => onToggle(node.tag)}
-            className="shrink-0 rounded p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
-          >
-            {isOpen ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
-          </button>
-        ) : (
-          <span className="inline-block w-6 shrink-0" aria-hidden="true" />
-        )}
         <button
           type="button"
           title={t('tags.search', { tag: node.tag })}
@@ -140,6 +128,13 @@ function TagRow({ node, depth, expanded, onToggle, canEdit, onOpenTag, onRename 
               )}
             </Menu>
           </span>
+        )}
+        {hasChildren && (
+          <DisclosureChevron
+            open={isOpen}
+            label={t(isOpen ? 'tags.collapse' : 'tags.expand', { tag: node.tag })}
+            onToggle={() => onToggle(node.tag)}
+          />
         )}
       </div>
       {hasChildren && isOpen && (

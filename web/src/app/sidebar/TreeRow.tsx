@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ClipboardList, CloudOff, Copy, CopyPlus, Files, FileText, FileType2, Folder, LayoutDashboard, LayoutTemplate, Link as LinkIcon, MoreHorizontal, Move, Pencil, Plus, Presentation, RefreshCw, Sheet, Table2, Trash2, Upload, Waypoints, Database, AppWindow, Columns2, Lock } from 'lucide-react';
-import { officeFormat, type PageKind, type PageMeta, type TreeNode } from '@shared/contracts';
+import { ArrowDown, ArrowUp, ClipboardList, CloudOff, Copy, CopyPlus, Files, FileText, LayoutDashboard, LayoutTemplate, Link as LinkIcon, MoreHorizontal, Move, Pencil, Plus, RefreshCw, Table2, Trash2, Upload, Database, AppWindow, Columns2, Lock } from 'lucide-react';
+import { type PageKind, type PageMeta, type TreeNode } from '@shared/contracts';
 import { isDirIndexName } from '@shared/mdx';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
@@ -18,6 +18,7 @@ import { TemplatePickerDialog } from '../templates/TemplatePickerDialog';
 import { MakeTemplateDialog } from '../templates/MakeTemplateDialog';
 import { invalidateTemplates } from '../templates/useTemplates';
 import { useConnectivity } from '../offline/connectivity';
+import { DisclosureChevron, PageGlyph } from './PageGlyph';
 import { MoveDialog } from './MoveDialog';
 import { CopyDialog } from './CopyDialog';
 import { ChangeSlugDialog } from './ChangeSlugDialog';
@@ -43,10 +44,10 @@ export interface DraggedNode {
 /** How long a collapsed row must be hovered mid-drag before it springs open. */
 const SPRING_OPEN_MS = 600;
 
-/** Row's left padding at a given depth. The 14px step is narrower than chevron + icon slot, so on its own it reads ambiguously. */
-const rowIndentPx = (depth: number) => depth * 14 + 6;
-/** Indent guide x: the horizontal center of this row's 16px chevron, so the line drops from the parent's chevron through its children. */
-const guideLeftPx = (depth: number) => rowIndentPx(depth) + 8;
+/** Row's left padding at a given depth: one 18px icon box per row, children step in by 16px. */
+const rowIndentPx = (depth: number) => depth * 16 + 4;
+/** Indent guide x: the horizontal center of this row's icon box, so the line drops from the parent's icon through its children. */
+const guideLeftPx = (depth: number) => rowIndentPx(depth) + 9;
 
 export interface TreeRowProps {
   node: TreeNode;
@@ -142,62 +143,9 @@ export function TreeRow({
   const baseTitleHint = displayTitle === node.title ? node.title : `${node.title} · ${node.path}`;
   const rowTitleHint = description ? `${baseTitleHint}\n${description}` : baseTitleHint;
   const href = isFolder ? `/s/${space}/d/${node.path}` : `/s/${space}/p/${node.id}`;
-  // Round 5: frontmatter icon (emoji) takes over the row's icon slot when
-  // set — display-only here (editing happens from the page header's picker,
-  // PageChrome.tsx; this row's own click already means "navigate", and a
-  // second, independently-clickable target crammed into the same dense row
-  // was a scope call made against that, not a technical limitation).
-  //
-  // Round 14 (owner QA on a real tree): a plain doc with no frontmatter icon
-  // used to fall back to a generic gray FileText glyph on every such row —
-  // repeated down a tree that's mostly plain docs, it read as visual noise
-  // rather than information, unlike Folder/LayoutDashboard below, which
-  // actually distinguish a row's KIND rather than just filling an empty
-  // slot. That case renders nothing now, but keeps the identical 14px-wide
-  // slot (matching the icon/emoji spans below) so plain-vs-iconed rows
-  // still line up — only the glyph disappears, not the tree's horizontal
-  // rhythm.
-  const iconNode = isFolder ? (
-    <Folder size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-  ) : node.icon ? (
-    <span className="w-[14px] text-center text-[13px] leading-none">{node.icon}</span>
-  ) : node.kind === 'board' ? (
-    <LayoutDashboard size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-  ) : node.kind === 'table' ? (
-    // Round 26: like Folder/LayoutDashboard, this glyph distinguishes the
-    // row's KIND — which is exactly the test the round-14 note below applies
-    // (a plain doc renders nothing precisely because its glyph carried no
-    // information; a data table's does).
-    <Table2 size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-  ) : node.kind === 'pdf' ? (
-    // Same reasoning as board/table above — a pdf page is read-only and
-    // very visually different once opened, so its row gets its own glyph.
-    <FileType2 size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-  ) : node.kind === 'office' ? (
-    // Round OFFICE: same reasoning as pdf above, one glyph per actual format
-    // (officeFormat) so a docx/xlsx/pptx row reads apart at a glance.
-    officeFormat(node.path) === 'xlsx' ? (
-      <Sheet size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-    ) : officeFormat(node.path) === 'pptx' ? (
-      <Presentation size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-    ) : (
-      <FileText size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-    )
-  ) : node.kind === 'form' ? (
-    // Round FORMS: same reasoning as board/table above.
-    <ClipboardList size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-  ) : node.kind === 'canvas' ? (
-    // Obsidian canvas: read-only and drawn very differently once opened.
-    <Waypoints size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-  ) : node.kind === 'base' ? (
-    // Obsidian base: a view over pages (table / cards / list).
-    <Database size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-  ) : node.kind === 'artifact' ? (
-    // Artifact: an interactive page made by an agent, replaced whole and never edited here.
-    <AppWindow size={14} className="shrink-0 opacity-60" aria-hidden="true" />
-  ) : (
-    <span className="w-[14px] shrink-0" aria-hidden="true" />
-  );
+  // Round 5: the frontmatter emoji replaces the kind icon in the row's icon box (display-only: editing happens in the page header's picker).
+  // The glyph itself lives in PageGlyph (owner 07.11.2026: empty slots read as holes; a consistent icon column wins).
+  const glyph = <PageGlyph kind={node.kind} icon={node.icon} path={node.path} />;
 
   // Making a template and creating from one are server operations: no connection, no item.
   const offline = useConnectivity() === 'offline';
@@ -623,10 +571,10 @@ export function TreeRow({
         // roomier than the 28px at md+ for a fat-finger tap, just not the
         // full 40px floor. Font-size is untouched (text-sm both breakpoints,
         // exactly as on desktop) — only the vertical padding moved.
-        className={`group relative flex cursor-pointer items-center gap-1 rounded-md py-2 pr-1 text-sm md:py-1 ${
+        className={`group relative flex cursor-pointer items-center gap-2 rounded-md py-2 pr-1 text-[13px] leading-5 md:py-[3px] ${
           isActive
-            ? 'bg-neutral-200/70 font-medium text-neutral-900 dark:bg-neutral-700/60 dark:text-neutral-50'
-            : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800/70'
+            ? 'bg-white font-medium text-neutral-950 shadow-[0_1px_2px_rgb(0_0_0/0.06)] ring-1 ring-neutral-200/90 dark:bg-white/[0.08] dark:text-white dark:shadow-none dark:ring-white/10'
+            : 'text-neutral-800 hover:bg-neutral-200/60 dark:text-neutral-200 dark:hover:bg-white/[0.06]'
         }${isBeingDragged ? ' opacity-40' : ''}${
           // "into" reads as the whole row lighting up as a container; the
           // before/after lines below are drawn between rows instead.
@@ -644,21 +592,7 @@ export function TreeRow({
           />
         )}
 
-        <button
-          type="button"
-          aria-label={isOpen ? t('sidebar.tree.collapse') : t('sidebar.tree.expand')}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleExpanded();
-          }}
-          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded text-neutral-500 ${
-            hasChildren ? 'hover:bg-neutral-200 dark:hover:bg-neutral-700' : 'invisible'
-          }`}
-        >
-          {hasChildren && (isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />)}
-        </button>
-
-        {iconNode}
+        {glyph}
 
         {editing ? (
           <input
@@ -987,6 +921,14 @@ export function TreeRow({
               }
             </Menu>
           </div>
+        )}
+
+        {hasChildren && (
+          <DisclosureChevron
+            open={isOpen}
+            label={isOpen ? t('sidebar.tree.collapse') : t('sidebar.tree.expand')}
+            onToggle={toggleExpanded}
+          />
         )}
       </div>
 

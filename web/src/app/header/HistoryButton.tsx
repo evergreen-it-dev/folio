@@ -25,7 +25,7 @@ export function HistoryButton({ pageId, space, pagePath, canRestore }: HistoryBu
         title={t('header.history')}
         onClick={() => setOpen(true)}
         // max-md:min-h/w-10: touch-target floor (round 14), no-op at md+.
-        className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 max-md:min-h-10 max-md:min-w-10 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+        className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 hover:bg-neutral-100 max-md:min-h-10 max-md:min-w-10 dark:hover:bg-neutral-800 text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
       >
         <History size={15} aria-hidden="true" />
       </button>

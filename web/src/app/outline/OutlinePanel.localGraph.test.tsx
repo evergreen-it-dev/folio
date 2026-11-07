@@ -81,26 +81,28 @@ describe('OutlinePanel — local graph section', () => {
     await waitFor(() => expect(screen.getAllByTestId('graph-canvas')[0].textContent).toBe('2'));
     expect(getPageGraph).toHaveBeenCalledWith('P1', 1, 'both', true);
 
-    fireEvent.click(screen.getAllByRole('button', { name: '2 — through one page' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Depth' })[0]);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: "+ neighbours' links" }));
     await waitFor(() => expect(getPageGraph).toHaveBeenCalledWith('P1', 2, 'both', true));
     expect(JSON.parse(localStorage.getItem('folio:graph:acme')!).depth).toBe(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide local graph' }));
-    expect(screen.getByRole('button', { name: 'Show local graph' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Local graph' }));
+    expect(screen.queryAllByTestId('graph-canvas')).toHaveLength(0);
   });
 
-  it('labels the depth buttons: a visible "Depth" and a tooltip per button', async () => {
+  it('depth lives in a menu inside the canvas: caption, a check on the current row, label per depth', async () => {
     getPageGraph.mockResolvedValue(GRAPH);
     renderAt('/s/acme/p/P1', 'text\n');
     await screen.findAllByTestId('graph-canvas');
-    const group = screen.getAllByRole('group', { name: 'Depth' })[0];
-    expect(group.textContent).toContain('Depth');
-    const titles = ['1 — direct links', '2 — through one page', '3 — through two pages'];
-    for (const [i, title] of titles.entries()) {
-      const button = screen.getAllByRole('button', { name: title })[0];
-      expect(button.getAttribute('title')).toBe(title);
-      expect(button.textContent).toBe(String(i + 1));
-    }
+    const trigger = screen.getAllByRole('button', { name: 'Depth' })[0];
+    expect(trigger.textContent).toBe('Links: direct');
+    fireEvent.click(trigger);
+    expect(screen.getByText('Which pages the graph shows')).toBeTruthy();
+    expect(screen.getByRole('menuitemradio', { name: 'Direct links only' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('menuitemradio', { name: '+ one more step' }).getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '+ one more step' }));
+    await waitFor(() => expect(getPageGraph).toHaveBeenCalledWith('P1', 3, 'both', true));
+    expect(screen.getAllByRole('button', { name: 'Depth' })[0].textContent).toBe('Links: + one more step');
   });
 
   it('collapses from its header, remembered globally (another page, another space): no canvas and no request while collapsed', async () => {
@@ -112,9 +114,6 @@ describe('OutlinePanel — local graph section', () => {
     fireEvent.click(header);
     expect(localStorage.getItem('folio:local-graph-collapsed')).toBe('true');
     expect(screen.queryAllByTestId('graph-canvas')).toHaveLength(0);
-    // the hide and full-size buttons stay
-    expect(screen.getAllByRole('button', { name: 'Hide local graph' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Open full size' }).length).toBeGreaterThan(0);
     first.unmount();
 
     getPageGraph.mockClear();

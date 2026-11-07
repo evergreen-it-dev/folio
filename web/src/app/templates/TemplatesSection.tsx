@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, LayoutTemplate, Plus } from 'lucide-react';
+import { LayoutTemplate, Plus } from 'lucide-react';
+import { ChevronGlyph, RowIconBox, kindIconProps } from '../sidebar/PageGlyph';
 import type { TreeNode } from '@shared/contracts';
 import { useLocalStorage } from '../hooks';
 import { useConnectivity } from '../offline/connectivity';
@@ -66,7 +67,7 @@ export function TemplatesSection({ space, activeId, activeFolderPath }: Template
   const [creating, setCreating] = useState(false);
 
   return (
-    <div className="mt-2">
+    <div>
       <div
         role="button"
         tabIndex={0}
@@ -80,11 +81,10 @@ export function TemplatesSection({ space, activeId, activeFolderPath }: Template
             setOpen((v) => !v);
           }
         }}
-        className="group flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 text-left text-sm text-neutral-600 hover:bg-neutral-200/70 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        className="group flex cursor-pointer items-center gap-2 rounded-md py-2 pl-1 pr-2 text-left text-[13px] leading-5 text-neutral-800 hover:bg-neutral-200/60 md:py-[3px] dark:text-neutral-200 dark:hover:bg-white/[0.06]"
       >
-        {open ? <ChevronDown size={13} className="shrink-0 opacity-60" /> : <ChevronRight size={13} className="shrink-0 opacity-60" />}
-        <LayoutTemplate size={14} className="shrink-0 opacity-70" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate font-medium">{t('sidebar.templates.title')}</span>
+        <RowIconBox><LayoutTemplate {...kindIconProps} /></RowIconBox>
+        <span className="min-w-0 flex-1 truncate">{t('sidebar.templates.title')}</span>
         {templates.length > 0 && <span className="shrink-0 text-xs text-neutral-400 dark:text-neutral-500">{templates.length}</span>}
         <button
           type="button"
@@ -99,6 +99,7 @@ export function TemplatesSection({ space, activeId, activeFolderPath }: Template
         >
           <Plus size={13} />
         </button>
+        <ChevronGlyph open={open} />
       </div>
 
       {open && (

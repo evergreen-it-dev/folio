@@ -36,7 +36,7 @@ export function StarButton({ kind, id }: StarButtonProps) {
       // max-md:min-h/w-10: touch-target floor (round 14) for this "main
       // button" — a no-op at md+, where the compact p-1.5 box is unchanged.
       className={`inline-flex shrink-0 items-center justify-center rounded-md p-1.5 hover:bg-neutral-100 max-md:min-h-10 max-md:min-w-10 dark:hover:bg-neutral-800 ${
-        starred ? 'text-amber-500' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+        starred ? 'text-amber-500' : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
       }`}
     >
       <Star size={15} className={starred ? 'fill-current' : undefined} aria-hidden="true" />

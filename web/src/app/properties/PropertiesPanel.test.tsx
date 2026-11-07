@@ -13,7 +13,7 @@ import i18next from 'i18next';
 import type { PagePropertiesResponse } from '@shared/contracts';
 import { ToastProvider } from '../ui/Toast';
 import { PropertiesSlotContext } from '../header/propertiesSlot';
-import { PagePropertiesPopover, PropertiesPanel } from './PropertiesPanel';
+import { PagePropertiesPopover, PageTitleProperties, PropertiesPanel } from './PropertiesPanel';
 import '../i18n/register';
 
 const BASE: PagePropertiesResponse = {
@@ -357,5 +357,57 @@ describe('PagePropertiesPopover (tables, forms, boards, files)', () => {
     renderPopover(true, 'pending');
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByRole('button', { name: /Properties/ })).toBeNull();
+  });
+});
+
+describe('PageTitleProperties (under the page title)', () => {
+  const EMPTY: PagePropertiesResponse = { ...BASE, properties: { id: '01ABC' }, types: { id: 'text' } };
+
+  function renderTitle(props: { canEdit: boolean; onStartEditing?: () => void }) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <PageTitleProperties pageId="p1" space="demo" canEdit={props.canEdit} canManageTypes={false} onStartEditing={props.onStartEditing} />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('shows the count toggle when the page has properties, to a viewer too', async () => {
+    stubNetwork(BASE);
+    renderTitle({ canEdit: false });
+    const toggle = await screen.findByRole('button', { name: 'Properties (6)' });
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('group', { name: 'id' })).toBeTruthy();
+  });
+
+  it('offers a faint "+ Property" on an empty page that opens "Add property" and folds back on cancel', async () => {
+    stubNetwork(EMPTY);
+    renderTitle({ canEdit: true });
+    const ghost = await screen.findByRole('button', { name: 'Add property' });
+    expect(ghost.textContent).toBe('Property');
+    await userEvent.click(ghost);
+    const name = screen.getByRole('combobox', { name: 'Property name' });
+    expect(document.activeElement).toBe(name);
+    expect(screen.queryByText('No properties yet.')).toBeNull();
+    await userEvent.keyboard('{Escape}');
+    expect(await screen.findByRole('button', { name: 'Add property' })).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'Property name' })).toBeNull();
+  });
+
+  it('shows a viewer nothing on an empty page, and sends an editor in reading mode to Live edit', async () => {
+    stubNetwork(EMPTY);
+    const { container, unmount } = renderTitle({ canEdit: false });
+    await waitFor(() => expect(container.querySelector('.folio-title-props')).toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole('button')).toBeNull();
+    unmount();
+
+    const startEditing = vi.fn();
+    renderTitle({ canEdit: false, onStartEditing: startEditing });
+    await userEvent.click(await screen.findByRole('button', { name: 'Add property' }));
+    expect(startEditing).toHaveBeenCalledTimes(1);
   });
 });

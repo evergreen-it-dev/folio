@@ -21,7 +21,9 @@ import {
   statusClassNames,
   type StatusColor,
 } from '@shared/status';
+import { clipboardHtml } from './copy-html';
 import { t } from './i18n';
+import { pageContextFacet } from './live-preview';
 
 /* ----------------------------------------------------------------- widget -- */
 
@@ -252,6 +254,52 @@ export function openStatusPopover(view: EditorView, from: number): void {
   input.addEventListener('input', () => {
     label = input.value;
     if (!composing) write();
+  });
+  /**
+   * Copy / cut with the whole label (or nothing) selected is a copy of the TAG:
+   * the plain label alone would paste as loose text. A partial selection stays
+   * native so a single word can still be copied.
+   */
+  const wholeTagSelected = (): boolean => {
+    if (composing || cleanStatusLabel(label) === '') return false;
+    const start = input.selectionStart ?? 0;
+    const end = input.selectionEnd ?? 0;
+    return start === end || (start === 0 && end === input.value.length);
+  };
+  const putTagOnClipboard = (event: Event): boolean => {
+    const data = (event as ClipboardEvent).clipboardData;
+    if (!data) return false;
+    event.preventDefault();
+    data.setData('text/plain', raw);
+    try {
+      data.setData('text/html', clipboardHtml(raw, view.state.facet(pageContextFacet)));
+    } catch {
+      // The HTML twin is an enhancement; the markdown alone is still a correct copy.
+    }
+    return true;
+  };
+  input.addEventListener('copy', (event) => {
+    if (wholeTagSelected()) putTagOnClipboard(event);
+  });
+  input.addEventListener('cut', (event) => {
+    if (!wholeTagSelected() || !isEditable(view) || !putTagOnClipboard(event)) return;
+    const range = locate();
+    label = '';
+    input.value = '';
+    dispose(true);
+    if (range && range.from <= view.state.doc.length) view.dispatch({ selection: { anchor: range.from } });
+  });
+  input.addEventListener('paste', (event) => {
+    if (composing) return;
+    const text = ((event as ClipboardEvent).clipboardData?.getData('text/plain') ?? '').trim();
+    const pasted = text ? parseStatusAt(text) : null;
+    if (!pasted || pasted.length !== text.length || cleanStatusLabel(pasted.label) === '') return;
+    event.preventDefault();
+    label = pasted.label;
+    color = pasted.color;
+    input.value = label;
+    markSelected();
+    write();
   });
   dom.addEventListener('keydown', (event) => {
     // 229 / isComposing: the Enter that confirms an IME candidate is not ours.

@@ -33,11 +33,11 @@ export function SearchBox({ onOpen }: SearchBoxProps) {
       // genuinely tight; its label truncates and the ⌘K hint stays put.
       // shrink-0 is retained only below md, where this is already a bare
       // 40px icon button with nothing left to give.
-      className="flex h-9 items-center gap-2 rounded-md border border-neutral-300 bg-white px-2.5 text-left text-sm text-neutral-400 hover:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600 max-md:min-h-10 max-md:min-w-10 max-md:shrink-0 max-md:justify-center md:w-full md:min-w-0 md:max-w-[11rem] lg:max-w-[14rem] xl:max-w-[18rem]"
+      className="flex h-8 items-center gap-2 rounded-lg border border-transparent bg-neutral-100 px-2.5 text-left text-[13px] text-neutral-500 hover:bg-neutral-200/70 hover:text-neutral-700 dark:bg-white/[0.06] dark:text-neutral-400 dark:hover:bg-white/[0.1] dark:hover:text-neutral-200 max-md:min-h-10 max-md:min-w-10 max-md:shrink-0 max-md:justify-center md:w-full md:min-w-0 md:max-w-[11rem] lg:max-w-[14rem] xl:max-w-[18rem]"
     >
       <Search size={14} className="shrink-0" aria-hidden="true" />
       <span className="hidden min-w-0 flex-1 truncate md:inline">{t('header.searchAndGo')}</span>
-      <kbd className="hidden shrink-0 rounded border border-neutral-300 bg-neutral-50 px-1.5 py-0.5 font-sans text-xs text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800 md:inline">
+      <kbd className="hidden shrink-0 rounded border border-neutral-200 bg-white px-1.5 py-px font-sans text-[11px] text-neutral-500 shadow-[0_1px_0_rgb(0_0_0/0.04)] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400 md:inline">
         {isMac ? '⌘K' : 'Ctrl K'}
       </kbd>
     </button>

@@ -209,55 +209,15 @@ html[data-width='wide'] .folio-editor {
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
-  padding: 0.5rem 0.75rem 0;
+  height: 40px;
+  padding: 0 0.75rem;
   font-family: var(--folio-ed-sans);
   font-size: 11px;
   line-height: 1;
 }
 
-/* The lead slot (the properties toggle): first in the row in every mode, its
-   left edge on the text column's. `ch` in the measure is resolved against THIS
-   element's font, so the slot takes the font of the column it aligns with
-   (reading prose 16px, the CodeMirror text 15px); the button inside sets its
-   own size. The chrome row pads 0.75rem; a percentage margin in a flex row
-   resolves against the row's content box W (container - 1.5rem).
-   Reading: the prose box is centred in W - 1.5rem (the reading area pads 1.5rem)
-   and .folio-markdown pads 1.5rem more, so the text starts 2.25rem + slack in.
-   Live: the CodeMirror column is centred in the full width (W + 1.5rem) and its
-   lines pad 1.5rem. The slot shrinks (the label truncates) before it could
-   reach the mode toggle. */
-.folio-editor__chrome-lead {
-  display: flex;
-  min-width: 0;
-  flex: 0 1 auto;
-  align-items: center;
-  margin-right: auto;
-  font: 16px system-ui, -apple-system, 'Segoe UI', sans-serif;
-  margin-left: calc(2.25rem + max(0px, calc((100% - 1.5rem - var(--folio-ed-measure)) / 2)));
-}
-
-.folio-editor[data-mode='source'] .folio-editor__chrome-lead,
-.folio-editor[data-mode='live'] .folio-editor__chrome-lead {
-  font-size: 15px;
-  font-family: var(--folio-ed-sans);
-  margin-left: calc(0.75rem + max(0px, calc((100% + 1.5rem - var(--folio-ed-measure)) / 2)));
-}
-
-.folio-editor__chrome-lead:empty {
-  display: none;
-}
-
-html[data-width='wide'] .folio-editor__chrome-lead {
-  margin-left: 4.25rem;
-}
-
-html[data-width='wide'] .folio-editor[data-mode='source'] .folio-editor__chrome-lead,
-html[data-width='wide'] .folio-editor[data-mode='live'] .folio-editor__chrome-lead {
-  margin-left: 2.75rem;
-}
-
-/* The open properties, in the same column as the lead above them (see its
-   comment): reading's prose box + 1.5rem, the CodeMirror column + 1.5rem. */
+/* The open properties of the standalone panel (PropertiesPanel), in the text
+   column: reading's prose box + 1.5rem, the CodeMirror column + 1.5rem. */
 .folio-props-body {
   box-sizing: border-box;
   width: 100%;
@@ -315,6 +275,56 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
   display: none;
 }
 
+/* Nothing on the left of the row any more (the properties moved under the
+   title): whatever comes first takes the free space before it, so the row's
+   cluster stays on the right even where a host lays the row out from the start
+   (the compare view), and an overflow still runs off to the right. */
+.folio-editor__chrome > :first-child {
+  margin-left: auto;
+}
+
+/* -------------------------------------------------------- under the title -- */
+
+/* What goes right under the page title (title-slot.ts): the page's properties.
+   Reading: after the rendered H1, pulled up under it (the H1 keeps a 1em
+   bottom margin) the way the approved mockup has it. Live / Source: a block
+   widget in .cm-content, padded like the lines; CodeMirror measures the box
+   itself, so the air is padding, never margin. The rest of the editor's text
+   rules (break-spaces, the caret, the 1.7 line height) stop at its edge. */
+.folio-title-slot {
+  font: 16px system-ui, -apple-system, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  white-space: normal;
+  caret-color: auto;
+  cursor: auto;
+}
+
+.folio-title-slot:empty {
+  display: none;
+}
+
+.folio-markdown .folio-title-slot {
+  margin: -0.75rem 0 1.25rem;
+}
+
+.folio-editor .cm-content > .folio-title-slot {
+  padding: 0.25rem 1.5rem 0.75rem;
+  font-family: var(--folio-ed-sans);
+  font-size: 15px;
+}
+
+/* The faint "+ Property" / "Properties (3)" row sits 6px out to the left so its
+   icon, not its hover box, lines up with the title's first letter. */
+.folio-title-props {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.folio-title-props > section {
+  align-self: stretch;
+}
+
 /* Round 27: the badge is the dot and nothing else — the wording is the `title`
    tooltip and the accessible name (index.tsx's ConnectionBadge). Keeps its pill
    padding so there is still something comfortable to point at, and `flex: none`
@@ -324,7 +334,7 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
   display: inline-flex;
   flex: none;
   align-items: center;
-  padding: 0.3rem;
+  padding: 0.5rem;
   border-radius: 999px;
   color: var(--folio-ed-faint);
 }
@@ -334,8 +344,8 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
    `currentColor` is why the state colours below sit on the wrapper. */
 .folio-editor__dot {
   display: block;
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 .folio-editor__status[data-status='connected'] {
@@ -377,8 +387,8 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
 .folio-editor__panel-toggle {
   display: inline-flex;
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -386,7 +396,7 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
   /* Transparent rather than absent, so the pressed state's border does not
      change the button's size and nudge the mode switch sideways. */
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 6px;
   background: transparent;
   color: var(--folio-ed-muted);
   font: inherit;
@@ -417,8 +427,9 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
 .folio-editor__modes {
   display: inline-flex;
   padding: 2px;
-  border: 1px solid var(--folio-ed-border);
-  border-radius: 999px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--folio-ed-seg-track, #f5f5f5);
 }
 
 .folio-editor__mode {
@@ -427,8 +438,11 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
   background: transparent;
   color: var(--folio-ed-muted);
   font: inherit;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  height: 28px;
+  padding: 0 0.625rem;
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -437,13 +451,27 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
 }
 
 .folio-editor__mode[aria-pressed='true'] {
-  background: var(--folio-ed-surface);
-  color: var(--folio-ed-fg);
+  background: var(--folio-ed-seg-active, #fff);
+  color: var(--folio-ed-seg-active-fg, #171717);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
 }
 
 .folio-editor__mode:focus-visible {
   outline: 2px solid var(--folio-ed-accent);
   outline-offset: 1px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .folio-editor {
+    --folio-ed-seg-track: #262626;
+    --folio-ed-seg-active: #404040;
+    --folio-ed-seg-active-fg: #fafafa;
+  }
+}
+:root[data-theme='dark'] .folio-editor {
+  --folio-ed-seg-track: #262626;
+  --folio-ed-seg-active: #404040;
+  --folio-ed-seg-active-fg: #fafafa;
 }
 
 /* The phone form of the mode switch (index.tsx's ModeMenu): one button naming
@@ -455,11 +483,14 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
   align-items: center;
   gap: 0.2rem;
   max-width: 11rem;
-  padding: 0.3rem 0.4rem 0.3rem 0.6rem;
+  height: 28px;
+  padding: 0 0.4rem 0 0.6rem;
   appearance: none;
-  border: 1px solid var(--folio-ed-border);
-  border-radius: 999px;
-  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  background: var(--folio-ed-seg-track, #f5f5f5);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--folio-ed-fg);
   font: inherit;
   cursor: pointer;
@@ -622,6 +653,28 @@ html[data-width='wide'] .folio-editor[data-mode='live'] .folio-props-body {
   background: color-mix(in srgb, var(--folio-ed-accent) 14%, transparent);
   color: var(--folio-ed-accent);
   font-weight: 550;
+}
+
+/*
+ * The word TODO (todo-highlight.ts): the yellow of the status tag, so an open
+ * to-do reads as a flag. Horizontal padding only, as for the mention pill.
+ */
+.folio-editor .cm-content .folio-todo {
+  border-radius: 4px;
+  padding: 0 0.25em;
+  background: #fff0b3;
+  color: #5e4500;
+  font-weight: 650;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .folio-editor .cm-content .folio-todo {
+    background: #4a3f1a;
+    color: #f2d466;
+  }
+}
+:root[data-theme='dark'] .folio-editor .cm-content .folio-todo {
+  background: #4a3f1a;
+  color: #f2d466;
 }
 
 .folio-editor .cm-md-quote {
@@ -3058,19 +3111,9 @@ ol.cm-md-cell-list > .cm-md-cell-line { list-style: decimal; }
     padding: 0.3rem 0.2rem;
   }
 
-  /* Phone: the measure never bites (72ch is wider than the screen). Reading
-     pads 1rem + .folio-markdown 1.5rem against the chrome's 0.5rem; Live's lines
-     pad 1.5rem (re-set below for the CodeMirror modes if that differs). */
-  .folio-editor__chrome-lead,
-  html[data-width='wide'] .folio-editor__chrome-lead {
-    margin-left: 2rem;
-  }
-
-  html .folio-editor[data-mode='source'] .folio-editor__chrome-lead,
-  html[data-width='wide'] .folio-editor[data-mode='source'] .folio-editor__chrome-lead,
-  html .folio-editor[data-mode='live'] .folio-editor__chrome-lead,
-  html[data-width='wide'] .folio-editor[data-mode='live'] .folio-editor__chrome-lead {
-    margin-left: 0.5rem;
+  /* The lines pad 1rem here (below); the slot under the title follows them. */
+  .folio-editor .cm-content > .folio-title-slot {
+    padding-inline: 1rem;
   }
 
   .folio-props-body,

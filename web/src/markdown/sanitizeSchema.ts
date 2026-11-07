@@ -99,6 +99,7 @@ export const folioSanitizeSchema: Schema = {
       'dataFolioNav',
       'dataCollapseSlug',
       'dataNoteIndex',
+      'dataTodoIndex',
       'id',
     ],
     a: [...defaultA, 'target', 'rel', 'dataFolioLink', 'dataFolioFile', 'dataFolioNav'],

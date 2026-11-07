@@ -1,16 +1,30 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutsideClick } from '../hooks';
 
 export interface MenuProps {
-  /** Icon/content of the toggle button. */
-  trigger: ReactNode;
+  /** Icon/content of the toggle button. Omitted together with `anchorRef`: the menu then has no button of its own and is opened only through `open`. */
+  trigger?: ReactNode;
   triggerLabel: string;
   align?: 'left' | 'right';
   className?: string;
+  /** Replaces the toggle button's own classes (the header's text and 28px icon triggers). */
+  triggerClassName?: string;
   /** Panel content; receives a `close()` callback to dismiss after an action. */
   children: (close: () => void) => ReactNode;
+  /**
+   * Controlled mode: the owner keeps the open state (the header opens Export,
+   * Share… from its «⋯» menu). Uncontrolled when omitted, as before.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /**
+   * Where the panel is placed from when the menu's own button is absent or
+   * not displayed (`hidden` at this width): the header passes its «⋯» button,
+   * so a menu opened from an overflow row appears under that row's trigger.
+   */
+  anchorRef?: RefObject<HTMLElement | null>;
 }
 
 export interface MenuCoords {
@@ -58,14 +72,41 @@ export function positionMenu(triggerRect: DOMRect, panelRect: DOMRect, align: 'l
  * panel off at the sidebar's edge. `position: fixed` (used here) resolves
  * against the viewport directly, bypassing that ancestor chain entirely.
  */
-export function Menu({ trigger, triggerLabel, align = 'left', className, children }: MenuProps) {
-  const [open, setOpen] = useState(false);
+const DEFAULT_TRIGGER_CLASS =
+  'flex w-full min-w-0 items-center justify-center rounded-md p-1 text-neutral-600 hover:bg-neutral-200/70 hover:text-neutral-900 max-md:min-h-10 max-md:min-w-10 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100';
+
+/** The element a panel is placed from: the menu's own trigger while it is displayed, the anchor otherwise. */
+function anchorElement(trigger: HTMLElement | null, anchor: HTMLElement | null | undefined): HTMLElement | null {
+  if (trigger && trigger.getClientRects().length > 0) return trigger;
+  return anchor ?? trigger;
+}
+
+export function Menu({ trigger, triggerLabel, align = 'left', className, triggerClassName, children, open: openProp, onOpenChange, anchorRef }: MenuProps) {
+  const [openState, setOpenState] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openState;
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  const controlledRef = useRef(controlled);
+  controlledRef.current = controlled;
+  const openRef = useRef(open);
+  openRef.current = open;
+  // Stable (the outside-click hook re-subscribes on identity change). Reports
+  // only real changes: a closed controlled menu must not answer every click on
+  // the page with onOpenChange(false) — the header's other surfaces share one
+  // open-state, and that call would close whichever of them is open.
+  const [setOpen] = useState(() => (next: boolean) => {
+    if (openRef.current === next) return;
+    if (!controlledRef.current) setOpenState(next);
+    onOpenChangeRef.current?.(next);
+  });
   const [coords, setCoords] = useState<MenuCoords | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const wasOpenRef = useRef(false);
 
-  useOutsideClick([triggerRef, panelRef], () => setOpen(false));
+  const [dismiss] = useState(() => () => setOpen(false));
+  useOutsideClick([triggerRef, panelRef], dismiss);
 
   // Measure-then-position: the panel has to actually exist in the DOM
   // (rendered invisibly) before its real size is known, so this runs in a
@@ -76,12 +117,12 @@ export function Menu({ trigger, triggerLabel, align = 'left', className, childre
       setCoords(null);
       return;
     }
-    const triggerEl = triggerRef.current;
+    const anchorEl = anchorElement(triggerRef.current, anchorRef?.current);
     const panelEl = panelRef.current;
-    if (triggerEl && panelEl) {
-      setCoords(positionMenu(triggerEl.getBoundingClientRect(), panelEl.getBoundingClientRect(), align));
+    if (anchorEl && panelEl) {
+      setCoords(positionMenu(anchorEl.getBoundingClientRect(), panelEl.getBoundingClientRect(), align));
     }
-  }, [open, align]);
+  }, [open, align, anchorRef]);
 
   // Portaling moves the panel to the end of <body>, so it's no longer the
   // trigger's next DOM sibling and Tab would no longer naturally reach it.
@@ -96,7 +137,7 @@ export function Menu({ trigger, triggerLabel, align = 'left', className, childre
   }, [open, coords]);
 
   useEffect(() => {
-    if (wasOpenRef.current && !open) triggerRef.current?.focus();
+    if (wasOpenRef.current && !open) anchorElement(triggerRef.current, anchorRef?.current)?.focus();
     wasOpenRef.current = open;
   }, [open]);
 
@@ -126,6 +167,31 @@ export function Menu({ trigger, triggerLabel, align = 'left', className, childre
     };
   }, [open]);
 
+  const panel =
+    open &&
+    createPortal(
+      <div
+        ref={panelRef}
+        role="menu"
+        tabIndex={-1}
+        style={{
+          position: 'fixed',
+          top: coords?.top ?? 0,
+          left: coords?.left ?? 0,
+          visibility: coords ? 'visible' : 'hidden',
+        }}
+        // z-[80]: above every floating surface, including the Folio AI panel (z-[70]) —
+        // at z-[60] the history dropdown opened BEHIND that panel and looked dead.
+        className="z-[80] min-w-[190px] rounded-lg border border-neutral-200 bg-white p-1 shadow-lg outline-none dark:border-neutral-700 dark:bg-neutral-900"
+      >
+        {children(() => setOpen(false))}
+      </div>,
+      document.body,
+    );
+
+  // No button of its own: opened only through `open`, placed from `anchorRef`.
+  if (trigger === undefined) return panel || null;
+
   return (
     <div className={`relative ${className ?? ''}`}>
       <button
@@ -137,7 +203,7 @@ export function Menu({ trigger, triggerLabel, align = 'left', className, childre
         aria-expanded={open}
         onClick={(e) => {
           e.stopPropagation();
-          setOpen((o) => !o);
+          setOpen(!open);
         }}
         // Round 14 QA fix ("long space name flows under the star/gear
         // buttons"): this button used to have no explicit width, so as a
@@ -152,30 +218,11 @@ export function Menu({ trigger, triggerLabel, align = 'left', className, childre
         // against. max-md:min-h/w-10: touch-target floor for icon-only
         // triggers (Sidebar toolbar, share/user menus, …) — a no-op once
         // content (e.g. SpaceSwitcher's/UserMenu's own row) is already bigger.
-        className="flex w-full min-w-0 items-center justify-center rounded p-1 text-neutral-500 hover:bg-neutral-200 max-md:min-h-10 max-md:min-w-10 dark:text-neutral-400 dark:hover:bg-neutral-700"
+        className={triggerClassName ?? DEFAULT_TRIGGER_CLASS}
       >
         {trigger}
       </button>
-      {open &&
-        createPortal(
-          <div
-            ref={panelRef}
-            role="menu"
-            tabIndex={-1}
-            style={{
-              position: 'fixed',
-              top: coords?.top ?? 0,
-              left: coords?.left ?? 0,
-              visibility: coords ? 'visible' : 'hidden',
-            }}
-            // z-[80]: above every floating surface, including the Folio AI panel (z-[70]) —
-            // at z-[60] the history dropdown opened BEHIND that panel and looked dead.
-            className="z-[80] min-w-[190px] rounded-lg border border-neutral-200 bg-white p-1 shadow-lg outline-none dark:border-neutral-700 dark:bg-neutral-900"
-          >
-            {children(() => setOpen(false))}
-          </div>,
-          document.body,
-        )}
+      {panel}
     </div>
   );
 }

@@ -106,7 +106,14 @@ export function SpaceSwitcher({ current }: SpaceSwitcherProps) {
         className="min-w-0 flex-1"
         trigger={
           <span className="flex min-w-0 w-full items-center justify-between gap-2 px-1">
-            <span className="flex min-w-0 items-center gap-1.5">
+            <span className="flex min-w-0 items-center gap-2">
+              {/* The space's monogram: a fixed anchor at the top-left corner, like a workspace icon. */}
+              <span
+                aria-hidden="true"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-neutral-900 text-[11px] font-semibold uppercase text-white dark:bg-neutral-100 dark:text-neutral-900"
+              >
+                {(currentSpace?.name ?? current).trim().charAt(0) || '·'}
+              </span>
               <span
                 className="min-w-0 truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100"
                 title={isLoading ? undefined : (currentSpace?.name ?? current)}
@@ -115,7 +122,7 @@ export function SpaceSwitcher({ current }: SpaceSwitcherProps) {
               </span>
               <SyncStatusChip git={currentSpace?.git} />
             </span>
-            <ChevronsUpDown size={14} className="shrink-0 opacity-60" />
+            <ChevronsUpDown size={13} className="shrink-0 text-neutral-400" />
           </span>
         }
       >

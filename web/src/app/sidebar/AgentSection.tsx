@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Bot, ChevronDown, ChevronRight, FileText, LayoutDashboard, Plus, SpellCheck, Table2 } from 'lucide-react';
+import { Bot, FileText, LayoutDashboard, Plus, SpellCheck, Table2 } from 'lucide-react';
+import { ChevronGlyph, RowIconBox, kindIconProps } from './PageGlyph';
 import { AGENT_FOLDER } from '@shared/contracts';
 import type { PageKind } from '@shared/contracts';
 import { api } from '../api';
@@ -89,7 +90,7 @@ export function AgentSection({ space, activeId, activeFolderPath }: AgentSection
   });
 
   return (
-    <div className="mt-2 px-2">
+    <div>
       <div
         role="button"
         tabIndex={0}
@@ -105,11 +106,10 @@ export function AgentSection({ space, activeId, activeFolderPath }: AgentSection
             setOpen((v) => !v);
           }
         }}
-        className="group flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1.5 text-left text-sm text-neutral-600 hover:bg-neutral-200/70 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        className="group flex cursor-pointer items-center gap-2 rounded-md py-2 pl-1 pr-2 text-left text-[13px] leading-5 text-neutral-800 hover:bg-neutral-200/60 md:py-[3px] dark:text-neutral-200 dark:hover:bg-white/[0.06]"
       >
-        {open ? <ChevronDown size={13} className="shrink-0 opacity-60" /> : <ChevronRight size={13} className="shrink-0 opacity-60" />}
-        <Bot size={14} className="shrink-0 opacity-70" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate font-medium">{AGENT_FOLDER}</span>
+        <RowIconBox><Bot {...kindIconProps} /></RowIconBox>
+        <span className="min-w-0 flex-1 truncate">{AGENT_FOLDER}</span>
         <span
           className="ml-auto shrink-0 opacity-0 focus-within:opacity-100 group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
@@ -148,6 +148,7 @@ export function AgentSection({ space, activeId, activeFolderPath }: AgentSection
             )}
           </Menu>
         </span>
+        <ChevronGlyph open={open} />
       </div>
 
       {open && (

@@ -16,7 +16,7 @@ import { useSpaceRole } from '../auth/AuthProvider';
 import { canEditContent, canManageMembers } from '../auth/roles';
 import { OutlinePanel } from '../outline/OutlinePanel';
 import { PageChrome } from '../page-meta/PageChrome';
-import { PagePropertiesPopover, PropertiesBody, PropertiesToggle, usePropertiesOpen } from '../properties/PropertiesPanel';
+import { PagePropertiesPopover, PageTitleProperties } from '../properties/PropertiesPanel';
 import { PageConflictBanner } from '../git/PageConflictBanner';
 import { AgentDemoNote } from '../AgentDemoNote';
 import { trackPageOpen, type PageKind } from '../../analytics';
@@ -141,8 +141,6 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     refetchOnWindowFocus: true,
   });
   const isLocalPage = useIsLocalPage(id);
-  // One open state for the toggle (chrome row) and the body (under it).
-  const [propsOpen, setPropsOpen] = usePropertiesOpen(data?.space ?? '');
   // A page that could not be loaded because there was no network comes back
   // by itself when there is one again: with networkMode 'always' React Query
   // no longer treats a reconnect as a reason to refetch.
@@ -463,25 +461,19 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
               readOnly={!editable}
               comments={!embedded}
               defaultMode={startEditing ? 'live' : 'reading'}
-              // Reading is reading (owner, 15.10.2026): in reading mode the properties are shown, never added,
-              // edited or removed — even by an editor; Live and Source edit them.
-              chromeLead={
+              // Under the title (owner, 07.11.2026), not in the chrome row. Reading is reading (owner, 15.10.2026): in
+              // reading mode the properties are shown, never added, edited or removed — even by an editor; Live and
+              // Source edit them. An editor's "+ Property" in reading switches to Live edit first.
+              underTitle={
                 isLocalPage
                   ? undefined
-                  : (mode) => (
-                      <PropertiesToggle pageId={data.id} space={data.space} canEdit={editable && mode !== 'reading'} open={propsOpen} onToggle={() => setPropsOpen((v) => !v)} />
-                    )
-              }
-              belowChrome={
-                isLocalPage
-                  ? undefined
-                  : (mode) => (
-                      <PropertiesBody
+                  : ({ mode, startEditing }) => (
+                      <PageTitleProperties
                         pageId={data.id}
                         space={data.space}
                         canEdit={editable && mode !== 'reading'}
                         canManageTypes={canManageMembers(spaceRole)}
-                        open={propsOpen}
+                        onStartEditing={editable && mode === 'reading' ? startEditing : undefined}
                       />
                     )
               }

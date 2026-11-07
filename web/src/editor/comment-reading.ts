@@ -78,7 +78,7 @@ function domSkeleton(root: Node): DomSkeleton {
   let s = '';
   const points: DomSkeleton['points'] = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => (node.parentElement?.closest('script,style,[hidden],[aria-hidden="true"]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    acceptNode: (node) => (node.parentElement?.closest('script,style,[hidden],[aria-hidden="true"],.folio-title-slot') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
     const sk = skeleton(node.data);

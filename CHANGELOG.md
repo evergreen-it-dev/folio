@@ -4,7 +4,21 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-07
+
+A lighter, more convenient interface, redesigned after user feedback: one icon
+column and a visible expand arrow in the sidebar tree, search in the sidebar, a
+header with fewer buttons, page properties under the title and a tidier right
+panel. Also new: a TODO panel, comments on page text, MDX pages, and
+`llms.txt` for public sites. Adds migration 060.
+
 ### Added
+
+- **A TODO panel.** Every line that contains the word TODO, in any document, is
+  collected in the **TODO** section of the right panel. Filter by assignee: the
+  people @mentioned on the line (in a table, anywhere in the row). A click jumps
+  to the line and briefly highlights it. The word TODO is highlighted in Live
+  edit and in Reading.
 
 - **Public sites are readable by AI agents.** Every published site now serves
   `llms.txt` (title, summary and a list of its pages grouped by section, each
@@ -56,6 +70,29 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Changed
 
+- **A redesigned app chrome, from user feedback.** Nothing was removed; things
+  moved and got quieter.
+  - *Sidebar tree.* Every page has an icon in one column (its emoji, its page
+    kind, or a faint document glyph), so there are no empty gaps. The expand
+    arrow sits at the right end of the row and is always visible. Titles in
+    Search, Home, Starred and the tree start at one edge, and Starred shows each
+    page's own icon. A "Pages" label sits above the tree.
+  - *Search* moved into the sidebar as a "Search" row with the shortcut.
+    Ctrl/Cmd+K still opens it from anywhere.
+  - *Header.* Timer, history and notifications stay visible; Share is a
+    labelled button. Export, page access, side-by-side compare and writing rules
+    (and the file actions on PDF and Office pages) moved into a labelled "..."
+    menu. On phones the same menu holds everything.
+  - *Page properties* moved from the toolbar to under the page title; an empty
+    page shows a faint "+ Property".
+  - *Right panel.* A bordered column with one hide button. Local graph, Outline,
+    Notes and TODO collapse by their headers. The local graph's depth is a menu
+    ("Links: direct / + neighbours / + one more step") instead of 1, 2, 3, and its
+    labels no longer clip. The TODO assignee filter is a compact select next to
+    the header, and items show two lines.
+  - The editor mode switch (Reading, Live edit, Source) is smaller.
+  - Once after the update, small tags next to the moved controls show where
+    things are now, with a short "We've refreshed the design" note and "Got it".
 - **Pages without a stored id get a stable one.** A document or whiteboard
   found on disk without an `id` used to get a random identifier each time
   the instance was rebuilt, so links to it broke. It now gets an id derived
@@ -77,6 +114,12 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   no 3.x release with the fix.
 
 ### Fixed
+
+- **A status tag can be copied, cut and pasted.** `:status[...]` now survives
+  Ctrl/Cmd+C, X and V. The tag also sat about 6px above the text baseline and made
+  its line taller; it is now aligned.
+- **On phones, History and Page access stay open.** Opened from the "..." menu,
+  they closed on the first click inside them.
 
 - **An artifact on a share link fills the page and no longer shows its source.**
   The artifact view used a fixed height taller than the real header, which left

@@ -27,6 +27,8 @@ import { rehypeAssignNoteIds, createNoteIdCursor } from './noteIds';
 import type { NoteIdCursor } from './noteIds';
 import { rehypeCollapsibleSections } from './collapsibleSections';
 import { rehypeMentions } from './mentions';
+import { createTodoCursor, rehypeTodoMarks } from './todoMarks';
+import type { TodoCursor } from './todoMarks';
 import type { MentionLookup } from './mentions';
 import { rehypeHighlight } from '@shared/highlight';
 import { remarkUnderline } from '@shared/underline';
@@ -152,6 +154,9 @@ export interface RenderOptions {
  * `noteCursor` is the same idea again, for the notes panel's `data-note-index`
  * (noteIds.ts) — a bare counter rather than a pre-computed list, since a
  * note's id is just its position, not content-derived like a heading's slug.
+ *
+ * `todoCursor` likewise numbers the highlighted TODO words (`data-todo-index`,
+ * todoMarks.ts) across segments.
  */
 export function renderMarkdownToHtml(
   markdown: string,
@@ -159,6 +164,7 @@ export function renderMarkdownToHtml(
   headingCursor?: HeadingIdCursor,
   tableIndexCursor: TableIndexCursor = createTableIndexCursor(),
   noteCursor: NoteIdCursor = createNoteIdCursor(),
+  todoCursor: TodoCursor = createTodoCursor(),
 ): string {
   const file = unified()
     .use(remarkParse)
@@ -195,6 +201,7 @@ export function renderMarkdownToHtml(
     .use(rehypeAssignNoteIds, options.embedded ? undefined : noteCursor)
     .use(rehypeCollapsibleSections)
     .use(rehypeMentions, options.mentionLookup)
+    .use(rehypeTodoMarks, options.embedded ? undefined : todoCursor)
     .use(rehypeHighlight)
     .use(rehypeSanitize, folioSanitizeSchema)
     .use(rehypeStringify)

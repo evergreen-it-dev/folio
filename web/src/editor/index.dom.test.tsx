@@ -124,15 +124,16 @@ function mount(
           collabUrl="ws://localhost/collab"
           readOnly={props.readOnly}
           defaultMode={props.mode}
-          chromeLead={
+          underTitle={
             props.slots === 'by-mode'
-              ? (mode) => <button type="button">Lead in {mode}</button>
+              ? ({ mode, startEditing }) => (
+                  <button type="button" data-testid="under" onClick={startEditing}>
+                    Under in {mode}
+                  </button>
+                )
               : props.slots
-                ? <button type="button">Properties (2)</button>
+                ? <div data-testid="under">Properties (2)</div>
                 : undefined
-          }
-          belowChrome={
-            props.slots === 'by-mode' ? (mode) => <div data-testid="below">Body in {mode}</div> : props.slots ? <div data-testid="below">Body</div> : undefined
           }
           chromeStart={props.chromeStart ? <button type="button">Add a cover</button> : undefined}
         />
@@ -442,34 +443,26 @@ describe('PageEditor mode switch on a phone', () => {
   });
 });
 
-describe('PageEditor chrome-lead and below-chrome slots', () => {
-  it('shows the lead first in the chrome row and the body right under it, in reading mode', () => {
+describe('PageEditor under-title slot', () => {
+  it('leaves the chrome row to the editor itself and puts the slot in the page, not above it', () => {
     const container = mount({ slots: true });
     const chrome = container.querySelector('.folio-editor__chrome')!;
-    const lead = chrome.querySelector('.folio-editor__chrome-lead');
-    expect(lead?.textContent).toBe('Properties (2)');
-    expect(chrome.firstElementChild).toBe(lead);
-    expect(chrome.nextElementSibling?.getAttribute('data-testid')).toBe('below');
+    expect(chrome.textContent).not.toContain('Properties (2)');
+    const under = container.querySelector('[data-testid="under"]')!;
+    expect(under.closest('.folio-title-slot')?.parentElement?.classList.contains('folio-editor__prose')).toBe(true);
+    expect(mount().querySelector('.folio-title-slot')).toBeNull();
   });
 
-  it('keeps the lead beside chrome-start when editing, and renders nothing without them', () => {
-    const container = mount({ slots: true, chromeStart: true });
-    act(() => modeButtons(container)[1].click());
-    const chrome = container.querySelector('.folio-editor__chrome')!;
-    expect(chrome.querySelector('.folio-editor__chrome-lead')).not.toBeNull();
-    expect(chrome.querySelector('.folio-editor__chrome-start')).not.toBeNull();
-    expect(mount().querySelector('.folio-editor__chrome-lead')).toBeNull();
-  });
-
-  it('hands the current mode to slots given as functions (the properties are read-only in reading)', () => {
+  it('hands the slot the current mode, and a way into Live edit from reading', () => {
     const container = mount({ slots: 'by-mode' });
-    expect(container.querySelector('.folio-editor__chrome-lead')?.textContent).toBe('Lead in reading');
-    expect(container.querySelector('[data-testid="below"]')?.textContent).toBe('Body in reading');
-    act(() => modeButtons(container)[1].click());
-    expect(container.querySelector('.folio-editor__chrome-lead')?.textContent).toBe('Lead in live');
-    expect(container.querySelector('[data-testid="below"]')?.textContent).toBe('Body in live');
+    const under = () => container.querySelector('[data-testid="under"]');
+    expect(under()?.textContent).toBe('Under in reading');
+    act(() => (under() as HTMLButtonElement).click());
+    expect(container.querySelector('.folio-editor')?.getAttribute('data-mode')).toBe('live');
+    // Live and source draw it in CodeMirror (title-slot.ts); with no session yet it waits off-page, still rendered.
+    expect(container.querySelector('[data-testid="under"]')).toBeNull();
     act(() => modeButtons(container)[2].click());
-    expect(container.querySelector('[data-testid="below"]')?.textContent).toBe('Body in source');
+    expect(container.querySelector('.folio-editor')?.getAttribute('data-mode')).toBe('source');
   });
 });
 

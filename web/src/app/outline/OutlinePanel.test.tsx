@@ -205,48 +205,47 @@ describe('OutlinePanel — Notes section', () => {
   describe('independent toggles', () => {
     const BOTH = '# Heading\n\ntext\n\n> [!NOTE]\n> a note\n';
 
-    it('a hidden outline leaves the notes in place and gives an icon to bring it back', () => {
-      // The docked column is the first child; further in the tree there is also
-      // the floating button of the narrow screen with the same name, so the
-      // queries are narrowed to the column.
-      const { container } = render(<OutlinePanel markdown={BOTH} />);
-      const docked = () => within(container.firstElementChild as HTMLElement);
+    it('a collapsed outline leaves the notes in place; its header brings it back', () => {
+      render(<OutlinePanel markdown={BOTH} />);
 
-      fireEvent.click(docked().getByRole('button', { name: 'Hide outline' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Outline' }));
 
       expect(screen.queryByText('Heading')).toBeNull();
       expect(screen.getByText('a note')).toBeTruthy();
-      expect(docked().getByRole('button', { name: 'Show outline' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Outline' }).getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(screen.getByRole('button', { name: 'Outline' }));
+      expect(screen.getByText('Heading')).toBeTruthy();
     });
 
-    it('hidden notes leave the outline in place and give an icon to bring them back', () => {
+    it('collapsed notes leave the outline in place', () => {
       render(<OutlinePanel markdown={BOTH} />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'Hide the notes' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Notes/ }));
 
       expect(screen.getByText('Heading')).toBeTruthy();
       expect(screen.queryByText('a note')).toBeNull();
-      expect(screen.getByRole('button', { name: 'Show notes' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Notes/ }).getAttribute('aria-expanded')).toBe('false');
     });
 
-    it('both hidden — a rail of two icons stays', () => {
+    it('one button puts the whole panel away; a slim rail brings it back', () => {
       const { container } = render(<OutlinePanel markdown={BOTH} />);
       const docked = () => within(container.firstElementChild as HTMLElement);
 
-      fireEvent.click(docked().getByRole('button', { name: 'Hide outline' }));
-      fireEvent.click(docked().getByRole('button', { name: 'Hide the notes' }));
-
-      expect(docked().getByRole('button', { name: 'Show outline' })).toBeTruthy();
-      expect(docked().getByRole('button', { name: 'Show notes' })).toBeTruthy();
+      fireEvent.click(docked().getByRole('button', { name: 'Hide panel' }));
       expect(screen.queryByText('Heading')).toBeNull();
       expect(screen.queryByText('a note')).toBeNull();
+      expect(localStorage.getItem('folio:outline-panel-hidden')).toBe('true');
+
+      fireEvent.click(docked().getByRole('button', { name: 'Show panel' }));
+      expect(screen.getByText('Heading')).toBeTruthy();
+      expect(screen.getByText('a note')).toBeTruthy();
     });
 
     it('a page without headings shows the notes alone, without an empty outline', () => {
       render(<OutlinePanel markdown={'> [!NOTE]\n> hi\n'} />);
 
       expect(screen.getByText('hi')).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'Hide outline' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Outline' })).toBeNull();
     });
   });
 });
@@ -281,5 +280,34 @@ describe('live text from the editor', () => {
     render(<OutlinePanel markdown={''} pageId="p1" />);
 
     expect(screen.getByText('a fresh note')).toBeTruthy();
+  });
+});
+
+describe('OutlinePanel — TODO section', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  const TODO_MARKDOWN = '# Plan\n\nship it TODO: @Ann\nTODO @bob and @ann\nTODO nobody\n';
+
+  it('lists the TODO lines and narrows them with the assignee filter', () => {
+    render(<OutlinePanel markdown={TODO_MARKDOWN} />);
+
+    expect(screen.getByText('ship it TODO: @Ann')).toBeTruthy();
+    expect(screen.getByText('TODO nobody')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Filter by assignee'), { target: { value: '@bob' } });
+    expect(screen.queryByText('ship it TODO: @Ann')).toBeNull();
+    expect(screen.queryByText('TODO nobody')).toBeNull();
+    expect(screen.getByText('TODO @bob and @ann')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Filter by assignee'), { target: { value: ':none' } });
+    expect(screen.getByText('TODO nobody')).toBeTruthy();
+    expect(screen.queryByText('TODO @bob and @ann')).toBeNull();
+  });
+
+  it('renders nothing for a page without TODO lines', () => {
+    render(<OutlinePanel markdown={'# Plan\n\njust text\n'} />);
+    expect(screen.queryByLabelText('Hide TODOs')).toBeNull();
   });
 });

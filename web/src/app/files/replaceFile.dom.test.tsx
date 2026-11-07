@@ -188,10 +188,16 @@ describe('page header', () => {
     );
   }
 
+  // 07.11.2026: the file actions are rows of the header's «⋯» menu.
+  function openMore() {
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+  }
+
   it('has the button on a file page for an editor, and the file picker takes all four types', () => {
     stubFetch();
     renderHeader({ fileActions: true });
-    expect(screen.getAllByLabelText(REPLACE).length).toBeGreaterThan(0);
+    openMore();
+    expect(screen.getAllByRole('menuitem', { name: REPLACE }).length).toBe(1);
     const inputs = screen.getAllByTestId('replace-file-input') as HTMLInputElement[];
     expect(inputs.every((i) => i.accept === '.pdf,.docx,.xlsx,.pptx')).toBe(true);
   });
@@ -200,12 +206,16 @@ describe('page header', () => {
     stubFetch();
     spaceRole = 'viewer';
     renderHeader({ fileActions: true });
-    expect(screen.queryAllByLabelText(REPLACE)).toHaveLength(0);
+    openMore();
+    expect(screen.getByRole('menuitem', { name: 'Download' })).toBeTruthy();
+    expect(screen.queryAllByRole('menuitem', { name: REPLACE })).toHaveLength(0);
     cleanup();
 
     spaceRole = 'editor';
     renderHeader({ fileActions: false });
-    expect(screen.queryAllByLabelText(REPLACE)).toHaveLength(0);
+    openMore();
+    expect(screen.getByRole('menuitem', { name: 'Export…' })).toBeTruthy();
+    expect(screen.queryAllByRole('menuitem', { name: REPLACE })).toHaveLength(0);
   });
 });
 

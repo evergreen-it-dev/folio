@@ -22,6 +22,25 @@ export interface CreateFormButtonProps {
  */
 export function CreateFormButton({ pageId, space }: CreateFormButtonProps) {
   const { t } = useTranslation('app');
+  const createForm = useCreateFormFromTable(pageId, space);
+
+  return (
+    <button
+      type="button"
+      aria-label={t('routes.form.createFromTable')}
+      title={t('routes.form.createFromTable')}
+      disabled={createForm.isPending}
+      onClick={() => createForm.mutate()}
+      className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 max-md:min-h-10 max-md:min-w-10 disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+    >
+      <ClipboardList size={15} aria-hidden="true" />
+    </button>
+  );
+}
+
+/** The «Create a form» mutation: creates the paired form, then navigates to it. Shared by the button and the header's «⋯» row. */
+export function useCreateFormFromTable(pageId: string, space: string) {
+  const { t } = useTranslation('app');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const showToast = useToast();
@@ -38,16 +57,5 @@ export function CreateFormButton({ pageId, space }: CreateFormButtonProps) {
     },
   });
 
-  return (
-    <button
-      type="button"
-      aria-label={t('routes.form.createFromTable')}
-      title={t('routes.form.createFromTable')}
-      disabled={createForm.isPending}
-      onClick={() => createForm.mutate()}
-      className="inline-flex shrink-0 items-center justify-center rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 max-md:min-h-10 max-md:min-w-10 disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
-    >
-      <ClipboardList size={15} aria-hidden="true" />
-    </button>
-  );
+  return createForm;
 }

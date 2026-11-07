@@ -13,6 +13,7 @@ import { OfflineRuntime } from './offline/OfflineRuntime';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { PageCrashed } from './routes/PageCrashed';
 import { PropertiesSlotContext } from './header/propertiesSlot';
+import { WhatsNewTour } from './onboarding/WhatsNewTour';
 
 /** Stable empty array for Header's `presence` prop before any content has published — a fresh `[]` every render would defeat any memoization downstream. */
 const EMPTY_PRESENCE: PagePresencePerson[] = [];
@@ -202,6 +203,7 @@ export function Shell() {
       </div>
       {switcherOpen && <QuickSwitcher space={space} initialQuery={switcherQuery} onClose={() => setSwitcherOpen(false)} />}
       <OfflineRuntime />
+      <WhatsNewTour />
     </div>
   );
 }

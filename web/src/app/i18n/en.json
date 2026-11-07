@@ -148,6 +148,12 @@
     "history": "History",
     "moreActions": "More actions",
     "searchAndGo": "Search and jump to…",
+    "actions": {
+      "history": "History",
+      "export": "Export…",
+      "access": "Page access…",
+      "timer": "Start a timer…"
+    },
     "breadcrumbs": {
       "label": "Breadcrumbs",
       "navigateFailed": "Could not navigate",
@@ -406,6 +412,8 @@
     }
   },
   "outline": {
+    "hidePanel": "Hide panel",
+    "showPanel": "Show panel",
     "show": "Show outline",
     "hide": "Hide outline",
     "label": "Outline"
@@ -415,6 +423,14 @@
     "hide": "Hide the notes",
     "show": "Show notes",
     "tasksDone": "{{done}} of {{total}} checked"
+  },
+  "todos": {
+    "label": "TODO",
+    "hide": "Hide TODOs",
+    "show": "Show TODOs",
+    "filterLabel": "Filter by assignee",
+    "all": "All",
+    "none": "No assignee"
   },
   "comments": {
     "title": "Comments",
@@ -914,6 +930,7 @@
     "syncFailed": "Could not sync the space",
     "fromTemplate": "From template…",
     "spaceHome": "Space home",
+    "search": "Search",
     "scanSettings": {
       "title": "Indexing & files",
       "ignoreLabel": "Do not index",
@@ -974,6 +991,7 @@
       "loadFailed": "Could not load the page tree.",
       "empty": "No other pages in this space yet.",
       "label": "Page tree",
+      "title": "Pages",
       "collapse": "Collapse",
       "expand": "Expand",
       "addPage": "Add a page",
@@ -2073,6 +2091,7 @@
     "title": "Properties ({{n}})",
     "empty": "No properties yet.",
     "add": "Add property",
+    "addShort": "Property",
     "addAction": "Add",
     "keyLabel": "Property name",
     "keyPlaceholder": "Name",
@@ -2361,7 +2380,14 @@
       "depthHint2": "2 — through one page",
       "depthHint3": "3 — through two pages",
       "collapse": "Collapse local graph",
-      "expandSection": "Expand local graph"
+      "expandSection": "Expand local graph",
+      "depthLabel1": "Links: direct",
+      "depthLabel2": "Links: + neighbours",
+      "depthLabel3": "Links: + one more step",
+      "depthRow1": "Direct links only",
+      "depthRow2": "+ neighbours' links",
+      "depthRow3": "+ one more step",
+      "depthCaption": "Which pages the graph shows"
     },
     "filters": {
       "title": "Filters",
@@ -2616,5 +2642,41 @@
     "confirmEverywhere": "Every browser signed in to this account will be signed out and its open pages disconnected.",
     "revokedCount_one": "{{count}} device signed out",
     "revokedCount_other": "{{count}} devices signed out"
+  },
+  "whatsNew": {
+    "title": "We've refreshed the design",
+    "banner": "The tags show where things moved. They go away when you click “Got it”.",
+    "introTextNoAnchors": "The app chrome has been redesigned. Here is where things are now:",
+    "gotIt": "Got it",
+    "dialogLabel": "What's new in the design",
+    "steps": {
+      "search": {
+        "title": "Search moved to the sidebar",
+        "text": "Or press {{shortcut}} from anywhere."
+      },
+      "treeChevron": {
+        "title": "Nested pages",
+        "text": "The arrow on the right of a row expands its nested pages."
+      },
+      "pageActions": {
+        "title": "Page actions",
+        "text": "History and the timer are right there; export, access and compare live in the “⋯” menu."
+      },
+      "properties": {
+        "title": "Properties are under the title",
+        "text": "Add and edit a page's properties right under its name."
+      },
+      "rightPanel": {
+        "title": "Right panel",
+        "text": "Graph, outline and TODO. “Links” on the graph picks how many pages to show, and a click on a TODO highlights it in the text."
+      }
+    },
+    "pins": {
+      "search": "search is here now · {{shortcut}}",
+      "treeChevron": "arrow expands nested pages",
+      "pageActions": "export, access, compare — here",
+      "properties": "properties — under the title",
+      "rightPanel": "graph, outline and TODO — here"
+    }
   }
 }

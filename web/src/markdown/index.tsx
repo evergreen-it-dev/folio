@@ -28,6 +28,7 @@ import {
 import { applyCollapseState, readCollapsedSlugs, writeCollapsedSlugs } from './collapsible';
 import { createTableIndexCursor } from './tables';
 import { createNoteIdCursor } from './noteIds';
+import { createTodoCursor } from './todoMarks';
 import {
   applyTableFitState,
   measureWideTables,
@@ -289,6 +290,8 @@ export function Markdown({ markdown, space, pagePath, pageId, shareLinksPageId, 
     // Same reasoning again, for the notes panel's data-note-index (noteIds.ts) —
     // a bare counter, so it needs no precomputed list the way `cursor` above does.
     const noteCursor = createNoteIdCursor();
+    // And for the TODO highlight's data-todo-index (todoMarks.ts).
+    const todoCursor = createTodoCursor();
     // Undefined until this space's list has loaded at least once (initial
     // render, or a space with no mentionable users at all) — rehypeMentions
     // treats that as "leave every @handle as plain text", the same thing an
@@ -319,6 +322,7 @@ export function Markdown({ markdown, space, pagePath, pageId, shareLinksPageId, 
         cursor,
         tableCursor,
         noteCursor,
+        todoCursor,
       );
       return {
         type: 'html' as const,

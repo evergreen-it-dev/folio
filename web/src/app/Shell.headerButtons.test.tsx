@@ -16,6 +16,12 @@
  * Header. Only Sidebar (irrelevant to this bug, and heavy — its own
  * template/git/member queries) and useSpaceRole (needs a real session) are
  * mocked.
+ *
+ * 07.11.2026 (header decluttered): History is no longer a header icon but a
+ * row of the «⋯» menu, so "one History entry point per page" is counted by
+ * opening that menu. The always-mounted page controls that ARE siblings in the
+ * header's children array — the «Share» button, the page star, the «⋯»
+ * trigger — are counted directly: those are what the key collision duplicated.
  */
 import type { ReactNode } from 'react';
 import { act } from 'react';
@@ -105,14 +111,41 @@ function harness() {
     });
   }
 
+  function moreTriggers() {
+    return container.querySelectorAll<HTMLButtonElement>('button[aria-label="More actions"]');
+  }
+  /** History entry points: the «History» rows of every «⋯» menu in the header (opened, counted, closed again). */
   function historyButtonCount() {
-    return container.querySelectorAll('[aria-label="History"]').length;
+    let rows = 0;
+    for (const trigger of moreTriggers()) {
+      act(() => trigger.click());
+      rows += [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].filter((el) => el.textContent === 'History').length;
+      act(() => trigger.click());
+    }
+    return rows;
   }
   function shareButtonCount() {
     return container.querySelectorAll('[aria-label="Share"]').length;
   }
+  /** Every always-mounted page control, each of which must exist exactly once. */
+  function pageControlCounts() {
+    return {
+      share: shareButtonCount(),
+      star: container.querySelectorAll('[aria-label="Star this page"], [aria-label="Unstar this page"]').length,
+      more: moreTriggers().length,
+    };
+  }
+  function openHistoryPanel() {
+    const [trigger] = moreTriggers();
+    act(() => trigger.click());
+    const row = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')].find((el) => el.textContent === 'History');
+    act(() => row!.click());
+  }
+  function historyPanelCount() {
+    return document.querySelectorAll('[role="dialog"][aria-label="Page history"]').length;
+  }
 
-  return { renderWith, historyButtonCount, shareButtonCount, cleanup: () => root.unmount() };
+  return { renderWith, historyButtonCount, shareButtonCount, pageControlCounts, openHistoryPanel, historyPanelCount, cleanup: () => root.unmount() };
 }
 
 describe('Header history/share buttons under repeated pageId changes (P1 repro)', () => {
@@ -123,7 +156,7 @@ describe('Header history/share buttons under repeated pageId changes (P1 repro)'
     for (const id of ['p1', 'p2', 'p3', 'p4', 'p5']) {
       h.renderWith(id);
       expect(h.historyButtonCount()).toBe(1);
-      expect(h.shareButtonCount()).toBe(1);
+      expect(h.pageControlCounts()).toEqual({ share: 1, star: 1, more: 1 });
     }
     h.cleanup();
   });
@@ -162,7 +195,7 @@ describe('Header history/share buttons under repeated pageId changes (P1 repro)'
       h.renderWith(id);
     }
     expect(h.historyButtonCount()).toBe(1);
-    expect(h.shareButtonCount()).toBe(1);
+    expect(h.pageControlCounts()).toEqual({ share: 1, star: 1, more: 1 });
     h.cleanup();
   });
 
@@ -176,7 +209,21 @@ describe('Header history/share buttons under repeated pageId changes (P1 repro)'
         await Promise.resolve();
       });
       expect(h.historyButtonCount()).toBe(1);
+      expect(h.pageControlCounts()).toEqual({ share: 1, star: 1, more: 1 });
     }
+    h.cleanup();
+  });
+
+  it('an open History panel (opened from «⋯») stays open, then closes when the page changes — not re-pointed at the next page', () => {
+    const h = harness();
+    h.renderWith('p1');
+    h.openHistoryPanel();
+    expect(h.historyPanelCount()).toBe(1);
+    // The «⋯» menu closed when its row was chosen; the panel is Header's own and must outlive it.
+    expect(document.querySelectorAll('[role="menu"]').length).toBe(0);
+    h.renderWith('p2');
+    expect(h.historyPanelCount()).toBe(0);
+    expect(h.historyButtonCount()).toBe(1);
     h.cleanup();
   });
 });

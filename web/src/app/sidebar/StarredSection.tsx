@@ -2,10 +2,12 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Star, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { TreeNode } from '@shared/contracts';
 import { api, ApiError } from '../api';
 import { useStars, useToggleStar } from '../stars';
+import { PageGlyph } from './PageGlyph';
+import { SectionLabel } from './SectionLabel';
 import '../i18n/register';
 
 export interface StarredSectionProps {
@@ -48,21 +50,15 @@ export function StarredSection({ space }: StarredSectionProps) {
   if (starredPages.length === 0) return null;
 
   return (
-    <div className="mt-2 px-2">
-      <div className="px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
-        {t('sidebar.starred.title')}
-      </div>
-      <div className="flex flex-col gap-0.5">
+    <div className="mt-4 px-2">
+      <SectionLabel>{t('sidebar.starred.title')}</SectionLabel>
+      <div className="flex flex-col gap-px">
         {starredPages.map((id) => (
           <StarredPageLink key={`page:${id}`} id={id} node={treeIndex.get(id)} />
         ))}
       </div>
     </div>
   );
-}
-
-function StarGlyph() {
-  return <Star size={13} className="shrink-0 fill-current text-amber-500" aria-hidden="true" />;
 }
 
 function StarredPageLink({ id, node }: { id: string; node: TreeNode | undefined }) {
@@ -91,8 +87,8 @@ function StarredPageLink({ id, node }: { id: string; node: TreeNode | undefined 
     const status = error instanceof ApiError ? error.status : 0;
     const deleted = status === 404;
     return (
-      <div className="group flex items-center gap-2 rounded-md px-2 py-1 text-sm text-neutral-400">
-        <StarGlyph />
+      <div className="group flex items-center gap-2 rounded-md py-2 pl-1 pr-2 text-[13px] leading-5 text-neutral-400 md:py-[3px]">
+        <PageGlyph />
         <span className="min-w-0 flex-1 truncate italic" title={t(deleted ? 'sidebar.starred.deletedHint' : 'sidebar.starred.noAccessHint')}>
           {t(deleted ? 'sidebar.starred.deleted' : 'sidebar.starred.noAccess')}
         </span>
@@ -111,8 +107,8 @@ function StarredPageLink({ id, node }: { id: string; node: TreeNode | undefined 
 
   if (!pageSpace || !title) {
     return (
-      <div className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-neutral-400">
-        <StarGlyph />
+      <div className="flex items-center gap-2 rounded-md py-2 pl-1 pr-2 text-[13px] leading-5 text-neutral-400 md:py-[3px]">
+        <PageGlyph />
         <span className="truncate">{t('ui.loading')}</span>
       </div>
     );
@@ -125,9 +121,9 @@ function StarredPageLink({ id, node }: { id: string; node: TreeNode | undefined 
       // py-2 md:py-1: touch-target floor (round 14), pared back in round 25
       // to match TreeRow's own de-bloated rows — see its comment for the
       // 36px-vs-28px reasoning.
-      className="flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 md:py-1 dark:text-neutral-300 dark:hover:bg-neutral-800/70"
+      className="flex items-center gap-2 rounded-md py-2 pl-1 pr-2 text-left text-[13px] leading-5 md:py-[3px] text-neutral-800 hover:bg-neutral-200/60 dark:text-neutral-200 dark:hover:bg-white/[0.06]"
     >
-      <StarGlyph />
+      <PageGlyph kind={node?.kind} icon={node?.icon} path={node?.path} />
       <span className="min-w-0 flex-1 truncate">{title}</span>
     </button>
   );

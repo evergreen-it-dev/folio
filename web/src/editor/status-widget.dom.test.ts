@@ -196,6 +196,72 @@ describe('popover', () => {
     expect(view.state.doc.toString()).toBe('a  b');
   });
 
+  describe('clipboard', () => {
+    /** jsdom has no ClipboardEvent: a plain Event with a clipboardData stub does the job. */
+    function clipEvent(name: string, text = ''): { event: Event; store: Record<string, string> } {
+      const store: Record<string, string> = {};
+      const event = new Event(name, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', {
+        value: { setData: (type: string, value: string) => (store[type] = value), getData: () => text },
+      });
+      return { event, store };
+    }
+    const select = (from: number, to: number) => input().setSelectionRange(from, to);
+
+    it('copies the whole tag, with its current colour, when the whole label is selected', () => {
+      const view = mount('a :status[Done]{color=green} b');
+      openStatusPopover(view, 2);
+      swatch('red').click();
+      select(0, 4);
+      const { event, store } = clipEvent('copy');
+      input().dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(store['text/plain']).toBe(':status[Done]{color=red}');
+      expect(store['text/html']).toContain('Done');
+    });
+
+    it('leaves a partial selection to the browser', () => {
+      const view = mount(':status[Done]{color=green}');
+      openStatusPopover(view, 0);
+      select(0, 2);
+      const { event, store } = clipEvent('copy');
+      input().dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(store).toEqual({});
+    });
+
+    it('cut puts the tag on the clipboard and removes it', () => {
+      const view = mount('a :status[Done]{color=green} b');
+      openStatusPopover(view, 2);
+      select(0, 4);
+      const { event, store } = clipEvent('cut');
+      input().dispatchEvent(event);
+      expect(store['text/plain']).toBe(':status[Done]{color=green}');
+      expect(view.state.doc.toString()).toBe('a  b');
+      expect(popover()).toBeNull();
+      expect(view.state.selection.main.head).toBe(2);
+    });
+
+    it('pasting one whole tag takes its label and colour', () => {
+      const view = mount('a :status[Old]{color=green} b');
+      openStatusPopover(view, 2);
+      const { event } = clipEvent('paste', ' :status[New]{color=purple} ');
+      input().dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(input().value).toBe('New');
+      expect(swatch('purple').dataset.selected).toBe('true');
+      expect(view.state.doc.toString()).toBe('a :status[New]{color=purple} b');
+    });
+
+    it('pasting anything else is left to the browser', () => {
+      const view = mount(':status[Old]');
+      openStatusPopover(view, 0);
+      const { event } = clipEvent('paste', 'x :status[New]{color=purple}');
+      input().dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    });
+  });
+
   it('does not open in a read-only editor', () => {
     const view = mount(':status[Done]', 0, true, true);
     badges(view)[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));

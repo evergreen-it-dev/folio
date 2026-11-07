@@ -22,13 +22,22 @@ export interface WritingRulesButtonProps {
  * for this space or another assistant run is in flight.
  */
 export function WritingRulesButton(props: WritingRulesButtonProps) {
-  const { data } = useQuery({ queryKey: ['spaces'], queryFn: api.listSpaces });
-  const hasRules = data?.spaces.find((s) => s.slug === props.space)?.agentRules?.writingRules === true;
+  const hasRules = useHasWritingRules(props.space);
   // The assistant context (panel, run tracker) is only needed once there is a button to show.
   return hasRules ? <WritingRulesAction {...props} /> : null;
 }
 
-function WritingRulesAction({ pageId, space, title }: WritingRulesButtonProps) {
+/** Whether the space has writing rules (`.agent/writing-rules.md`) — without them there is nothing to check against. */
+export function useHasWritingRules(space: string): boolean {
+  const { data } = useQuery({ queryKey: ['spaces'], queryFn: api.listSpaces });
+  return data?.spaces.find((s) => s.slug === space)?.agentRules?.writingRules === true;
+}
+
+/**
+ * The check itself: `start()` asks the assistant; `unavailable` is why it cannot run now (no working key, a run in
+ * flight), null when it can. Needs the assistant context — call only where the space has writing rules.
+ */
+export function useWritingRulesCheck({ pageId, space, title }: WritingRulesButtonProps) {
   const { t, i18n } = useTranslation('app');
   const assistant = useAssistantUi();
   const run = useAssistantRun();
@@ -51,6 +60,11 @@ function WritingRulesAction({ pageId, space, title }: WritingRulesButtonProps) {
     });
   }
 
+  return { label, unavailable, start };
+}
+
+function WritingRulesAction(props: WritingRulesButtonProps) {
+  const { label, unavailable, start } = useWritingRulesCheck(props);
   return (
     <button
       type="button"
@@ -60,7 +74,7 @@ function WritingRulesAction({ pageId, space, title }: WritingRulesButtonProps) {
       onClick={start}
       // max-md:min-h/w-10: touch-target floor (round 14), no-op at md+.
       className={`inline-flex shrink-0 items-center justify-center rounded-md p-1.5 max-md:min-h-10 max-md:min-w-10 ${
-        unavailable ? 'cursor-not-allowed text-neutral-300 dark:text-neutral-600' : 'text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300'
+        unavailable ? 'cursor-not-allowed text-neutral-300 dark:text-neutral-600' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'
       }`}
     >
       <SpellCheck size={15} aria-hidden="true" />

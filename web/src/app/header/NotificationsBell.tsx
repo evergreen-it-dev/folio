@@ -215,9 +215,9 @@ export function NotificationsBell() {
           if (next && unread > 0 && !markRead.isPending) markRead.mutate();
         }}
         // max-md:min-h/w-10 — the same touch threshold as the rest of the header buttons.
-        className="relative inline-flex items-center justify-center rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 max-md:min-h-10 max-md:min-w-10 dark:hover:bg-neutral-800"
+        className="relative inline-flex items-center justify-center rounded-md p-1.5 hover:bg-neutral-100 max-md:min-h-10 max-md:min-w-10 dark:hover:bg-neutral-800 text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
       >
-        <Bell size={17} aria-hidden="true" />
+        <Bell size={16} aria-hidden="true" />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white">
             {unread > MAX_BADGE ? `${MAX_BADGE}+` : unread}

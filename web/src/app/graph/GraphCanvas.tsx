@@ -269,7 +269,7 @@ export function GraphCanvas({ nodes, links, settings, onOpen, onSelect, selected
         sy: n.y! * k + y,
         radiusPx: n.view.radius * k,
         degree: n.view.degree,
-        text: n.view.title.length > 40 ? `${n.view.title.slice(0, 39)}…` : n.view.title,
+        text: n.view.title.length > (compact ? 22 : 40) ? `${n.view.title.slice(0, compact ? 21 : 39)}…` : n.view.title,
         isCenter: n.view.isCenter,
       });
     }
@@ -308,8 +308,10 @@ export function GraphCanvas({ nodes, links, settings, onOpen, onSelect, selected
       maxY = Math.max(maxY, n.y! + n.view.radius + 14);
     }
     const { w, h } = sizeRef.current;
-    const margin = compact ? 12 : 40;
-    const k = Math.min(compact ? 1.6 : 2, Math.max(0.05, Math.min((w - margin * 2) / Math.max(1, maxX - minX), (h - margin * 2) / Math.max(1, maxY - minY))));
+    // A compact canvas leaves room at the sides for a (truncated) centred label under a node at the edge.
+    const margin = compact ? 14 : 40;
+    const marginX = compact ? 58 : 40;
+    const k = Math.min(compact ? 1.6 : 2, Math.max(0.05, Math.min((w - marginX * 2) / Math.max(1, maxX - minX), (h - margin * 2) / Math.max(1, maxY - minY))));
     transformRef.current = { k, x: w / 2 - ((minX + maxX) / 2) * k, y: h / 2 - ((minY + maxY) / 2) * k };
     fitKRef.current = k;
     requestDraw();

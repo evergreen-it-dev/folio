@@ -28,7 +28,9 @@
   /* A list item's hanging indent (negative text-indent, inherited) would push the label out of this box and clip it. */
   text-indent: 0;
   white-space: nowrap;
+  /* `hidden` makes an inline-block take its bottom margin edge as baseline, lifting the text ~6px above the line's. `clip` clips the same way but keeps the content baseline (engines without `clip` fall back to `hidden`). */
   overflow: hidden;
+  overflow: clip;
   text-overflow: ellipsis;
 }
 .folio-status--grey { --folio-status-bg: #dfe1e6; --folio-status-fg: #42526e; }

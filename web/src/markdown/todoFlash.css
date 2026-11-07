@@ -1,0 +1,40 @@
+/* The TODO a click on the page panel's row just scrolled to: a stronger yellow
+   ring that fades over ~1.6s (TODO_FLASH_MS in editor/todo-highlight.ts, FLASH_MS in app/outline/todoFlash.ts).
+   Shared by the reading view (.folio-markdown) and CodeMirror (.cm-content); animations beat the
+   marks' own backgrounds, so no specificity fight. */
+@keyframes folio-todo-flash {
+  0%, 55% { background-color: #ffd23f; box-shadow: 0 0 0 3px #f5a300; color: #3d2c00; }
+  100% { background-color: transparent; box-shadow: 0 0 0 3px transparent; }
+}
+@keyframes folio-todo-flash-dark {
+  0%, 55% { background-color: #a07c00; box-shadow: 0 0 0 3px #ffd23f; color: #fff4c2; }
+  100% { background-color: transparent; box-shadow: 0 0 0 3px transparent; }
+}
+@keyframes folio-todo-flash-line {
+  0%, 55% { background-color: rgba(255, 210, 63, 0.28); }
+  100% { background-color: transparent; }
+}
+@keyframes folio-todo-flash-line-dark {
+  0%, 55% { background-color: rgba(255, 210, 63, 0.18); }
+  100% { background-color: transparent; }
+}
+.folio-todo-flash {
+  border-radius: 4px;
+  animation: folio-todo-flash 1.6s ease-out 1 both;
+}
+.folio-todo-flash-line {
+  border-radius: 4px;
+  animation: folio-todo-flash-line 1.6s ease-out 1 both;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-todo-flash { animation-name: folio-todo-flash-dark; }
+  html:not([data-theme='light']) .folio-todo-flash-line { animation-name: folio-todo-flash-line-dark; }
+}
+html[data-theme='dark'] .folio-todo-flash { animation-name: folio-todo-flash-dark; }
+html[data-theme='dark'] .folio-todo-flash-line { animation-name: folio-todo-flash-line-dark; }
+/* Reduced motion: a static highlight for the same time (the class is removed after it), no fade. */
+@media (prefers-reduced-motion: reduce) {
+  .folio-todo-flash { animation: none; background-color: #ffd23f; box-shadow: 0 0 0 3px #f5a300; color: #3d2c00; }
+  .folio-todo-flash-line { animation: none; background-color: rgba(255, 210, 63, 0.28); }
+  html[data-theme='dark'] .folio-todo-flash { background-color: #a07c00; box-shadow: 0 0 0 3px #ffd23f; color: #fff4c2; }
+}
