@@ -4,19 +4,6 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
-### Changed
-
-- **A calmer right panel.** The local graph has no controls on top of it any more:
-  it fits its nodes with room to spare, shortens long labels next to the node and
-  marks the current page with a soft ring. Under it a quiet "Showing: direct
-  links" line opens the depth menu, and the section header shows how many pages
-  are on the graph. The outline runs along a thin rail with an accent mark on the
-  heading you are reading, smaller sub-headings, long headings on two lines
-  instead of cut with "…", and no repeat of the page title. Notes and the TODO
-  list share the same layout: an icon, two lines of text, the assignee at the end.
-  The button that hides the panel moved to the editor's toolbar, next to the mode
-  switch, so it no longer jumps between sections.
-
 ## [0.4.3] - 2026-11-07
 
 A lighter, more convenient interface, redesigned after user feedback: one icon
@@ -98,11 +85,18 @@ panel. Also new: a TODO panel, comments on page text, MDX pages, and
     menu. On phones the same menu holds everything.
   - *Page properties* moved from the toolbar to under the page title; an empty
     page shows a faint "+ Property".
-  - *Right panel.* A bordered column with one hide button. Local graph, Outline,
-    Notes and TODO collapse by their headers. The local graph's depth is a menu
-    ("Links: direct / + neighbours / + one more step") instead of 1, 2, 3, and its
-    labels no longer clip. The TODO assignee filter is a compact select next to
-    the header, and items show two lines.
+  - *Right panel.* A bordered column whose sections (Local graph, Outline,
+    Notes, TODO) collapse by their headers. The local graph has no controls on
+    top of it: it fits its nodes with room to spare, shortens long labels next
+    to the node and marks the current page with a soft ring; a quiet "Showing:
+    direct links" line under it opens the depth menu (direct links, + neighbours'
+    links, + one more step) that replaces 1, 2, 3, and the header shows how many
+    pages are on the graph. The outline runs along a thin rail with an accent
+    mark on the heading you are reading, smaller sub-headings, long headings on
+    two lines instead of cut with "…", and no repeat of the page title. Notes and
+    TODO share one layout: an icon, two lines of text, the assignee at the end;
+    the TODO assignee filter is a compact select next to the header. The button
+    that hides the panel sits in the editor's toolbar, next to the mode switch.
   - The editor mode switch (Reading, Live edit, Source) is smaller.
   - Once after the update, small tags next to the moved controls show where
     things are now, with a short "We've refreshed the design" note and "Got it".
