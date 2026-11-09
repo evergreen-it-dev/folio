@@ -145,6 +145,8 @@ export interface TreeNode extends PageMeta {
 /** Full page payload: markdown body (frontmatter stripped) for docs, svg source for boards. */
 export const pageDocSchema = pageMetaSchema.extend({
   markdown: z.string().optional(),
+  /** Docs: opaque revision of `markdown`; send it back as `baseRevision` in PUT to refuse the write if the body changed meanwhile. */
+  bodyRevision: z.string().optional(),
   svg: z.string().optional(),
   /**
    * A doc of a light-footprint space (a repository sub-folder with rootPath
@@ -1291,6 +1293,8 @@ export const updatePageBodySchema = z.object({
    *  an absent field leaves it alone (an ordinary text edit erases nothing). */
   icon: z.string().nullable().optional(),
   cover: z.string().nullable().optional(),
+  /** Docs, with `markdown`: the `bodyRevision` the caller read. A mismatch refuses the write with 409 `revision_conflict`. Absent: unconditional. */
+  baseRevision: z.string().optional(),
 });
 export type UpdatePageBody = z.infer<typeof updatePageBodySchema>;
 

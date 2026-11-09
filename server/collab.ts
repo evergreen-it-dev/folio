@@ -41,7 +41,7 @@ import { shareGrantsPage } from './export/shareScope.js';
 import { isPublicPage } from './publicSites.js';
 import { query, queryOne } from './db/pool.js';
 import type { GitIdentity } from './git.js';
-import { badRequest } from './errors.js';
+import { badRequest, HttpError } from './errors.js';
 import { tableColumnSchema, tableViewSchema } from '../shared/contracts.js';
 import type { PageKind, PageMeta, TableCellValue, TableColumn, TableDoc, TableRow, TableView } from '../shared/contracts.js';
 import { isOverHardRowLimit, isTableParseError, parseTableFile, serializeTableFile } from '../shared/tables/index.js';
@@ -2654,16 +2654,44 @@ async function closeRoomIfIdle(id: string, ydoc: Y.Doc): Promise<void> {
 }
 
 /**
+ * The revision of a document body: an opaque string (sha256 of the end-of-line-normalized markdown). read_page and
+ * GET /api/pages/:id return it for the text they return; update_page and PUT /api/pages/:id take it back as
+ * `baseRevision` and refuse the write when the body has changed since.
+ */
+export function bodyRevision(markdown: string): string {
+  return createHash('sha256').update(normalizeEol(markdown)).digest('hex');
+}
+
+/** A write that named the revision it was based on (`baseRevision`) found the body changed since. Carries the current revision. */
+export class RevisionConflictError extends HttpError {
+  readonly currentRevision: string;
+  constructor(currentRevision: string) {
+    super(409, 'the page changed since it was read (revision_conflict); read it again, apply your change to the current text and retry with the new revision', 'revision_conflict');
+    this.name = 'RevisionConflictError';
+    this.currentRevision = currentRevision;
+  }
+}
+
+/**
  * Routes a PUT's markdown through the live Y.Doc (full-text replace inside a
  * transaction) instead of writing the file directly. The doc's own 'update'
  * listener (attached in bindState) picks this up and debounces the disk
  * write; we additionally patch the in-memory index synchronously so the
  * caller's response (and any immediate GET/search) reflects it right away.
+ *
+ * With `baseRevision`, the live text is compared with it and the replacement
+ * is refused (RevisionConflictError, nothing written) on a mismatch. The
+ * comparison and the replacement share one synchronous block — no await
+ * between them — so nobody can type in between; everything that awaits
+ * (entry lookup, icon/cover persist) is done before it or after it.
  */
-export async function applyMarkdownUpdate(id: string, rawMarkdown: string, overrideIcon?: string | null, overrideCover?: string | null): Promise<void> {
+export async function applyMarkdownUpdate(id: string, rawMarkdown: string, overrideIcon?: string | null, overrideCover?: string | null, baseRevision?: string): Promise<void> {
   const markdown = normalizeEol(rawMarkdown);
   const doc = docs.get(id);
   if (!doc) return;
+  const ytext = doc.getText('content');
+  // Early refusal, before anything is persisted (icon/cover below). Re-checked right before the replacement.
+  if (baseRevision !== undefined && bodyRevision(ytext.toString()) !== baseRevision) throw new RevisionConflictError(bodyRevision(ytext.toString()));
   const entry = await storage.getEntry(id);
 
   // icon/cover never ride the Yjs body (frontmatter isn't part of the CRDT), so an
@@ -2673,41 +2701,67 @@ export async function applyMarkdownUpdate(id: string, rawMarkdown: string, overr
   // undefined=preserve / null=clear / string=set distinction correct — a naive
   // `overrideIcon ?? entry.icon` would treat null the SAME as undefined (both are
   // "nullish" to ??), silently turning an explicit clear into a no-op.
-  if (entry && (overrideIcon !== undefined || overrideCover !== undefined)) {
-    const icon = storage.resolveIconCoverOverride(overrideIcon, entry.icon);
-    const cover = storage.resolveIconCoverOverride(overrideCover, entry.cover);
-    await storage.setDocIconCover(entry, icon, cover, markdown);
-  }
+  // With baseRevision the icon/cover are persisted only after the revision is confirmed (below).
+  const persistIconCover = async (): Promise<void> => {
+    if (entry && (overrideIcon !== undefined || overrideCover !== undefined)) {
+      const icon = storage.resolveIconCoverOverride(overrideIcon, entry.icon);
+      const cover = storage.resolveIconCoverOverride(overrideCover, entry.cover);
+      await storage.setDocIconCover(entry, icon, cover, markdown);
+    }
+  };
+  if (baseRevision === undefined) await persistIconCover();
 
-  const ytext = doc.getText('content');
-  if (ytext.toString() !== markdown) {
-    // A REST/MCP body write replaces the whole live text — including whatever
-    // someone typed into the room after the caller read the page. Captured
-    // before, stored after: no await between reading the text and replacing it.
-    const before = ytext.toString();
+  // A REST/MCP body write replaces the whole live text — including whatever
+  // someone typed into the room after the caller read the page. Captured
+  // before, stored after: no await between reading the text and replacing it.
+  // `before` is kept in the room backup (backupRoomText) either way.
+  const before = ytext.toString();
+  if (baseRevision !== undefined && bodyRevision(before) !== baseRevision) throw new RevisionConflictError(bodyRevision(before));
+  const changed = before !== markdown;
+  if (changed) {
     doc.transact(() => {
       ytext.delete(0, ytext.length);
       ytext.insert(0, markdown);
     });
-    await backupRoomText(id, 'body replaced through the API', before);
   }
+  if (baseRevision !== undefined) await persistIconCover();
+  if (changed) await backupRoomText(id, 'body replaced through the API', before);
   if (entry) await storage.patchEntryContent(entry, markdown);
 }
 
 /**
- * The live-doc-aware "set a doc's body" path, shared by the REST PUT route
- * and MCP's update_page tool (round 7: "update_page routes through the same
- * live-doc-aware path as REST PUT") — one function, so the two callers can
- * never silently diverge. Live doc open -> through the Y.Doc (merges
- * correctly with concurrent typing instead of stomping it); otherwise
+ * The live-doc-aware "replace a doc's whole body" path, shared by the REST PUT
+ * route and MCP's update_page tool — one function, so the two callers can
+ * never silently diverge. Live doc open -> through the Y.Doc; otherwise
  * straight to the file.
+ *
+ * This REPLACES the whole page: it is not a merge. Anything typed into an open
+ * room after the caller read the page is replaced too (the replaced text stays
+ * in the room backup, backupRoomText). To refuse a write based on a stale read,
+ * pass `baseRevision` — the `bodyRevision` that read_page / GET returned; a
+ * mismatch throws RevisionConflictError and writes nothing. Without it the
+ * write is unconditional. Internal callers (tags, link rewrites, history
+ * restore) leave it out on purpose.
+ *
+ * Residual window: for a page with no open room the revision is compared with
+ * the file and the file is written after an await, so a room opened and typed
+ * into inside that gap is not noticed (it is then seeded from the file).
  */
-export async function editDocBody(id: string, rawMarkdown: string, overrideIcon?: string | null, overrideCover?: string | null): Promise<PageMeta> {
+export async function editDocBody(id: string, rawMarkdown: string, overrideIcon?: string | null, overrideCover?: string | null, baseRevision?: string): Promise<PageMeta> {
   // Normalized for the file too: the next room opened on it is seeded from it.
   const markdown = normalizeEol(rawMarkdown);
   if (isDocLive(id)) {
-    await applyMarkdownUpdate(id, markdown, overrideIcon, overrideCover);
+    await applyMarkdownUpdate(id, markdown, overrideIcon, overrideCover, baseRevision);
     return storage.toPageMeta(await storage.requireEntry(id));
+  }
+  if (baseRevision !== undefined) {
+    const current = bodyRevision(await storage.readFreshDocBody(id));
+    // A room may have opened while the file was read: then the room's text is the authority, compared with no await in between.
+    if (isDocLive(id)) {
+      await applyMarkdownUpdate(id, markdown, overrideIcon, overrideCover, baseRevision);
+      return storage.toPageMeta(await storage.requireEntry(id));
+    }
+    if (current !== baseRevision) throw new RevisionConflictError(current);
   }
   return storage.writeDocBody(id, markdown, overrideIcon, overrideCover);
 }

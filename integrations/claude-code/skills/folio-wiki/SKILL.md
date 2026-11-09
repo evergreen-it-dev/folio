@@ -28,7 +28,7 @@ If a write tool is refused, the token is read-only. Say so. Do not look for a wo
 
 - A page's title is the first `# H1` of its text. To rename a page, change that heading with `update_page`.
 - `create_page` takes `markdown` for a document. If the text does not start with an H1, the server adds `# <title>` above it. Check the `title` in the reply.
-- `update_page` works for documents only, not for tables or boards. It merges with live editing instead of overwriting someone's open session.
+- `update_page` works for documents only, not for tables or boards. It replaces the whole page. Pass the `bodyRevision` from `read_page` as `baseRevision`: if the page changed since you read it, the write is refused with `revision_conflict` (read again, reapply, retry). Without it, text typed into an open page after your read is replaced (kept in a backup).
 - Do not write front matter (`id`, `slug`, `order`, `icon`, `cover`) by hand. The server owns it.
 - Use plain Markdown that also reads well on GitHub: headings, lists, GFM tables, fenced code, `> [!NOTE]` alerts, Mermaid in fenced blocks. Avoid HTML: scripts, styles and iframes are stripped from pages, so interactive content belongs in an artifact (see below). Link other Folio pages with relative links taken from the tools' replies, not absolute URLs to the instance.
 - A new page goes where the user said. If they did not say, create it under the page you are working from, or ask.

@@ -4,6 +4,15 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Fixed
+
+- **`update_page` and `PUT /api/pages/:id` no longer silently replace newer
+  edits.** `read_page` and `GET /api/pages/:id` now return `bodyRevision`; pass
+  it back as `baseRevision` and a write based on a stale read is refused
+  (`revision_conflict`, HTTP 409) instead of replacing what was typed in the
+  page meanwhile. Without `baseRevision` the call replaces the whole page as
+  before, and the tool description no longer claims it merges. (reported in #11)
+
 ## [0.4.3] - 2026-11-07
 
 A lighter, more convenient interface, redesigned after user feedback: one icon

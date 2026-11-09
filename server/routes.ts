@@ -1133,7 +1133,7 @@ export function registerRoutes(app: FastifyInstance): void {
     return pageAccess.getInfo(request.authUser!, entry, role!);
   });
 
-  app.put('/api/pages/:id', async (request) => {
+  app.put('/api/pages/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = parseBody(updatePageBodySchema, request.body);
     const entry = await session.requirePageRole(request, id, 'editor');
@@ -1173,7 +1173,13 @@ export function registerRoutes(app: FastifyInstance): void {
       // (SHELL's tree reorder always sends order alone, same shape as an icon/cover-only
       // PUT) — not handled in this branch, same as icon/cover's own precedent above only
       // fully applies to the no-markdown path.
-      const result = await collab.editDocBody(id, markdownBody, iconOverride, coverOverride);
+      let result;
+      try {
+        result = await collab.editDocBody(id, markdownBody, iconOverride, coverOverride, body.baseRevision);
+      } catch (err) {
+        if (err instanceof collab.RevisionConflictError) return reply.status(409).send({ error: err.message, code: err.code, currentRevision: err.currentRevision });
+        throw err;
+      }
       gitSync.noteActivity(entry.space);
       return result;
     }

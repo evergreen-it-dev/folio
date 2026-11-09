@@ -144,6 +144,7 @@ export const outputSchemas = {
   read_page: {
     ...pageMetaOutput.shape,
     markdown: z.string().optional().describe('Document body as Markdown (doc pages)'),
+    bodyRevision: z.string().optional().describe('Doc pages: opaque revision of `markdown`. Pass it to update_page as baseRevision to refuse the write if the page changed since this read'),
     svg: z.string().optional().describe('Raw SVG source (board pages when no layout summary applies)'),
     scene: z.record(z.string(), z.unknown()).nullable().optional().describe('Board layout summary: shapes, arrows, texts, frames, layout rows/cols, bounds; null when the board has no readable scene'),
     note: z.string().optional().describe('Why the content is not returned (PDF/Office file, unreadable board)'),

@@ -166,7 +166,7 @@ export const FOLIO_MCP_INSTRUCTIONS = [
   '',
   'Find, then read: call list_spaces, then search_pages (full text) or list_tree (page tree) to locate a page, then read_page by id. search and fetch do the same for clients that accept only those two tool names. resolve_folio_url turns a pasted Folio link into a page id. get_backlinks, page_history and page_at_sha show links and past versions. get_page_metadata gives a page\'s outline, tags, properties and links; list_unresolved_links and list_orphans find broken links and pages nothing links to; get_graph maps how pages link (a whole space or one page\'s neighbourhood); list_tags and list_properties show the tags and property keys in use; query_base answers a base.',
   '',
-  'Write minimally: every write is committed to Git under the connected user, and update_page merges with live editing. Change only what was asked; create_page for new pages (set parentPath); read the page again after writing. Before writing to a data table, call folio_table_schema and use its exact column ids and select/status options; then folio_table_insert / folio_table_update / folio_table_delete; columns and views: folio_table_add_column / folio_table_update_column / folio_table_save_view. Forms: create_form / update_form (read_page shows the fields). Claude artifacts, Cursor canvases, HTML: publish_artifact. Templates: list_templates, then create_page_from_template; save_page_as_template. Page properties: set_page_properties (merge: true to change one key); tags: rename_tag; bases: save_base; a canvas becomes a board with convert_canvas_to_board.',
+  'Write minimally: every write is committed to Git under the connected user, and update_page replaces the page (use baseRevision). Change only what was asked; create_page for new pages (set parentPath); read the page again after writing. Before writing to a data table, call folio_table_schema and use its exact column ids and select/status options; then folio_table_insert / folio_table_update / folio_table_delete; columns and views: folio_table_add_column / folio_table_update_column / folio_table_save_view. Forms: create_form / update_form (read_page shows the fields). Claude artifacts, Cursor canvases, HTML: publish_artifact. Templates: list_templates, then create_page_from_template; save_page_as_template. Page properties: set_page_properties (merge: true to change one key); tags: rename_tag; bases: save_base; a canvas becomes a board with convert_canvas_to_board.',
   '',
   'Permissions: you act with the rights of the connected user, limited by the granted scope (read-only connections cannot write). If a tool reports a missing role or scope, tell the user instead of retrying.',
   '',
@@ -629,7 +629,7 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
       if (error || !entry) return errorResult(error ?? 'page not found');
       if (entry.kind === 'doc') {
         const markdown = collab.isDocLive(id) ? (collab.getLiveText(id) ?? entry.body ?? '') : await storage.readFreshDocBody(id);
-        return structuredResult({ ...storage.toPageMeta(entry), markdown });
+        return structuredResult({ ...storage.toPageMeta(entry), markdown, bodyRevision: collab.bodyRevision(markdown) });
       }
       if (entry.kind === 'board') {
         const meta = storage.toPageMeta(entry);
@@ -1138,17 +1138,27 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
       annotations: WRITE_OVERWRITES,
       title: 'Update a page',
       description:
-        "Replaces a document page's body markdown. Routes through the same live-collaborative-doc-aware path the web editor's own save uses, so it merges safely with anyone editing the page at the same moment instead of overwriting their changes. Underline is written `++text++`, never `<ins>`/`<u>`. Does NOT support data tables — a table has no single body to replace; use folio_table_insert/folio_table_update/folio_table_add_column instead. Requires a write-scoped token.",
-      inputSchema: { id: z.string().describe('Page id'), markdown: z.string().describe('New body markdown') },
+        "Replaces a document page's WHOLE body markdown; it is not a merge. Pass `baseRevision` (the `bodyRevision` read_page returned) to protect against a stale read: if the page changed since, nothing is written and the call fails with `revision_conflict` and the current revision; read the page again, apply the change to the current text and retry. Without `baseRevision` the write is unconditional and replaces anything typed into the page after you read it (the replaced text is kept in a backup). Underline is written `++text++`, never `<ins>`/`<u>`. Does NOT support data tables — a table has no single body to replace; use folio_table_insert/folio_table_update/folio_table_add_column instead. Requires a write-scoped token.",
+      inputSchema: {
+        id: z.string().describe('Page id'),
+        markdown: z.string().describe('New body markdown (the whole page)'),
+        baseRevision: z.string().optional().describe('The bodyRevision from read_page. If the page has changed since, the write is refused with revision_conflict. Omit for an unconditional replace'),
+      },
     },
-    async ({ id, markdown }) => {
+    async ({ id, markdown, baseRevision }) => {
       if (!hasWriteScope) return errorResult('this action requires a token with write scope');
       const { entry, error } = await checkPageRole(actor, id, 'editor');
       if (error || !entry) return errorResult(error ?? 'page not found');
       if (entry.kind === 'table') return errorResult('update_page does not support data tables — use folio_table_insert/folio_table_update/folio_table_add_column instead');
       if (entry.kind !== 'doc') return errorResult('update_page only supports document pages, not boards');
       gitSync.recordEditor(entry.space, { name: actor.user.name, email: actor.user.email });
-      const result = await collab.editDocBody(id, markdown);
+      let result;
+      try {
+        result = await collab.editDocBody(id, markdown, undefined, undefined, baseRevision);
+      } catch (err) {
+        if (err instanceof collab.RevisionConflictError) return errorResult(`revision_conflict: ${err.message} (current revision: ${err.currentRevision})`);
+        throw err;
+      }
       gitSync.noteActivity(entry.space);
       recordAudit(actor.user.id, 'page.updated', id, { source: 'mcp', tool: 'update_page' });
       return structuredResult(result);

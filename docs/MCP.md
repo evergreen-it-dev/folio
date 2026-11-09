@@ -226,6 +226,17 @@ page, and an optional `columns` for `kind: "table"`, where `markdown` is
 ignored. It cannot create a whiteboard: use `create_board`. To change the text
 of an existing page, use `update_page` over MCP or `PUT /api/pages/:id`.
 
+**Replacing a page safely.** `update_page` and `PUT /api/pages/:id {markdown}`
+replace the whole body; they do not merge with what someone is typing in the
+page. `read_page` (and `GET /api/pages/:id`) returns `bodyRevision`, an opaque
+string for the text it returned. Send it back as `baseRevision`: if the page
+has changed since, nothing is written and the call fails with `revision_conflict`
+(MCP: an error result with the current revision; REST: HTTP 409
+`{"error", "code": "revision_conflict", "currentRevision"}`). Read the page
+again, apply your change to the current text and retry. Without `baseRevision`
+the write is unconditional; the replaced text of an open page is kept in a
+backup.
+
 **A page's title is the first `# H1` of its text.** So when `create_page`
 gets a `markdown` that does not open with an H1, it puts `# <title>` above it
 (with a blank line between), and you can send the body alone. If the markdown
