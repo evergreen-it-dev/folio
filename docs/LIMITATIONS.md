@@ -27,10 +27,16 @@ what is not there.
   IdP-initiated sign-in is off unless an administrator turns it on. SAML has no
   "email verified" flag, so existing accounts are linked only when the IdP is
   marked authoritative for the allowed domains.
-- **The built-in AI assistant needs a Cursor subscription** and sends the
-  pages it works with to that service. The key can be a person's own, or one an
-  administrator provides for a space or for the whole instance. Other providers
-  are not supported yet. Without a key the rest of Folio works normally.
+- **The built-in AI assistant needs an account with one provider** (Cursor, or
+  Claude through an Anthropic API key) and sends the pages it works with to the
+  provider that is selected. The key can be a person's own, or one an
+  administrator provides for a space or for the whole instance. A Claude
+  subscription cannot be used, only an API key billed by usage. Between your
+  messages Claude remembers only the text of earlier messages, not what the
+  tools returned. Other providers are off unless the operator turns them on
+  (see [INSTALL.md](INSTALL.md)); an operator who does is responsible for
+  checking the provider's terms. Without a key the rest of Folio works
+  normally.
 - **The public demo is shared and resets daily.** It is at
   <https://demo.foliowiki.online>: one login for everyone, data reset every
   24 hours. Tokens, Git and import, share links, invitations and the AI
@@ -194,7 +200,8 @@ A space set to public is readable by anyone, without an account
     attracts traffic you do not control needs a rate limit in the reverse proxy
     or a CDN in front of it.
 17. **Folio AI on a public site needs a key of the space or of the instance**
-    (or `CURSOR_API_KEY`). Visitors have no key of their own, and whoever owns
+    (or `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`); a personal key
+    is never used there. Visitors have no key of their own, and whoever owns
     the key pays for their questions. Runs are Ask mode only. The space's
     `.agent` rules are part of every run, so a visitor can get them paraphrased:
     keep secrets out of them. A conversation belongs to the browser that

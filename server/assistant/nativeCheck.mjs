@@ -17,6 +17,9 @@
  *   node server/assistant/nativeCheck.mjs          the platform package itself
  *   node server/assistant/nativeCheck.mjs --sdk    + the real SDK, driven the
  *                                                  way cursorRuntime.ts drives it
+ *   node server/assistant/nativeCheck.mjs --codex  only the Codex CLI: its native
+ *                                                  binary of this platform must
+ *                                                  be installed and start
  *
  * Keyless and offline: nothing here needs a Cursor API key or the network.
  * Every load happens in a child process, so a native crash is reported as a
@@ -99,6 +102,47 @@ async function sdkRun() {
     rmSync(home, { recursive: true, force: true });
   }
 }
+
+/**
+ * --codex: the Codex CLI (@openai/codex, driven by runtime/codex.ts). Its npm
+ * package installs one native binary per platform as an optional dependency; on
+ * Linux that is a static musl build, so it runs on Alpine without a glibc layer
+ * (unlike the Cursor SDK above). What this proves is that npm really installed
+ * the binary of THIS platform and that it starts. Keep the platform table in
+ * step with server/assistant/codexHome.ts.
+ */
+function codexCheck() {
+  const targets = { 'linux-x64': 'x86_64-unknown-linux-musl', 'linux-arm64': 'aarch64-unknown-linux-musl', 'darwin-x64': 'x86_64-apple-darwin', 'darwin-arm64': 'aarch64-apple-darwin' };
+  const key = `${process.platform}-${process.arch}`;
+  console.log(`[assistant-native] @openai/codex-${key}, node ${process.versions.node}`);
+  if (!targets[key]) {
+    console.log(`[assistant-native] Codex has no build for ${key}: the Codex provider is unavailable here, the rest of Folio is not affected`);
+    return 0;
+  }
+  let binary;
+  try {
+    const codexRequire = createRequire(require.resolve('@openai/codex/package.json'));
+    const vendor = join(dirname(codexRequire.resolve(`@openai/codex-${key}/package.json`)), 'vendor');
+    binary = join(vendor, targets[key], 'bin', 'codex');
+  } catch (err) {
+    console.error(`  FAIL  @openai/codex-${key} is not installed (npm skips optionalDependencies of other platforms: was node_modules copied across architectures?)\n        ${firstLine(err)}`);
+    return 2;
+  }
+  if (!existsSync(binary)) {
+    console.error(`  FAIL  ${binary} does not exist`);
+    return 1;
+  }
+  const res = spawnSync(binary, ['--version'], { encoding: 'utf8', timeout: 30_000, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: tmpdir() } });
+  if (res.error || res.signal || res.status !== 0) {
+    console.error(`  FAIL  codex --version: ${res.error ? firstLine(res.error) : res.signal ? `killed by ${res.signal}` : firstLine(res.stderr || res.stdout || `exit ${res.status}`)}`);
+    return 1;
+  }
+  console.log(`  ok    ${firstLine(res.stdout, 100)}`);
+  console.log('[assistant-native] ok');
+  return 0;
+}
+
+if (process.argv.includes('--codex')) process.exit(codexCheck());
 
 if (process.argv.includes('--sdk-run')) {
   const guard = setTimeout(() => {

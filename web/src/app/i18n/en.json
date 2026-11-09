@@ -1474,7 +1474,7 @@
     "writingRules": {
       "action": "Check against writing rules",
       "noRules": "This space has no writing rules yet. A space admin can create them in the .agent section of the sidebar.",
-      "noKey": "The AI assistant isn’t set up yet — add a Cursor key in the account settings or ask an administrator.",
+      "noKey": "The AI assistant isn’t set up yet — connect a model provider in the account settings or ask an administrator.",
       "busy": "The assistant is busy with another request.",
       "fix": "Fix with Agent",
       "fixHint": "Hands these findings to Agent mode, which edits the page",
@@ -1482,7 +1482,7 @@
       "fixDisplay": "Fix with Agent: apply the suggested rewrites"
     },
     "settings": {
-      "title": "Folio AI (Cursor)",
+      "title": "Folio AI",
       "source": "Key source",
       "sources": { "personal": "My key", "space": "Shared key of this space", "instance": "Shared key of this instance", "environment": "Server key", "none": "Not configured" },
       "keyName": "Key name",
@@ -1506,9 +1506,62 @@
       "forgetFailed": "Couldn't remove the key.",
       "model": "Model",
       "autoModel": "Auto",
-      "modelHint": "Cursor picks the model automatically. This setting applies to new conversations.",
+      "modelHint": "Auto lets Cursor pick the model. This setting applies to new conversations.",
+      "modelUnavailable": "The saved model isn’t available because its provider is disconnected. Pick another model.",
+      "modelUnavailableGroup": "Unavailable",
+      "modelUnavailableOption": "{{model}} (not connected)",
       "modelsFailed": "Cursor model catalog unavailable",
       "modelSaveFailed": "Couldn't save the model."
+    },
+    "providers": {
+      "heading": "Models and connections",
+      "intro": "Connect more model providers next to Cursor, then pick any of their models below.",
+      "cursorHeading": "Cursor",
+      "notConnected": "Not connected",
+      "personalDisabled": "Personal connections are turned off on this instance. An administrator manages the shared keys.",
+      "saved": "{{provider}} key connected.",
+      "checkOk": "{{provider}} confirmed the key.",
+      "checkFailed": "{{provider}} didn't confirm the key. Check it or create a new one.",
+      "checkError": "Couldn't check the key.",
+      "names": { "cursor": "Cursor", "anthropic": "Claude (API key)", "minimax": "MiniMax", "codex": "Codex (ChatGPT)" },
+      "minimax": {
+        "name": "MiniMax",
+        "keyLabel": "MiniMax API key",
+        "keyPlaceholder": "Paste a MiniMax API key",
+        "hint": "The key is checked with MiniMax and stored encrypted."
+      },
+      "anthropic": {
+        "name": "Claude (API key)",
+        "keyLabel": "Anthropic API key",
+        "keyPlaceholder": "Paste an Anthropic API key",
+        "hint": "This is an API key from console.anthropic.com, billed by usage. A Claude subscription (Pro or Max) cannot be used here."
+      },
+      "codex": {
+        "name": "Codex (ChatGPT)",
+        "hint": "Uses your own ChatGPT plan and its limits, only for your own requests. It is never shared with the space or public sites.",
+        "warning": "For a server you run for yourself. OpenAI has not confirmed this use on shared servers. Device-code sign-in must be enabled in your ChatGPT security settings.",
+        "signIn": "Sign in with ChatGPT",
+        "signedIn": "Signed in with ChatGPT",
+        "enterCode": "Open the OpenAI page and enter this code:",
+        "copy": "Copy code",
+        "copied": "Code copied.",
+        "openPage": "Open the sign-in page",
+        "waiting": "Waiting for you to finish signing in…",
+        "cancel": "Cancel sign-in",
+        "expired": "The code expired. Start the sign-in again.",
+        "failed": "Sign-in failed. Try again.",
+        "failedWith": "Sign-in failed: {{error}}",
+        "startFailed": "Couldn't start the sign-in.",
+        "disconnect": "Disconnect",
+        "disconnectBody": "Codex stops working until you sign in again. Continue?",
+        "disconnectFailed": "Couldn't disconnect."
+      },
+      "sharedHeading": "Other providers",
+      "sharedIntroInstance": "Shared API keys of other model providers for the whole instance. Used where a member has no personal key and the space has no key of its own.",
+      "sharedIntroSpace": "Shared API keys of other model providers for this space. Members use them unless they connected a personal key.",
+      "sharedNotConfigured": "No shared {{provider}} key yet.",
+      "sharedReplace": "Replace with a new {{provider}} key",
+      "sharedSaved": "Shared {{provider}} key connected."
     },
     "sharedKey": {
       "titleInstance": "Shared Folio AI key",
@@ -1543,8 +1596,8 @@
       "history": "History",
       "noHistory": "No conversations yet.",
       "untitled": "Untitled conversation",
-      "notConfiguredTitle": "Connect Cursor first",
-      "notConfiguredDescription": "The agent needs your Cursor API key and a compatible server runtime.",
+      "notConfiguredTitle": "Connect a model first",
+      "notConfiguredDescription": "The assistant needs a connected model provider, such as a Cursor or Claude API key, and a compatible server runtime.",
       "openSettings": "Open settings",
       "emptyTitle": "How can I help?",
       "status": {
@@ -1564,7 +1617,7 @@
       "stop": "Stop",
       "finished": "Agent finished",
       "reconnecting": "Reconnecting…",
-      "sendFailed": "Couldn't send the message. Try again or check your Cursor key in settings.",
+      "sendFailed": "Couldn't send the message. Try again or check your connections in settings.",
       "placeholder": "Ask about Folio…",
       "send": "Send",
       "modes": { "ask": "Ask", "agent": "Agent" },
@@ -1591,7 +1644,7 @@
         "failed": "Couldn't save your answer."
       },
       "errors": {
-        "keyRequired": "Connect your Cursor key in settings first.",
+        "keyRequired": "Connect a model provider in settings first.",
         "busy": "Please wait, the previous request is still running.",
         "generic": "Couldn't get a reply. Please try again."
       }
@@ -1875,7 +1928,7 @@
         "answer": "On the “Release process” page: seven steps, the last one is the rollback plan.",
         "source": "Release process"
       },
-      "byos": "Bring your own subscription: the assistant runs on your Cursor API key. Add it whenever you like — the account menu, “Folio AI”."
+      "byos": "Bring your own key: the assistant runs on your own Cursor or Claude API key. Connect one whenever you like — the account menu, “Folio AI”."
     },
     "finish": {
       "doc": "Create my first document",
@@ -2634,6 +2687,8 @@
       "user_enable": "Account reactivated",
       "user_cursor_connected": "Cursor connected",
       "user_cursor_disconnected": "Cursor disconnected",
+      "user_assistant_provider_connected": "Assistant provider connected",
+      "user_assistant_provider_disconnected": "Assistant provider disconnected",
       "session_revoke": "Session ended",
       "session_revoke_all": "Sessions ended",
       "group_create": "Group created",
@@ -2693,9 +2748,13 @@
       "chat_unlinked_by_admin": "Chat app unlinked by an admin",
       "assistant_instance_key_set": "Instance assistant key set",
       "assistant_instance_key_removed": "Instance assistant key removed",
+      "assistant_instance_provider_key_set": "Instance assistant provider key set",
+      "assistant_instance_provider_key_removed": "Instance assistant provider key removed",
       "assistant_key_policy": "Assistant key policy changed",
       "assistant_space_key_set": "Space assistant key set",
       "assistant_space_key_removed": "Space assistant key removed",
+      "assistant_space_provider_key_set": "Space assistant provider key set",
+      "assistant_space_provider_key_removed": "Space assistant provider key removed",
       "assistant_conversation_viewed": "Assistant conversation opened by an admin",
       "audit_export": "Audit log exported"
     }

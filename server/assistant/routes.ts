@@ -17,10 +17,10 @@ import { z } from 'zod';
 import type {
   ActiveAssistantRunResponse,
   AssistantFeedbackResponse,
+  AssistantCodexLoginState,
   AssistantConnectionCheck,
   AssistantConversation,
   AssistantConversationsResponse,
-  AssistantKeySource,
   AssistantMessage,
   AssistantModelsResponse,
   AssistantRunEvent,
@@ -51,6 +51,31 @@ import * as analytics from './analytics.js';
 import { authorizeAssistantNavigation, requireAssistantSpaceAccess } from './access.js';
 import { cursorRuntimeAvailable, listCursorModels, verifyCursorApiKey } from './cursorRuntime.js';
 import * as sharedKeys from './sharedKeys.js';
+import { isKnownProviderModel, parseAssistantModel, PROVIDER_MODELS, providerModelId } from './models.js';
+import {
+  buildProviderKeyInfo,
+  deleteProviderCredential,
+  parseCredentialProvider,
+  parseKeyProvider,
+  saveProviderCredential,
+  verifyProviderKeyBody,
+} from './providerCredentials.js';
+import {
+  describeAssistantProviders,
+  planAssistantRoute,
+  resolveApiKey,
+  resolveAssistantRoute,
+  resolveKeySource,
+  resolveProviderSecret,
+} from './providerRouting.js';
+import { verifyProviderKey } from './runtime/index.js';
+import { codexEnabled, providerEnabled } from './providerFlags.js';
+import { CodexBusyError } from './codexHome.js';
+import { CodexUnavailableError, cancelCodexLogin, checkCodexLogin, getCodexLoginState, startCodexLogin } from './codexLogin.js';
+import { codexAuthStore, saveCodexLogin } from './codexStore.js';
+import { codexRuntimeAvailable } from './codexHome.js';
+
+export { resolveApiKey };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -85,66 +110,35 @@ async function authorizedKeySpace(request: FastifyRequest, user: User): Promise<
   return space;
 }
 
-type ResolvedKeySource = { source: AssistantKeySource; apiKeyName: string | null; personalKeysAllowed: boolean };
-
-/**
- * Which level supplies the key, WITHOUT decrypting anything (so the settings
- * screen keeps working when FOLIO_SECRET is missing or was changed).
- * Precedence: personal (only while the instance policy allows personal keys) →
- * the current space's shared key → the instance-wide shared key → the operator's
- * CURSOR_API_KEY. `space` must already be authorized by the caller.
- */
-async function resolveKeySource(userId: string, space: string | null, personal?: AssistantSettingsRow): Promise<ResolvedKeySource> {
-  const [personalKeysAllowed, settings] = await Promise.all([sharedKeys.getPersonalKeysAllowed(), personal ?? assistantStore.getSettings(userId)]);
-  if (personalKeysAllowed && settings.hasKey) return { source: 'personal', apiKeyName: settings.cursorKeyName, personalKeysAllowed };
-  if (space) {
-    const spaceKey = await sharedKeys.getSpaceKeyInfo(space);
-    if (spaceKey.configured) return { source: 'space', apiKeyName: spaceKey.apiKeyName, personalKeysAllowed };
+/** `codex login status` against the user's stored sign-in; false when there is none or the CLI says it is not valid. */
+async function checkCodexSignIn(userId: string): Promise<boolean> {
+  try {
+    return await checkCodexLogin(userId, codexAuthStore(userId));
+  } catch (error) {
+    if (error instanceof CodexUnavailableError) throw new HttpError(503, error.message);
+    if (error instanceof CodexBusyError) throw new HttpError(409, error.message);
+    throw error;
   }
-  const instanceKey = await sharedKeys.getInstanceKeyInfo();
-  if (instanceKey.configured) return { source: 'instance', apiKeyName: instanceKey.apiKeyName, personalKeysAllowed };
-  if (process.env.CURSOR_API_KEY?.trim()) return { source: 'environment', apiKeyName: null, personalKeysAllowed };
-  return { source: 'none', apiKeyName: null, personalKeysAllowed };
-}
-
-/** Decrypted key for a run / a model list / a check. `space` is the already-authorized space the user is working in, or null. */
-export async function resolveApiKey(
-  userId: string,
-  space: string | null,
-): Promise<{ apiKey: string; source: AssistantKeySource; apiKeyName: string | null } | null> {
-  const picked = await resolveKeySource(userId, space);
-  let apiKey: string | null = null;
-  switch (picked.source) {
-    case 'personal':
-      apiKey = await assistantStore.getDecryptedCursorKey(userId);
-      break;
-    case 'space':
-      apiKey = (await sharedKeys.getDecryptedSpaceKey(space!))?.apiKey ?? null;
-      break;
-    case 'instance':
-      apiKey = (await sharedKeys.getDecryptedInstanceKey())?.apiKey ?? null;
-      break;
-    case 'environment':
-      apiKey = process.env.CURSOR_API_KEY?.trim() || null;
-      break;
-    case 'none':
-      break;
-  }
-  return apiKey ? { apiKey, source: picked.source, apiKeyName: picked.apiKeyName } : null;
 }
 
 async function buildSettingsResponse(userId: string, space: string | null): Promise<AssistantSettings> {
   const settings = await assistantStore.getSettings(userId);
   const picked = await resolveKeySource(userId, space, settings);
+  const [plan, providers] = await Promise.all([planAssistantRoute(userId, space, settings.modelId), describeAssistantProviders(userId, space, picked)]);
+  const cursorAvailable = cursorRuntimeAvailable();
   return {
     provider: 'CURSOR',
     model: settings.modelId,
-    apiKeyConfigured: picked.source !== 'none',
-    apiKeySource: picked.source,
-    apiKeyName: picked.apiKeyName,
+    apiKeyConfigured: plan !== null,
+    apiKeySource: plan?.source ?? 'none',
+    apiKeyName: plan?.keyName ?? null,
     personalKeysAllowed: picked.personalKeysAllowed,
     encryptionAvailable: hasSecretConfigured(),
-    runtimeAvailable: cursorRuntimeAvailable(),
+    // What a run on this plan needs: its own runtime (Cursor SDK, Codex binary); the key-based providers need none.
+    runtimeAvailable: plan?.provider === 'codex' ? codexRuntimeAvailable() : plan !== null && plan.provider !== 'cursor' ? true : cursorAvailable,
+    cursorRuntimeAvailable: cursorAvailable,
+    routeProvider: plan?.provider ?? null,
+    providers,
   };
 }
 
@@ -186,12 +180,13 @@ async function resolveConversationForMessage(userId: string, input: SendAssistan
  */
 async function startRunForRequest(request: FastifyRequest): Promise<{ runId: string; conversationId: string }> {
   const user = request.authUser!;
-  if (!cursorRuntimeAvailable()) throw new HttpError(503, 'Cursor SDK requires Node.js 22.13 or newer');
   const input = parseBody(sendAssistantMessageBodySchema, request.body);
   const navigation = await authorizeAssistantNavigation(user, input);
   const conversation = await resolveConversationForMessage(user.id, input);
-  const resolved = await resolveApiKey(user.id, navigation.space);
-  if (!resolved) throw conflict(NO_KEY_MESSAGE);
+  const route = await resolveAssistantRoute(user, navigation.space, conversation.model);
+  if (!route) throw conflict(NO_KEY_MESSAGE);
+  if (route.provider === 'cursor' && !cursorRuntimeAvailable()) throw new HttpError(503, 'Cursor SDK requires Node.js 22.13 or newer');
+  if (route.provider === 'codex' && !codexRuntimeAvailable()) throw new HttpError(503, 'Codex is not available on this server');
 
   return runs.startRun({
     user,
@@ -202,7 +197,7 @@ async function startRunForRequest(request: FastifyRequest): Promise<{ runId: str
     currentPath: input.currentPath ?? null,
     space: navigation.space,
     pageId: navigation.pageId,
-    apiKey: resolved.apiKey,
+    route,
   });
 }
 
@@ -306,20 +301,27 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
     session.requireCookieAuth(request);
     const user = request.authUser!;
     const space = await authorizedKeySpace(request, user);
-    const [resolved, current] = await Promise.all([resolveApiKey(user.id, space), assistantStore.getModel(user.id)]);
+    const [resolved, current, cursorSource] = await Promise.all([resolveApiKey(user.id, space), assistantStore.getModel(user.id), resolveKeySource(user.id, space)]);
+    const connected = (await describeAssistantProviders(user.id, space, cursorSource)).filter((provider) => provider.id !== 'cursor' && provider.connected);
     let items: AssistantModelsResponse['items'] = [{ id: 'auto', label: 'Auto', description: null }];
     let error: string | null = null;
     if (resolved && cursorRuntimeAvailable()) {
       try {
-        items = await listCursorModels(resolved.apiKey);
+        items = (await listCursorModels(resolved.apiKey)).map((item) => (item.id === 'auto' ? item : { ...item, provider: 'cursor' as const }));
       } catch (err) {
         // The settings screen must stay usable even if Cursor's catalog is down —
         // but the reason has to be visible (it was silently swallowed before).
         error = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
         request.log.warn({ err }, 'assistant: Cursor model catalog failed');
       }
-    } else if (!resolved) {
+    } else if (!resolved && connected.length === 0) {
       error = 'no Cursor API key';
+    }
+    for (const provider of connected) {
+      if (provider.id === 'cursor') continue;
+      for (const model of PROVIDER_MODELS[provider.id]) {
+        items.push({ ...model, id: providerModelId(provider.id, model.id), provider: provider.id });
+      }
     }
     if (!items.some((item) => item.id === current)) items.push({ id: current, label: current, description: null });
     return { items, error } satisfies AssistantModelsResponse;
@@ -330,7 +332,12 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
     const user = request.authUser!;
     const body = parseBody(updateAssistantModelBodySchema, request.body);
     const space = await authorizedKeySpace(request, user);
-    if (body.model !== 'auto') {
+    const parsedModel = parseAssistantModel(body.model);
+    if (parsedModel.provider !== 'cursor') {
+      if (!providerEnabled(parsedModel.provider)) throw badRequest('Model is not available');
+      if (!isKnownProviderModel(parsedModel.provider, parsedModel.modelId)) throw badRequest('Model is not available');
+      if (!(await planAssistantRoute(user.id, space, body.model, { strict: true }))) throw conflict(NO_KEY_MESSAGE);
+    } else if (body.model !== 'auto') {
       const resolved = await resolveApiKey(user.id, space);
       if (!resolved) throw conflict(NO_KEY_MESSAGE);
       if (!cursorRuntimeAvailable()) throw new HttpError(503, 'Cursor SDK requires Node.js 22.13 or newer');
@@ -384,6 +391,80 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
     return null;
   });
 
+  // --- Keys of the other providers (personal) -------------------------------
+
+  app.put('/api/assistant/settings/providers/:provider/key', async (request) => {
+    assertNotDemo('Connecting an AI key');
+    session.requireCookieAuth(request);
+    const user = request.authUser!;
+    const provider = parseKeyProvider((request.params as { provider: string }).provider);
+    if (!(await sharedKeys.getPersonalKeysAllowed())) throw forbidden('Personal AI keys are disabled on this instance');
+    const verified = await verifyProviderKeyBody(provider, request.body);
+    await saveProviderCredential(provider, { scope: 'user', userId: user.id }, verified.apiKey, verified.label, user.id);
+    recordAudit(user.id, 'user.assistant_provider_connected', user.id, { provider, source: 'assistant' });
+    return { ok: true, apiKeyName: verified.label } satisfies AssistantConnectionCheck;
+  });
+
+  app.delete('/api/assistant/settings/providers/:provider/key', async (request, reply) => {
+    assertNotDemo('Disconnecting an AI key');
+    session.requireCookieAuth(request);
+    const user = request.authUser!;
+    const provider = parseCredentialProvider((request.params as { provider: string }).provider);
+    if (provider === 'codex') cancelCodexLogin(user.id);
+    await deleteProviderCredential(provider, { scope: 'user', userId: user.id });
+    recordAudit(user.id, 'user.assistant_provider_disconnected', user.id, { provider, source: 'assistant' });
+    reply.status(204);
+    return null;
+  });
+
+  // --- Codex: sign in with a ChatGPT subscription (device code) -------------
+  // One pending login per user; the CLI's output gives the URL and the code, the finished auth.json is stored encrypted.
+
+  app.post('/api/assistant/settings/providers/codex/login', async (request) => {
+    if (!codexEnabled()) throw notFound('assistant provider');
+    assertNotDemo('Connecting an AI account');
+    session.requireCookieAuth(request);
+    const user = request.authUser!;
+    if (!(await sharedKeys.getPersonalKeysAllowed())) throw forbidden('Personal AI keys are disabled on this instance');
+    if (!hasSecretConfigured()) throw conflict('FOLIO_SECRET is not configured on this server — the sign-in cannot be stored securely.');
+    if (!codexRuntimeAvailable()) throw new HttpError(503, 'Codex is not available on this server');
+    try {
+      return await startCodexLogin(user.id, {
+        save: (authJson, email) => saveCodexLogin(user.id, authJson, email),
+        onConnected: () => recordAudit(user.id, 'user.assistant_provider_connected', user.id, { provider: 'codex', source: 'assistant' }),
+      }) satisfies AssistantCodexLoginState;
+    } catch (error) {
+      if (error instanceof CodexUnavailableError) throw new HttpError(503, error.message);
+      throw error;
+    }
+  });
+
+  app.get('/api/assistant/settings/providers/codex/login', async (request) => {
+    if (!codexEnabled()) throw notFound('assistant provider');
+    session.requireCookieAuth(request);
+    return getCodexLoginState(request.authUser!.id) satisfies AssistantCodexLoginState;
+  });
+
+  app.delete('/api/assistant/settings/providers/codex/login', async (request) => {
+    if (!codexEnabled()) throw notFound('assistant provider');
+    assertNotDemo('Connecting an AI account');
+    session.requireCookieAuth(request);
+    cancelCodexLogin(request.authUser!.id);
+    return { status: 'idle' } satisfies AssistantCodexLoginState;
+  });
+
+  app.post('/api/assistant/settings/providers/:provider/check', async (request) => {
+    session.requireCookieAuth(request);
+    const user = request.authUser!;
+    const provider = parseCredentialProvider((request.params as { provider: string }).provider);
+    // Codex has no key: the CLI itself says whether the stored ChatGPT sign-in is valid.
+    if (provider === 'codex') return { ok: await checkCodexSignIn(user.id), apiKeyName: null } satisfies AssistantConnectionCheck;
+    const supplied = (request.body as { apiKey?: string } | undefined)?.apiKey?.trim();
+    const secret = supplied || (await resolveProviderSecret(user.id, await authorizedKeySpace(request, user), provider));
+    if (!secret) return { ok: false, apiKeyName: null } satisfies AssistantConnectionCheck;
+    return { ok: (await verifyProviderKey(provider, secret)) === 'ok', apiKeyName: null } satisfies AssistantConnectionCheck;
+  });
+
   // --- Space-wide shared key (/api/spaces/:space/assistant-key) -------------
   // One Cursor key for a whole space: set by a space admin (or an instance
   // admin), used by every member's runs in that space unless they have their
@@ -413,6 +494,39 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
     const user = await requireSpaceKeyAdmin(request, space);
     await sharedKeys.deleteSpaceKey(space);
     recordAudit(user.id, 'assistant.space_key_removed', space);
+    reply.status(204);
+    return null;
+  });
+
+  // The same for the other providers, one key per provider and space.
+
+  app.get('/api/spaces/:space/assistant-providers/:provider/key', async (request) => {
+    session.requireCookieAuth(request);
+    const { space, provider: rawProvider } = request.params as { space: string; provider: string };
+    await requireSpaceKeyAdmin(request, space);
+    return buildProviderKeyInfo(parseKeyProvider(rawProvider), 'space', space);
+  });
+
+  app.put('/api/spaces/:space/assistant-providers/:provider/key', async (request) => {
+    assertNotDemo('Connecting an AI key');
+    session.requireCookieAuth(request);
+    const { space, provider: rawProvider } = request.params as { space: string; provider: string };
+    const user = await requireSpaceKeyAdmin(request, space);
+    const provider = parseKeyProvider(rawProvider);
+    const verified = await verifyProviderKeyBody(provider, request.body);
+    await saveProviderCredential(provider, { scope: 'space', space }, verified.apiKey, verified.label, user.id);
+    recordAudit(user.id, 'assistant.space_provider_key_set', space, { provider, keyName: verified.label });
+    return buildProviderKeyInfo(provider, 'space', space);
+  });
+
+  app.delete('/api/spaces/:space/assistant-providers/:provider/key', async (request, reply) => {
+    assertNotDemo('Disconnecting an AI key');
+    session.requireCookieAuth(request);
+    const { space, provider: rawProvider } = request.params as { space: string; provider: string };
+    const user = await requireSpaceKeyAdmin(request, space);
+    const provider = parseKeyProvider(rawProvider);
+    await deleteProviderCredential(provider, { scope: 'space', space });
+    recordAudit(user.id, 'assistant.space_provider_key_removed', space, { provider });
     reply.status(204);
     return null;
   });

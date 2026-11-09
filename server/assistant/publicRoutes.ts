@@ -49,7 +49,8 @@ import { rateLimited, retryAfterSeconds } from '../rateLimit.js';
 import * as storage from '../storage.js';
 import { parseBody, queryString } from '../validate.js';
 import { cursorRuntimeAvailable } from './cursorRuntime.js';
-import { resolveApiKey, streamRunEvents } from './routes.js';
+import { resolvePublicAssistantRoute } from './providerRouting.js';
+import { streamRunEvents } from './routes.js';
 import * as runs from './runs.js';
 import * as assistantStore from './store.js';
 import type { AssistantConversationRow } from './store.js';
@@ -154,20 +155,21 @@ export function registerPublicAssistantRoutes(app: FastifyInstance): void {
     const site = await requireAssistantSite(request);
     // Limits before any real work (key decryption, conversation rows, the provider).
     if (runStartThrottled(request, reply, site.slug)) return reply;
-    if (!cursorRuntimeAvailable()) throw new HttpError(503, 'Cursor SDK requires Node.js 22.13 or newer');
     const body = parseBody(publicAssistantRunBodySchema, request.body);
 
     const visitor = await requirePublicVisitor();
-    // The system user has no personal key, so this is space -> instance -> CURSOR_API_KEY.
-    const resolved = await resolveApiKey(visitor.id, site.slug);
-    if (!resolved) throw conflict(PUBLIC_ASSISTANT_NO_KEY_MESSAGE);
+    // A continued conversation keeps its model; a new one takes the configured default.
+    const existing = body.conversationId ? await findGuestConversation(body.conversationId, site.slug, body.guestToken) : null;
+    if (body.conversationId && !existing) throw notFound('assistant conversation');
+    // Never a personal credential: Cursor from space -> instance -> CURSOR_API_KEY, else the same order for Anthropic, then MiniMax.
+    const route = await resolvePublicAssistantRoute(visitor, site.slug, existing?.model ?? (await assistantStore.getModel(visitor.id)));
+    if (!route) throw conflict(PUBLIC_ASSISTANT_NO_KEY_MESSAGE);
+    if (route.provider === 'cursor' && !cursorRuntimeAvailable()) throw new HttpError(503, 'Cursor SDK requires Node.js 22.13 or newer');
 
     let conversation: AssistantConversationRow;
     let guestToken: string;
-    if (body.conversationId) {
-      const found = await findGuestConversation(body.conversationId, site.slug, body.guestToken);
-      if (!found) throw notFound('assistant conversation');
-      conversation = found;
+    if (existing) {
+      conversation = existing;
       guestToken = body.guestToken!;
     } else {
       guestToken = randomBytes(24).toString('hex');
@@ -189,7 +191,7 @@ export function registerPublicAssistantRoutes(app: FastifyInstance): void {
       currentPath: null,
       space: site.slug,
       pageId: await publicPageIdOrNull(body.pageId, site.slug),
-      apiKey: resolved.apiKey,
+      route,
       publicSpace: site.slug,
     });
     reply.status(202);

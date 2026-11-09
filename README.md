@@ -620,24 +620,29 @@ rules and the page before they write.
 
 ### Bring your own key
 
-Folio does not resell AI and does not mark it up. The assistant runs on a
-Cursor key: your own, or one that an administrator provides for a space or for
-the whole instance. Whoever owns the key pays.
+Folio does not resell AI and does not mark it up. The assistant runs on a key
+you already have: your own, or one that an administrator provides for a space
+or for the whole instance. Whoever owns the key pays.
 
-| Provider | Status |
+| Provider | How it connects |
 |---|---|
-| Cursor | **available** — each person connects their own key, or an administrator provides one for a space or for the whole instance |
-| Others | not supported yet |
+| Cursor | a Cursor key: personal, of a space or of the instance |
+| Claude | an Anthropic API key billed by usage (`claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`): personal, of a space or of the instance; a Claude subscription cannot be used |
+
+The model picker groups models by provider. Claude remembers only the text of
+earlier messages in a conversation, not earlier tool results. A reply is
+produced by the selected provider, so the pages the assistant reads go to it.
 
 **Who pays.** A run uses the first key that exists: the person's own key, then
 the key of the space, then the key of the instance, then `CURSOR_API_KEY` from
-the server environment. A space administrator sets a space's key (space menu,
+the server environment (`CURSOR_API_KEY` or `ANTHROPIC_API_KEY`, per provider). A space administrator sets a space's key (space menu,
 "Folio AI key"); an instance administrator sets the instance key and can turn
 personal keys off, so everyone uses the shared one. Shared keys are stored
 encrypted and are never shown again after saving; every change is in the audit
 log. Visitors of a [public site](#publish-a-space-as-a-website) have no key of
 their own, so their questions run on the key of the space, of the instance or
-of the server environment, in that order.
+of the server environment, in that order: Cursor when it resolves, else a
+shared Claude key. A personal key is never used there.
 
 Without a key everything else in Folio works as usual.
 

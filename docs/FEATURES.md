@@ -913,8 +913,9 @@ sensitive field types are never stored.
 ## 11. Folio AI
 
 An assistant in the side panel with two modes: **Ask** (read only) and
-**Agent** (read and write). Each person adds a Cursor API key in their account
-settings, or an administrator provides a shared one (see "Who pays" below).
+**Agent** (read and write). Each person adds a key in their account settings
+(a Cursor key or a Claude API key), or an administrator provides a shared key
+(see "Who pays" below).
 
 The assistant uses **the same set of tools** as external clients do through
 MCP (section 12). In Ask mode the write tools are unavailable, and that is
@@ -971,19 +972,23 @@ recorded in the audit log, and the conversation page shows who opened it and
 when. Everyone else does not see the page, and a personal access token is
 refused there.
 
-**Bring your own subscription.** The assistant runs on a subscription you
-already have. Cursor is supported today; other providers are coming soon.
+**Bring your own key.** The assistant runs on a key you already have. Cursor
+and Claude (an Anthropic API key billed by usage; a Claude subscription cannot
+be used) are supported. The model picker groups models by provider. Claude
+remembers only the text of earlier messages, not earlier tool results. A reply
+is produced by the selected provider, so the pages the assistant reads go to
+it.
 
 **Who pays: personal, space and instance keys.** A run uses the first key that
 exists, in this order: the person's own key, the key of the space the question
-is asked in, the key of the instance, `CURSOR_API_KEY` from the server
-environment. A space administrator sets the key of a space (space menu, "Folio
+is asked in, the key of the instance, the key from the server
+environment (`CURSOR_API_KEY` or `ANTHROPIC_API_KEY`, per provider). A space administrator sets the key of a space (space menu, "Folio
 AI key"); an instance administrator sets the instance key (the "Shared key"
 tab of Assistant analytics) and can turn personal keys off so that everyone
 uses the shared one: a stored personal key is then ignored and the form for
 adding one is hidden. The assistant settings show
 whose key is in use. Shared keys are encrypted with `FOLIO_SECRET`, never
-returned by the API (only the key's name, the Cursor account and who set it
+returned by the API (only the key's name, the account and who set it
 and when) and every change is written to the audit log. The public demo
 cannot change them.
 
@@ -993,7 +998,7 @@ the site). Visitors are anonymous. The run is **Ask mode only**, confined to
 that one space and to its public pages: it cannot write, cannot read page
 history, and a page that is restricted, in `.agent` or a template is "not
 found" to it, like any other page that does not exist. It uses the key of the
-space, else of the instance, else `CURSOR_API_KEY`; the owner of that key pays,
+space, else of the instance, else the server environment (Cursor when it resolves, else a shared Claude key; never a personal key); the owner of that key pays,
 and without any key the site says Folio AI is not set up. A conversation is
 tied to the browser that started it by a random token (only its hash is
 stored). Questions are rate limited per address and per site

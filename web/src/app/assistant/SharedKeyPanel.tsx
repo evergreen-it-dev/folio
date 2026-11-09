@@ -10,6 +10,7 @@ import { formatDateTime } from '../formatDate';
 import { useToast } from '../ui/Toast';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { LabeledInput } from '../ui/LabeledInput';
+import { SharedProviderKeys } from './SharedProviderKeys';
 import '../i18n/register';
 
 export type SharedKeyPanelProps = { scope: 'instance' } | { scope: 'space'; space: string };
@@ -202,6 +203,8 @@ export function SharedKeyPanel(props: SharedKeyPanelProps) {
           )}
         </div>
       )}
+
+      <SharedProviderKeys space={space} />
 
       {confirmingRemove && (
         <ConfirmDialog

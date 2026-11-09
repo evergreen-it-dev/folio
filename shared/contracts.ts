@@ -2508,6 +2508,25 @@ export interface TableDoc {
 export type AssistantKeySource = 'personal' | 'space' | 'instance' | 'environment' | 'none';
 export type AssistantRunMode = 'ask' | 'agent';
 
+export const ASSISTANT_PROVIDER_IDS = ['cursor', 'anthropic', 'minimax', 'codex'] as const;
+export type AssistantProviderId = (typeof ASSISTANT_PROVIDER_IDS)[number];
+/** The providers kept in `assistant_provider_credentials`; Cursor has its own columns and routes. */
+export type AssistantCredentialProviderId = Exclude<AssistantProviderId, 'cursor'>;
+
+/**
+ * One provider in GET /api/assistant/settings. `source` and `keyName` describe
+ * the credential a run of this user would use; `shareable` is false for a
+ * provider that can only ever be connected personally (Codex).
+ */
+export interface AssistantProviderStatus {
+  id: AssistantProviderId;
+  label: string;
+  connected: boolean;
+  source: AssistantKeySource;
+  keyName: string | null;
+  shareable: boolean;
+}
+
 /**
  * GET /api/assistant/settings?space=<slug> — `space` is optional: the slug of the space
  * the chat is opened in, so `apiKeySource` can report that space's shared key.
@@ -2529,8 +2548,14 @@ export interface AssistantSettings {
   personalKeysAllowed: boolean;
   /** FOLIO_SECRET is configured — the key can be saved encrypted. */
   encryptionAvailable: boolean;
-  /** Node >= 22.13 — the Cursor SDK can be loaded. */
+  /** The route this user's runs would take can actually run on this server. For a Cursor route it is `cursorRuntimeAvailable`; the other providers need no Cursor runtime. */
   runtimeAvailable: boolean;
+  /** Node >= 22.13 — the Cursor SDK can be loaded. */
+  cursorRuntimeAvailable: boolean;
+  /** The provider of the resolved route; null when no credential resolves. */
+  routeProvider: AssistantProviderId | null;
+  /** One entry per provider, connected or not. */
+  providers: AssistantProviderStatus[];
 }
 
 /** PUT /api/assistant/settings/key — checks the key with Cursor and saves it encrypted. */
@@ -2574,6 +2599,44 @@ export const saveSharedAssistantKeyBodySchema = saveAssistantKeyBodySchema;
 export const updateAssistantKeyPolicyBodySchema = z.object({ personalKeysAllowed: z.boolean() });
 export type UpdateAssistantKeyPolicyBody = z.infer<typeof updateAssistantKeyPolicyBodySchema>;
 
+// ---------- Keys of the other providers (MiniMax, Anthropic API), 09.11.2026 ----------
+// PUT|DELETE /api/assistant/settings/providers/:provider/key (personal),
+// POST /api/assistant/settings/providers/:provider/check,
+// GET|PUT|DELETE /api/admin/assistant/providers/:provider/key (instance admin),
+// GET|PUT|DELETE /api/spaces/:space/assistant-providers/:provider/key (space admin).
+// Cookie-only, verified with the provider before saving, stored encrypted and
+// never returned. Codex has no key routes of its own: its login flow is separate,
+// and it can never be shared.
+
+/** PUT .../providers/:provider/key. `label` is an optional name to recognise the key by. */
+export const saveAssistantProviderKeyBodySchema = saveAssistantKeyBodySchema.extend({ label: z.string().trim().min(1).max(200).optional() });
+export type SaveAssistantProviderKeyBody = z.infer<typeof saveAssistantProviderKeyBodySchema>;
+
+/**
+ * Device-code sign-in with a personal ChatGPT subscription.
+ * POST|GET|DELETE /api/assistant/settings/providers/codex/login
+ */
+export interface AssistantCodexLoginState {
+  status: 'idle' | 'pending' | 'connected' | 'failed';
+  verificationUrl?: string;
+  userCode?: string;
+  expiresAt?: string;
+  error?: string;
+}
+
+/** GET|PUT .../providers/:provider/key on the instance and space routes. */
+export interface AssistantProviderKeyInfo {
+  provider: AssistantCredentialProviderId;
+  scope: SharedAssistantKeyScope;
+  /** Space slug for `space`, null for `instance`. */
+  space: string | null;
+  configured: boolean;
+  keyName: string | null;
+  updatedAt: string | null;
+  updatedBy: { id: string; name: string } | null;
+  encryptionAvailable: boolean;
+}
+
 /** POST /api/assistant/settings/check (body `{apiKey?}`; without it the saved key is checked). */
 export interface AssistantConnectionCheck {
   ok: boolean;
@@ -2581,9 +2644,12 @@ export interface AssistantConnectionCheck {
 }
 
 export interface AssistantModelOption {
+  /** 'auto', a bare Cursor model id, or `<provider>:<id>` for the other providers. */
   id: string;
   label: string;
   description: string | null;
+  /** Absent on `auto`. */
+  provider?: AssistantProviderId;
 }
 /** GET /api/assistant/models — always has `auto` first. */
 export interface AssistantModelsResponse {

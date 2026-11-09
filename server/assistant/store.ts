@@ -230,6 +230,15 @@ export async function listMessages(conversationId: string, limit = 80): Promise<
   return rows.map(toMessageRow);
 }
 
+/** The newest `limit` messages of a conversation, oldest first (listMessages keeps the oldest ones when it hits its limit). */
+export async function listRecentMessages(conversationId: string, limit: number): Promise<AssistantMessageRow[]> {
+  const rows = await query<RawMessageRow>(
+    'SELECT * FROM ai_messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT $2',
+    [conversationId, Math.max(1, Math.min(limit, 200))],
+  );
+  return rows.map(toMessageRow).reverse();
+}
+
 /** runs.ts's loadTerminalFromDb: rebuilds the `complete` event for a run whose in-memory buffer is gone (evicted or lost to a restart) but whose ai_runs row still points at a saved message. */
 export async function findMessageById(id: string): Promise<AssistantMessageRow | null> {
   const row = await queryOne<RawMessageRow>('SELECT * FROM ai_messages WHERE id = $1', [id]);

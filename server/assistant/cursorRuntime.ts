@@ -16,12 +16,18 @@ import type { AssistantConversationRow } from './store.js';
 import { buildAssistantTools } from './tools.js';
 import { prepareAssistantWorkspace, resolveAssistantStateDir } from './workspace.js';
 import { ensureAssistantCursorPermissions } from './cursorCliConfig.js';
-import { filterAssistantModels } from './models.js';
+import { filterAssistantModels, parseAssistantModel } from './models.js';
+import { AssistantRunCancelledError, defaultIdleTimeoutMs, defaultTotalTimeoutMs, withCap } from './runtime/common.js';
+import { buildAssistantPromptParts } from './runtime/prompt.js';
+
+export { AssistantRunCancelledError };
 
 export interface RunAssistantInput {
   /** The ai_runs row of this turn — the built-in tool report_unanswered_question writes against it. */
   runId: string;
   apiKey: string;
+  /** The Cursor model of this run, from the route. Absent: the conversation's preference. */
+  model?: string;
   user: User;
   conversation: AssistantConversationRow;
   message: string;
@@ -46,19 +52,6 @@ export interface RunAssistantInput {
   totalTimeoutMs?: number;
   /** Reset on every delta/tool/thinking event — catches a run that's silently stuck rather than actively erroring, without forcing every Agent-mode run to fit inside one short total deadline. Default CURSOR_AGENT_IDLE_TIMEOUT_MS (600000 = 10 min). */
   idleTimeoutMs?: number;
-}
-
-export class AssistantRunCancelledError extends Error {
-  constructor() {
-    super('Cursor agent run cancelled');
-    this.name = 'AssistantRunCancelledError';
-  }
-}
-
-/** Ask is a single Q&A turn (default 300 s); Agent can chain many tool calls toward a goal and legitimately runs much longer (default 30 min) — see .env.example. */
-function defaultTotalTimeoutMs(runMode: AssistantRunMode): number {
-  if (runMode === 'agent') return Number(process.env.CURSOR_AGENT_TIMEOUT_MS_AGENT) || 1_800_000;
-  return Number(process.env.CURSOR_AGENT_TIMEOUT_MS) || 300_000;
 }
 
 /**
@@ -142,6 +135,12 @@ async function resumeOrCreateAgent(
   }
 }
 
+/** Never a provider-prefixed preference (`anthropic:...`): a run that fell back to Cursor from such a model uses `auto`. */
+function cursorModelFor(input: Pick<RunAssistantInput, 'model' | 'conversation'>): string {
+  const model = input.model ?? input.conversation.model;
+  return parseAssistantModel(model).provider === 'cursor' ? model : 'auto';
+}
+
 export async function runCursorAssistant(input: RunAssistantInput): Promise<string> {
   const workspace = await prepareAssistantWorkspace({
     user: input.user,
@@ -165,7 +164,7 @@ export async function runCursorAssistant(input: RunAssistantInput): Promise<stri
   const sdk = await configureSdk();
   const agentOptions = {
     apiKey: input.apiKey,
-    model: modelSelection(input.conversation.model),
+    model: modelSelection(cursorModelFor(input)),
     name: input.conversation.title ?? 'Folio AI',
     mode: 'agent' as const,
     tools: ASSISTANT_BUILTIN_TOOLS,
@@ -190,45 +189,7 @@ export async function runCursorAssistant(input: RunAssistantInput): Promise<stri
       // separate model turn (the first run spent 8-10 read/glob calls before
       // its first action). Skills stay files: they are large and each is
       // needed for its own topic only.
-      const prompt = [
-        workspace.systemPrompt,
-        '',
-        // Public sites: who the "user" is, before anything else can be read as permission to do more.
-        ...(workspace.publicSiteNotice ? ['## Public website visitor', '', workspace.publicSiteNotice, ''] : []),
-        // Owner spec (21.09.2026): `.agent/**` rules pages, admin-authored
-        // per space — prepended right after the base system prompt (before
-        // Folio's own reference material) so they read as instructions the
-        // model must follow, not background it may skim. Present for Ask
-        // AND Agent alike — workspace.agentRules never depends on runMode.
-        // Omitted entirely when the space has no `.agent` folder, so a
-        // space without rules sees no empty section at all.
-        ...(workspace.agentRules ? ['## The .agent rules of this space', '', workspace.agentRules, ''] : []),
-        '## Folio context',
-        '',
-        workspace.folioContext,
-        '',
-        '## Current context',
-        '',
-        workspace.runtimeContext,
-        '',
-        '## Skills',
-        '',
-        'You have no file or shell access. Working instructions are skills: call the `read_skill` tool with the name the task needs, once per conversation:',
-        '- `folio-mcp` — the list of tools and the rules for writing (read before the first change to data);',
-        '- `folio-content` — the syntax of Folio pages (before creating or editing markdown);',
-        '- `folio-boards` — the `sketch` DSL for whiteboards (before create_board/update_board);',
-        '- `folio-tables` — data tables: rows, columns, views (before folio_table_*);',
-        '- `folio-forms` — forms and the table their answers go to (before create_form/update_form);',
-        '- `folio-bases` — bases, saved queries over pages: YAML syntax and an example (before save_base);',
-        '- `folio-artifacts` — interactive pages: dashboards, calculators, filterable reports (before publish_artifact).',
-        'Simple read-only questions need no skills — call the tool straight away.',
-        '',
-        `Mode of this run: ${input.runMode === 'ask' ? 'ASK — read only, no changes in Folio' : 'AGENT — changes are allowed only when the user asks for them directly'}.`,
-        '',
-        '---',
-        '',
-        `User: ${input.message}`,
-      ].join('\n');
+      const prompt = buildAssistantPromptParts(workspace, input.runMode, input.message).cursorPrompt;
       // One deadline for the WHOLE turn, agent.send() included: in the first
       // run the timer started only after send, and a hung run held the HTTP
       // request for 1000+ s instead of 300. Plus a separate idle deadline
@@ -240,7 +201,7 @@ export async function runCursorAssistant(input: RunAssistantInput): Promise<stri
       let idleTimer: NodeJS.Timeout | undefined;
       let runRef: Run | null = null;
       const totalTimeoutMs = input.totalTimeoutMs ?? defaultTotalTimeoutMs(input.runMode);
-      const idleTimeoutMs = input.idleTimeoutMs ?? (Number(process.env.CURSOR_AGENT_IDLE_TIMEOUT_MS) || 600_000);
+      const idleTimeoutMs = input.idleTimeoutMs ?? defaultIdleTimeoutMs();
       let rejectDeadline!: (err: Error) => void;
       const deadline = new Promise<never>((_, reject) => {
         rejectDeadline = reject;
@@ -304,12 +265,4 @@ export async function runCursorAssistant(input: RunAssistantInput): Promise<stri
   } finally {
     await withCap(toolsHandle.close(), 5_000);
   }
-}
-
-async function withCap(work: Promise<unknown>, ms: number): Promise<void> {
-  let timer: NodeJS.Timeout | undefined;
-  await Promise.race([
-    work.catch(() => undefined),
-    new Promise<void>((resolve) => { timer = setTimeout(resolve, ms); }),
-  ]).finally(() => { if (timer) clearTimeout(timer); });
 }

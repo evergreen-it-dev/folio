@@ -93,6 +93,8 @@ All settings live in the `.env` file next to `docker-compose.yml`. Copy
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | — | Turn on "Connect with GitHub" in "Git access" (a GitHub OAuth App). See below. |
 | `FOLIO_SLACK_*`, `FOLIO_TEAMS_*` | — | Link previews in Slack and Microsoft Teams. See [CHAT-PREVIEWS.md](CHAT-PREVIEWS.md). |
 | `CURSOR_API_KEY` | — | Server-wide fallback key for the AI assistant, used when neither the person, the space nor the instance has a key of their own. Administrators can also set an instance key and per-space keys in the interface; those win over this variable. |
+| `ANTHROPIC_API_KEY` | — | Server-wide fallback key for Claude in the AI assistant, used after the person's, the space's and the instance's keys. Claude runs only on an API key billed by usage, never on a subscription. |
+| `FOLIO_CODEX_ENABLED`, `FOLIO_MINIMAX_ENABLED` | off | Optional AI providers, switched off and hidden unless set to `1`. `FOLIO_MINIMAX_ENABLED` adds MiniMax (an API key; `MINIMAX_API_KEY` and `MINIMAX_BASE_URL` set a server-wide key and endpoint). `FOLIO_CODEX_ENABLED` adds Codex through a person's own ChatGPT sign-in, only for a server you run for yourself: OpenAI has not confirmed this use on shared servers, and device-code sign-in must be enabled in the ChatGPT security settings. |
 | `PUBLIC_SITES_DOMAIN` | — | Parent domain for the subdomains of public sites, for example `sites.example.com`. See [Public sites](#public-sites). |
 | `PUBLIC_EXPORT_PER_MINUTE` | `6` | PDF and DOCX downloads one address may start per minute on public sites. |
 | `PUBLIC_ASSISTANT_RUNS_PER_HOUR` | `20` | Questions one address may ask Folio AI per hour across all public sites. |
@@ -665,7 +667,8 @@ the proxy's address and therefore one budget.
   process. After you change a site's address or turn publishing off, allow up
   to ten seconds.
 - **Ask Folio AI** on a public site is opt-in per space and runs on the key of
-  the space, else of the instance, else `CURSOR_API_KEY`; the owner of that key
+  the space, else of the instance, else the key from the server environment
+  (`CURSOR_API_KEY` or `ANTHROPIC_API_KEY`); the owner of that key
   pays for visitors' questions. Without any of them the site says that Folio AI
   is not set up.
 - In the public demo the Folio Handbook is published at

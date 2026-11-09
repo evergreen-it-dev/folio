@@ -4,7 +4,7 @@
  * The principle: an agent run is a server job (an `ai_runs` row + in-memory
  * RunState), NOT an action that lasts inside one HTTP request. `startRun`
  * returns `{ runId, conversationId }` at once; the run itself, through
- * `runCursorAssistant`, is fire-and-forget (`executeRun`, not awaited by the
+ * `runAssistant`, is fire-and-forget (`executeRun`, not awaited by the
  * caller). The HTTP level (routes.ts) only subscribes to events through
  * `subscribe`/`peek`/`loadTerminalFromDb` — a dropped connection NEVER
  * cancels a run, only an explicit `stop()` does.
@@ -44,7 +44,9 @@ import { conflict } from '../errors.js';
 import { query, queryOne } from '../db/pool.js';
 import * as assistantStore from './store.js';
 import type { AssistantConversationRow } from './store.js';
-import { AssistantRunCancelledError, runCursorAssistant } from './cursorRuntime.js';
+import { AssistantRunCancelledError } from './cursorRuntime.js';
+import { runAssistant } from './runtime/index.js';
+import type { AssistantRoute } from './runtime/types.js';
 import { createDeltaBatcher, type DeltaBatcher } from './deltaBatcher.js';
 import { authorizeAssistantNavigation } from './access.js';
 import { createGenerationProgress, realToolName, type GenerationProgress, type GenerationProgressTracker } from './genProgress.js';
@@ -267,7 +269,8 @@ export interface StartRunInput {
   currentPath: string | null;
   space: string | null;
   pageId: string | null;
-  apiKey: string;
+  /** Which provider, model and credential this run uses (providerRouting.ts). */
+  route: AssistantRoute;
   /** Public sites: the published space an anonymous visitor's run is confined to (Ask-only; user = the public visitor system user). */
   publicSpace?: string | null;
 }
@@ -342,7 +345,7 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string; c
     donePromise,
     resolveDone,
     deltaBatcher,
-    model: input.conversation.model,
+    model: input.route.provider === 'cursor' ? input.route.modelId : `${input.route.provider}:${input.route.modelId}`,
     progress,
     timing: createRunTiming(),
     textGap: false,
@@ -435,9 +438,9 @@ async function executeRun(run: RunState, input: StartRunInput): Promise<void> {
   try {
     let replyText: string;
     try {
-      replyText = await runCursorAssistant({
+      replyText = await runAssistant({
         runId: run.id,
-        apiKey: input.apiKey,
+        route: input.route,
         user: input.user,
         conversation: input.conversation,
         message: input.message,
@@ -510,8 +513,15 @@ async function executeRun(run: RunState, input: StartRunInput): Promise<void> {
     }
     await finishDone(run, replyText);
   } catch (err) {
-    await finishError(run, err);
+    await finishError(run, withoutSecret(err, input.route.secret));
   }
+}
+
+/** Whatever a provider library put in the message, the credential itself never reaches ai_runs.error or the log. */
+function withoutSecret(err: unknown, secret: string): unknown {
+  const message = err instanceof Error ? err.message : String(err);
+  if (!secret || !message.includes(secret)) return err;
+  return new Error(message.split(secret).join('[redacted]'));
 }
 
 async function finishDone(run: RunState, replyText: string): Promise<void> {

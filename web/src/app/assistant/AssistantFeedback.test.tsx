@@ -42,6 +42,9 @@ const SETTINGS: AssistantSettings = {
   personalKeysAllowed: true,
   encryptionAvailable: true,
   runtimeAvailable: true,
+  cursorRuntimeAvailable: true,
+  routeProvider: 'cursor',
+  providers: [],
 };
 
 const CONVERSATION_ID = '9a1c1f0e-2b6e-4f7b-9d2a-1c1c1c1c1c01';

@@ -465,7 +465,7 @@ describe('F-05: the assistant authorizes the client-supplied space before it loa
     const conversation = await assistantStore.insertConversation({ userId: alice.id, title: 'direct', cursorAgentId: `agent-direct-${stamp}`, model: 'auto' });
 
     await expect(
-      runs.startRun({ user: alice, conversation, message: 'hello', runMode: 'ask', currentPath: null, space: slugB, pageId: null, apiKey: 'placeholder' }),
+      runs.startRun({ user: alice, conversation, message: 'hello', runMode: 'ask', currentPath: null, space: slugB, pageId: null, route: { provider: 'cursor', modelId: 'auto', secret: 'placeholder', source: 'environment', keyName: null } }),
     ).rejects.toMatchObject({ status: 404 });
 
     expect(await assistantStore.listMessages(conversation.id)).toEqual([]);

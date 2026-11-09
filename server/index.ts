@@ -45,6 +45,10 @@ import { registerNotificationRoutes } from './notifications/routes.js';
 import * as notificationSocket from './notifications/socket.js';
 import { startTreeSignal, stopTreeSignal } from './treeSignal.js';
 import * as assistantRuns from './assistant/runs.js';
+import { cleanupCodexRunRoot } from './assistant/codexHome.js';
+import { shutdownCodexLogins } from './assistant/codexLogin.js';
+import { shutdownCodexRuns } from './assistant/codexHome.js';
+import { registerCodexRunMcpRoutes, setCodexRunMcpPort } from './assistant/codexRunMcp.js';
 import { registerMcpRoutes } from './mcpRoutes.js';
 import { registerOAuthRoutes } from './oauth/routes.js';
 import { registerChatIntegrationProtectedRoutes, registerChatIntegrationRoutes } from './integrations/chat/routes.js';
@@ -175,6 +179,8 @@ async function main(): Promise<void> {
   // a run this process died mid-turn — mark it `error` so it doesn't sit
   // "running" forever after a restart (05.09.2026, continuous runs).
   await assistantRuns.recoverAfterRestart();
+  // A Codex run directory left by a crash may still hold a user's auth.json: gone before anything can start.
+  await cleanupCodexRunRoot();
   // Single sign-on providers defined in the environment (FOLIO_OIDC_<SLUG>_*, FOLIO_SAML_<SLUG>_*, GOOGLE_*) -> auth_providers rows.
   await syncEnvProviders().catch((err) => app.log.error({ err: err instanceof Error ? err.message : err }, 'sso: syncing providers from the environment failed'));
 
@@ -274,6 +280,10 @@ async function main(): Promise<void> {
   // implementation (dist/esm/examples/server/simpleStatelessStreamableHttp.js)
   // — see server/mcp.ts's module doc comment for why not one shared instance.
   registerMcpRoutes(app);
+
+  // Codex runs: the CLI is a child process, so a run's tools are served to it over loopback HTTP, per run and token-bound
+  // (server/assistant/codexRunMcp.ts). Outside the session scope on purpose: it must neither need nor accept a cookie.
+  registerCodexRunMcpRoutes(app);
 
   // OAuth 2.1 for MCP (connectors in claude.ai / ChatGPT): discovery documents, /oauth/*, and
   // "Connected apps". Without a login the SPA's own login screen is shown at /oauth/authorize.
@@ -399,6 +409,8 @@ async function main(): Promise<void> {
     app.log.warn('demo mode without TRUST_PROXY: behind a reverse proxy every visitor shares one IP, so the login rate limit (10/min) is shared by all. Set TRUST_PROXY=true.');
   }
   await app.listen({ port: PORT, host: process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1' });
+  const address = app.server.address();
+  if (address && typeof address === 'object') setCodexRunMcpPort(address.port);
   collab.attachToServer(app.server);
   // Round 31: a second 'upgrade' listener — the /events socket. Both return
   // early for a path that is not theirs, so the order here does not matter (see notifications/socket.ts).
@@ -442,6 +454,9 @@ async function shutdown(signal: string): Promise<void> {
     app.log.error(err);
   }
   await stopTreeSignal();
+  shutdownCodexLogins();
+  // Active Codex runs are stopped and given a few seconds to store the refreshed sign-in and remove their auth.json.
+  await shutdownCodexRuns(5_000).catch(() => {});
   await app.close();
   await closePool().catch(() => {});
   await closeRedis().catch(() => {});

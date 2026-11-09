@@ -46,6 +46,7 @@ import { recordAudit } from '../audit.js';
 import { assertNotDemo } from '../demo.js';
 import { updateAssistantKeyPolicyBodySchema } from '../../shared/contracts.js';
 import * as sharedKeys from './sharedKeys.js';
+import { buildProviderKeyInfo, deleteProviderCredential, parseKeyProvider, saveProviderCredential, verifyProviderKeyBody } from './providerCredentials.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -407,6 +408,33 @@ export function registerAssistantAdminRoutes(app: FastifyInstance): void {
     await sharedKeys.setPersonalKeysAllowed(body.personalKeysAllowed, user.id);
     recordAudit(user.id, 'assistant.key_policy', 'instance', { personalKeysAllowed: body.personalKeysAllowed });
     return sharedKeys.buildInstanceKeyInfo();
+  });
+
+  // --- Instance-wide keys of the other providers ----------------------------
+
+  app.get('/api/admin/assistant/providers/:provider/key', async (request) => {
+    requireInstanceKeyAdmin(request);
+    return buildProviderKeyInfo(parseKeyProvider((request.params as { provider: string }).provider), 'instance', null);
+  });
+
+  app.put('/api/admin/assistant/providers/:provider/key', async (request) => {
+    assertNotDemo('Connecting an AI key');
+    const user = requireInstanceKeyAdmin(request);
+    const provider = parseKeyProvider((request.params as { provider: string }).provider);
+    const verified = await verifyProviderKeyBody(provider, request.body);
+    await saveProviderCredential(provider, { scope: 'instance' }, verified.apiKey, verified.label, user.id);
+    recordAudit(user.id, 'assistant.instance_provider_key_set', 'instance', { provider, keyName: verified.label });
+    return buildProviderKeyInfo(provider, 'instance', null);
+  });
+
+  app.delete('/api/admin/assistant/providers/:provider/key', async (request, reply) => {
+    assertNotDemo('Disconnecting an AI key');
+    const user = requireInstanceKeyAdmin(request);
+    const provider = parseKeyProvider((request.params as { provider: string }).provider);
+    await deleteProviderCredential(provider, { scope: 'instance' });
+    recordAudit(user.id, 'assistant.instance_provider_key_removed', 'instance', { provider });
+    reply.status(204);
+    return null;
   });
 
   app.get('/api/admin/assistant/access', async (request) => {

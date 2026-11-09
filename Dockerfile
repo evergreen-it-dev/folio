@@ -50,6 +50,8 @@ COPY server ./server
 # failure surfaces on a user's first Folio AI run. Keyless and offline (see the
 # header of the script); fails the build with the library error, on any arch.
 RUN node server/assistant/nativeCheck.mjs --sdk
+# Codex provider: its native binary (a static musl build on Linux) must be installed for this architecture and start.
+RUN node server/assistant/nativeCheck.mjs --codex
 COPY db ./db
 COPY --from=build /app/web/dist ./web/dist
 

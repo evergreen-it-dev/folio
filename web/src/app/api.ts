@@ -61,6 +61,10 @@ import type {
   AssistantFeedbackResponse,
   AssistantSurveyBody,
   AssistantConnectionCheck,
+  AssistantCodexLoginState,
+  AssistantCredentialProviderId,
+  AssistantProviderKeyInfo,
+  AssistantProviderId,
   AssistantConversation,
   AssistantConversationsResponse,
   AssistantModelsResponse,
@@ -1450,6 +1454,52 @@ export const api = {
 
   deleteSpaceAssistantKey: (space: string) =>
     request<void>(`/api/spaces/${encodeURIComponent(space)}/assistant-key`, { method: 'DELETE' }),
+
+  // ---------- Other providers (MiniMax, Claude API key, Codex sign-in) ----------
+
+  /** Personal key of a provider; the server verifies it with the provider before storing it encrypted (400 when refused, 403 when personal keys are off). */
+  saveAssistantProviderKey: (provider: AssistantCredentialProviderId, apiKey: string, label?: string) =>
+    request<AssistantConnectionCheck>(`/api/assistant/settings/providers/${provider}/key`, {
+      method: 'PUT',
+      body: JSON.stringify(label ? { apiKey, label } : { apiKey }),
+    }),
+
+  /** Forgets the personal key (for Codex: disconnects the ChatGPT sign-in). */
+  deleteAssistantProviderKey: (provider: AssistantProviderId) =>
+    request<void>(`/api/assistant/settings/providers/${provider}/key`, { method: 'DELETE' }),
+
+  checkAssistantProviderKey: (provider: AssistantCredentialProviderId, apiKey?: string, space?: string | null) =>
+    request<AssistantConnectionCheck>(`/api/assistant/settings/providers/${provider}/check${spaceQuery(space)}`, {
+      method: 'POST',
+      body: JSON.stringify(apiKey ? { apiKey } : {}),
+    }),
+
+  startCodexLogin: () => request<AssistantCodexLoginState>('/api/assistant/settings/providers/codex/login', { method: 'POST' }),
+
+  getCodexLogin: () => request<AssistantCodexLoginState>('/api/assistant/settings/providers/codex/login'),
+
+  cancelCodexLogin: () => request<void>('/api/assistant/settings/providers/codex/login', { method: 'DELETE' }),
+
+  getInstanceAssistantProviderKey: (provider: AssistantCredentialProviderId) =>
+    request<AssistantProviderKeyInfo>(`/api/admin/assistant/providers/${provider}/key`),
+
+  saveInstanceAssistantProviderKey: (provider: AssistantCredentialProviderId, apiKey: string) =>
+    request<AssistantProviderKeyInfo>(`/api/admin/assistant/providers/${provider}/key`, { method: 'PUT', body: JSON.stringify({ apiKey }) }),
+
+  deleteInstanceAssistantProviderKey: (provider: AssistantCredentialProviderId) =>
+    request<void>(`/api/admin/assistant/providers/${provider}/key`, { method: 'DELETE' }),
+
+  getSpaceAssistantProviderKey: (space: string, provider: AssistantCredentialProviderId) =>
+    request<AssistantProviderKeyInfo>(`/api/spaces/${encodeURIComponent(space)}/assistant-providers/${provider}/key`),
+
+  saveSpaceAssistantProviderKey: (space: string, provider: AssistantCredentialProviderId, apiKey: string) =>
+    request<AssistantProviderKeyInfo>(`/api/spaces/${encodeURIComponent(space)}/assistant-providers/${provider}/key`, {
+      method: 'PUT',
+      body: JSON.stringify({ apiKey }),
+    }),
+
+  deleteSpaceAssistantProviderKey: (space: string, provider: AssistantCredentialProviderId) =>
+    request<void>(`/api/spaces/${encodeURIComponent(space)}/assistant-providers/${provider}/key`, { method: 'DELETE' }),
 
   /** Without `conversationId`, returns the caller's most recent conversation. */
   getAssistantConversation: (conversationId?: string | null) =>

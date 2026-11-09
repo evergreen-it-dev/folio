@@ -26,6 +26,9 @@ const SETTINGS: AssistantSettings = {
   personalKeysAllowed: false,
   encryptionAvailable: true,
   runtimeAvailable: true,
+  cursorRuntimeAvailable: true,
+  routeProvider: 'cursor',
+  providers: [],
 };
 
 function jsonResponse(body: unknown): Response {

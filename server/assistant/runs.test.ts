@@ -94,7 +94,7 @@ describe('RunManager (server/assistant/runs.ts)', () => {
       currentPath: null,
       space: null,
       pageId: null,
-      apiKey: 'test-key',
+      route: { provider: 'cursor', modelId: 'auto', secret: 'test-key', source: 'personal', keyName: null },
     });
     expect(conversationId).toBe(conversation.id);
     expect(cursorMock.runCursorAssistant).toHaveBeenCalledTimes(1);
@@ -195,7 +195,7 @@ describe('RunManager (server/assistant/runs.ts)', () => {
       currentPath: null,
       space: null,
       pageId: null,
-      apiKey: 'test-key',
+      route: { provider: 'cursor', modelId: 'auto', secret: 'test-key', source: 'personal', keyName: null },
     });
 
     // Drive several deltas so the run's own live seq climbs well past 1 —
@@ -248,7 +248,7 @@ describe('RunManager (server/assistant/runs.ts)', () => {
       currentPath: null,
       space: null,
       pageId: null,
-      apiKey: 'test-key',
+      route: { provider: 'cursor', modelId: 'auto', secret: 'test-key', source: 'personal', keyName: null },
     });
     const events: AssistantRunEvent[] = [];
     runs.subscribe(runId, 0, (event) => events.push(event));
@@ -300,7 +300,7 @@ describe('RunManager (server/assistant/runs.ts)', () => {
       currentPath: null,
       space: null,
       pageId: null,
-      apiKey: 'test-key',
+      route: { provider: 'cursor', modelId: 'auto', secret: 'test-key', source: 'personal', keyName: null },
     });
     expect(cursorMock.runCursorAssistant).toHaveBeenLastCalledWith(expect.objectContaining({ message: prompt }));
     const events: AssistantRunEvent[] = [];

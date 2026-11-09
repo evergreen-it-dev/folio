@@ -4,6 +4,26 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-11-09
+
+Folio AI can run on Claude through an Anthropic API key, next to Cursor. Adds
+migration 064.
+
+### Added
+
+- **Folio AI on Claude, next to Cursor.** Claude runs on an Anthropic API key
+  billed by usage (`claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`);
+  a Claude subscription cannot be used. The key can be personal, per space, per
+  instance, or from `ANTHROPIC_API_KEY`, resolved in that order. The model
+  picker groups models by provider. A public site uses Cursor when it
+  resolves, else a shared Claude key, never a personal key. Cursor deployments
+  behave as before. Between your messages Claude remembers only the text of
+  earlier messages, not earlier tool results. A reply is produced by the
+  selected provider, so the pages the assistant reads go to that provider.
+  Other providers exist in the code but are switched off by default; the
+  operator of a self-hosted server can turn them on with an environment
+  variable, described in [docs/INSTALL.md](docs/INSTALL.md).
+
 ## [0.4.4] - 2026-11-09
 
 Notifications and @mentions, comments on whiteboard elements and table cells,

@@ -248,7 +248,9 @@ export function AssistantPanel({ open, onClose, pendingAsk = null, onAskHandled 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [pendingMessages, conversation.data?.messages, run.isRunning, run.streamText]);
 
-  const ready = Boolean(settings.data?.apiKeyConfigured && settings.data.runtimeAvailable);
+  // `apiKeyConfigured` is "a run resolves a route" (the server uses the same resolution as a run, so a Claude-only user is ready
+  // without the Cursor key); a provider that is merely connected is not enough: it may be unusable for the chosen model or site.
+  const ready = Boolean(settings.data && settings.data.runtimeAvailable && settings.data.apiKeyConfigured);
   const storedMessages = startNew ? [] : (conversation.data?.messages ?? []);
   const messages = useMemo(() => [...storedMessages, ...pendingMessages], [storedMessages, pendingMessages]);
   const activeConversationId = conversationId ?? conversation.data?.conversationId ?? null;

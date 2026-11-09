@@ -4,7 +4,7 @@ The current state of Folio, for whoever picks the work up next — a person or
 an agent. It describes what exists now. It is rewritten with every public
 update rather than appended to, so there is no history to dig through.
 
-Version: **0.4.4**.
+Version: **0.4.5**.
 
 ## What Folio is
 
