@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { DynamicDataSheetGrid } from 'react-datasheet-grid';
-import type { CellProps, SimpleColumn } from 'react-datasheet-grid';
+import type { CellProps, DataSheetGridRef, SimpleColumn } from 'react-datasheet-grid';
 import { Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TableColumn, TableRow, TableView } from '@shared/contracts';
@@ -128,6 +128,20 @@ export default function TableGrid({
   const previousRef = useRef<TableRow[]>(rows);
   previousRef.current = rows;
 
+  // A cell asked for from outside (a comment notification, a click in the comments panel): the grid windows its rows,
+  // so the cell may not be in the DOM at all; making it the active cell makes the grid scroll to it. Acted on once per
+  // request, and only once its row is in the list (the shell may still be dropping a filter that hides it).
+  const gridRef = useRef<DataSheetGridRef>(null);
+  const revealed = useRef<unknown>(null);
+  const reveal = deps.comments?.reveal;
+  useEffect(() => {
+    if (!reveal || revealed.current === reveal) return;
+    const row = rows.findIndex((r) => r.id === reveal.rowId);
+    if (row < 0 || !columns.some((c) => c.id === reveal.columnId)) return;
+    revealed.current = reveal;
+    gridRef.current?.setActiveCell({ col: reveal.columnId, row });
+  }, [reveal, rows, columns]);
+
   const gridColumns = useMemo(
     () =>
       buildGridColumns(columns, view, {
@@ -211,6 +225,7 @@ export default function TableGrid({
   return (
     <div className="folio-table-grid min-w-0">
       <DynamicDataSheetGrid<TableRow>
+        ref={gridRef}
         value={rows}
         columns={gridColumns}
         gutterColumn={gutterColumn}

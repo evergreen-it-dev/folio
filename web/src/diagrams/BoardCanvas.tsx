@@ -90,6 +90,7 @@ import { BoardExportMenu } from './BoardExportMenu';
 import { downloadBlob } from './download';
 import { exportFilename } from './exportFilename';
 import { BoardReactions } from './BoardReactions';
+import { useBoardComments } from './BoardComments';
 import { BoardHeadingAction } from './BoardHeadingAction';
 import { StickyNotePalette, STICKY_NOTE_DRAG_MIME } from './StickyNotePalette';
 import { createStickyNoteElements, screenToSceneCoords, type StickyNoteColorId } from './boardStickyNotes';
@@ -558,6 +559,16 @@ export default function BoardCanvas({ pageId, shareToken, shareMode, onEditingCh
   }, [peers]);
   const presencePeople = usePagePresence(session?.awareness ?? null, session?.user ?? null);
   usePublishPagePresence(presencePeople);
+  // Comments on elements (BoardComments.tsx): a signed-in reader of a board page; a share link never comments.
+  const boardComments = useBoardComments({
+    api: excalidrawApi,
+    containerRef,
+    pageId,
+    session,
+    enabled: !shareToken,
+    space: pageSpace,
+    ready: load.status === 'ready' && synced,
+  });
 
   // Live language switching (round 18): Folio's language switcher calls
   // i18next.changeLanguage() with no page reload, so the board's own UI
@@ -1808,6 +1819,8 @@ export default function BoardCanvas({ pageId, shareToken, shareMode, onEditingCh
       />
       {/* "Make heading" rewrites the scene, so it needs the same edit permission AND Edit mode. */}
       <BoardHeadingAction api={excalidrawApi} containerRef={containerRef} canEdit={canWrite && isEditingNow} />
+      {boardComments.layer}
+      {boardComments.panel}
       {/* `top` AND `right` are measured, not a breakpoint (boardChromeLayout.ts):
           our row shares this corner with Excalidraw's library trigger, sits in
           the column its centred tool island grows into, and — mobile, QA-3
@@ -1820,6 +1833,7 @@ export default function BoardCanvas({ pageId, shareToken, shareMode, onEditingCh
         style={{ top: chromeOffsets.top, right: chromeOffsets.right }}
         className="absolute z-20 flex items-center gap-2"
       >
+        {boardComments.button}
         {compact ? (
           // Round 25b-1 §1 — on a phone the whole row IS this one menu.
           <BoardExportMenu

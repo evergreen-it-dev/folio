@@ -10,6 +10,8 @@ import {
   TextCell,
 } from './cells/CellComponents';
 import type { CellContext } from './cells/CellComponents';
+import { commentable } from './cells/CommentableCell';
+import type { TableCommentsProps } from './types';
 import { ColumnHeader } from './header/ColumnHeader';
 import { AddColumnButton } from './header/AddColumnButton';
 import type { ColumnMenuActions } from './header/ColumnMenu';
@@ -47,6 +49,8 @@ export interface GridColumnDeps extends Omit<CellContext, 'column'> {
   onAddColumn?: (name: string, type: TableColumn['type']) => void;
   /** Supplied → each header grows a drag handle that writes a pixel width. */
   onResizeColumn?: (columnId: string, width: number) => void;
+  /** Supplied → cells draw comment markers, the add button and the highlight ring. */
+  comments?: TableCommentsProps;
 }
 
 type GridColumn = Column<TableRow, CellContext, TableCellValue>;
@@ -107,7 +111,7 @@ function addColumnSlot(onAdd: (name: string, type: TableColumn['type']) => void)
   };
 }
 
-function componentFor(type: TableColumn['type']): GridColumn['component'] {
+function componentFor(type: TableColumn['type']): NonNullable<GridColumn['component']> {
   switch (type) {
     case 'longtext':
       return LongTextCell;
@@ -180,6 +184,7 @@ export function buildGridColumns(
       // see CellComponents.tsx's LONGTEXT_CLAMP_LINES — so it needs the
       // view's token, not just a column-level fact.
       rowHeight: view.rowHeight,
+      comments: deps.comments,
     };
 
     return {
@@ -201,7 +206,7 @@ export function buildGridColumns(
       grow: 0,
       shrink: 0,
       minWidth: 60,
-      component: componentFor(column.type),
+      component: commentable(componentFor(column.type)),
       columnData,
       disabled: deps.readOnly === true,
       // `longtext` is edited in the row panel (spec §12a constraint 3), so

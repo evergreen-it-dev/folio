@@ -644,6 +644,16 @@ export function TreeRow({
           />
         )}
 
+        {/* Verification: a page whose review date has passed (shared/verification.ts). Quiet otherwise. */}
+        {!editing && !isFolder && node.verification?.state === 'overdue' && (
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500"
+            data-testid="tree-review-overdue"
+            title={t('verification.treeOverdue')}
+            aria-label={t('verification.treeOverdue')}
+          />
+        )}
+
         {!editing && isLocal && (
           <span
             className="inline-flex shrink-0 text-neutral-400"

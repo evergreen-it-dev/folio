@@ -58,6 +58,11 @@
   opacity: 1;
 }
 
+/* The comment button of a cell shows while its cell is hovered or holds focus. */
+.folio-table-grid .dsg-cell:hover .folio-cell-comment-add {
+  opacity: 1;
+}
+
 /*
  * Spec §12a, constraint 1: the library has no left-column freeze (only a
  * gutter and `stickyRightColumn`). Because the grid is real DOM rather than

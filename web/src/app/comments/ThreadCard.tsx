@@ -51,6 +51,8 @@ export function ThreadCard({ thread, anchor, meId, canComment, canModerate, acti
   const [editing, setEditing] = useState<string | null>(null);
   const resolved = thread.status === 'resolved';
   const detached = !resolved && anchor?.state === 'detached';
+  // A board thread has no quoted text: it names its element (the label saved when it began).
+  const quote = thread.quotedText ?? thread.target?.label ?? t(thread.target?.kind === 'table_cell' ? 'comments.table.element' : 'comments.board.element');
   const canResolve = canModerate || thread.createdBy?.id === meId;
   const [first] = thread.comments;
 
@@ -69,8 +71,8 @@ export function ThreadCard({ thread, anchor, meId, canComment, canModerate, acti
       } ${resolved ? 'opacity-80' : ''} ${!resolved && !detached ? 'cursor-pointer' : ''}`}
     >
       <div className="mb-2 flex items-start gap-2">
-        <blockquote className="line-clamp-2 min-w-0 flex-1 break-words border-l-2 border-amber-400 pl-2 text-xs text-neutral-500 dark:border-amber-500 dark:text-neutral-400" title={thread.quotedText}>
-          {thread.quotedText}
+        <blockquote className="line-clamp-2 min-w-0 flex-1 break-words border-l-2 border-amber-400 pl-2 text-xs text-neutral-500 dark:border-amber-500 dark:text-neutral-400" title={quote}>
+          {quote}
         </blockquote>
         {canResolve && (
           <button
@@ -84,7 +86,7 @@ export function ThreadCard({ thread, anchor, meId, canComment, canModerate, acti
           </button>
         )}
       </div>
-      {detached && <p className="mb-2 text-xs italic text-amber-700 dark:text-amber-400">{t('comments.detached')}</p>}
+      {detached && <p className="mb-2 text-xs italic text-amber-700 dark:text-amber-400">{thread.target?.kind === 'table_cell' ? t('comments.table.cellDeleted') : thread.target ? t('comments.board.elementDeleted') : t('comments.detached')}</p>}
       {resolved && thread.resolvedBy && <p className="mb-2 text-xs text-neutral-400 dark:text-neutral-500">{t('comments.resolvedBy', { name: thread.resolvedBy.name })}</p>}
 
       <ul className="flex flex-col gap-3">

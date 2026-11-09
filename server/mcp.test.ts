@@ -63,11 +63,11 @@ describe('server/mcp.ts — server identity', () => {
 describe('server/mcp.ts — tool annotations and instructions', () => {
   const actor: McpActor = { user: { id: 'nobody' } as User, scopes: ['read'], tokenId: 'test-annotations-token' };
 
-  it('annotates all 49 tools: a title, explicit booleans, and readOnlyHint or destructiveHint', async () => {
+  it('annotates all 51 tools: a title, explicit booleans, and readOnlyHint or destructiveHint', async () => {
     const { client, close } = await connectedClient(actor);
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(49);
+      expect(tools).toHaveLength(51);
       for (const tool of tools) {
         const a = tool.annotations;
         expect(a?.title ?? tool.title, `${tool.name} title`).toBeTruthy();
@@ -78,7 +78,7 @@ describe('server/mcp.ts — tool annotations and instructions', () => {
         if (a?.readOnlyHint) expect(a.destructiveHint).toBe(false);
       }
       const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort();
-      expect(readOnly).toHaveLength(23);
+      expect(readOnly).toHaveLength(25);
       expect(readOnly).toContain('search_pages');
       for (const name of ['get_page_metadata', 'list_unresolved_links', 'list_orphans', 'get_graph', 'query_base', 'list_tags', 'list_properties']) expect(readOnly).toContain(name);
       // ChatGPT deep research needs these two exact names, and they must never count as writes.

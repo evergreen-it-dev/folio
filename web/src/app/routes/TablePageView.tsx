@@ -8,6 +8,7 @@ import type { TableRole } from '../../tables';
 import { useTableCollab, useTableDoc, useTablePatchSink } from '../../tables/collab';
 import { api } from '../api';
 import { canEditContent } from '../auth/roles';
+import { useTableComments } from '../comments/useTableComments';
 import { usePagePresence, usePublishPagePresence } from '../presence';
 import '../i18n/register';
 
@@ -110,6 +111,9 @@ export function TablePageView({ pageId, role, space, collabParams, onViewState }
   // same as an authed viewer/editor, so they're counted like everyone else.
   const presencePeople = usePagePresence(session?.provider.awareness ?? null, session?.user ?? null);
   usePublishPagePresence(presencePeople);
+  const commentDoc = useMemo(() => (doc ? { rows: doc.rows, columns: doc.columns } : null), [doc]);
+  // Comments on cells: for a signed-in reader of a table page; a share link never comments.
+  const tableComments = useTableComments({ pageId, session: session ?? null, enabled: !collabParams?.share, space, doc: commentDoc });
 
   // `user` column candidates. Same endpoint the editor's @-picker uses; a
   // failure degrades to "no suggestions", never to a broken table.
@@ -185,7 +189,11 @@ export function TablePageView({ pageId, role, space, collabParams, onViewState }
           mentionable={mentionable}
           rowLinkFor={rowLinkFor}
           onActiveViewChange={setActiveViewId}
+          comments={tableComments.comments}
+          toolbarExtra={tableComments.button}
         />
+        {tableComments.link}
+        {tableComments.panel}
       </div>
     </div>
   );

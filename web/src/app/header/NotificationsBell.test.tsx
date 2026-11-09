@@ -14,6 +14,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import i18next from 'i18next';
+import { MemoryRouter } from 'react-router';
 import type { NotificationItem, NotificationListResponse } from '@shared/contracts';
 import { NotificationsHost } from '../notifications/NotificationsHost';
 import { NotificationsBell } from './NotificationsBell';
@@ -195,5 +196,39 @@ describe('NotificationsBell', () => {
     expect(fetchMock.mock.calls.length).toBe(callsBefore);
     // The unread item from the frame shows on the badge at once.
     expect(screen.getAllByRole('button')[0].textContent).toBe('1');
+  });
+
+  it('a review_due row says the page is overdue for review, in both languages, and opens the page', async () => {
+    const item: NotificationItem = {
+      id: 'n9',
+      kind: 'review_due',
+      createdAt: '2026-11-09T10:00:00.000Z',
+      readAt: null,
+      pageId: 'p1',
+      payload: { space: 'docs', pageTitle: 'Onboarding', reviewBy: '2026-11-01' },
+    };
+    stubFetch(() => ({ body: { items: [item], unread: 1 } satisfies NotificationListResponse }));
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <NotificationsBell />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button'));
+    expect(await screen.findByText('“Onboarding” is overdue for review (due 2026-11-01)')).toBeTruthy();
+    expect(screen.queryByText(/New activity/)).toBeNull();
+    // A page row is a button that opens the page: enabled because the row carries a page and a space.
+    expect((screen.getByText(/is overdue for review/).closest('button') as HTMLButtonElement).disabled).toBe(false);
+
+    await i18next.changeLanguage('uk');
+    try {
+      const due = i18next.t('notifications.review.due', { ns: 'app', page: 'Onboarding', date: '2026-11-01' });
+      expect(due).toContain('Onboarding');
+      expect(due).toContain('2026-11-01');
+      expect(due).not.toBe('notifications.review.due');
+    } finally {
+      await i18next.changeLanguage('en');
+    }
   });
 });

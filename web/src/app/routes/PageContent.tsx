@@ -16,8 +16,10 @@ import { useSpaceRole } from '../auth/AuthProvider';
 import { canEditContent, canManageMembers } from '../auth/roles';
 import { OutlinePanel } from '../outline/OutlinePanel';
 import { PageChrome } from '../page-meta/PageChrome';
+import { VerificationBadge } from '../page-meta/VerificationBadge';
 import { PagePropertiesPopover, PageTitleProperties } from '../properties/PropertiesPanel';
 import { PageConflictBanner } from '../git/PageConflictBanner';
+import { ProposalBanner } from '../review/ProposalBanner';
 import { AgentDemoNote } from '../AgentDemoNote';
 import { trackPageOpen, type PageKind } from '../../analytics';
 import { StaticBoardView } from './StaticBoardView';
@@ -333,7 +335,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     return (
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
-        <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={chromeEditable} allowCover={false} compact />
+        <PageChrome pageId={data.id} space={data.space} icon={data.icon} verification={data.verification} canEdit={chromeEditable} allowCover={false} compact />
         {!isLocalPage && (
           <PagePropertiesPopover pageId={data.id} space={data.space} canEdit={editable && boardEditing} canManageTypes={canManageMembers(spaceRole)} />
         )}
@@ -353,7 +355,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     return (
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
-        <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={editable} allowCover={false} compact />
+        <PageChrome pageId={data.id} space={data.space} icon={data.icon} verification={data.verification} canEdit={editable} allowCover={false} compact />
         <PagePropertiesPopover pageId={data.id} space={data.space} canEdit={chromeEditable} canManageTypes={canManageMembers(spaceRole)} />
         <ReplaceFileDropZone space={data.space} pageId={data.id} pagePath={data.path} canEdit={chromeEditable} className="ph-no-capture min-h-0 flex-1">
           <PdfView pageId={data.id} title={data.title} version={data.updatedAt} />
@@ -369,7 +371,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     return (
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
-        <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={chromeEditable} allowCover={false} compact />
+        <PageChrome pageId={data.id} space={data.space} icon={data.icon} verification={data.verification} canEdit={chromeEditable} allowCover={false} compact />
         <PagePropertiesPopover pageId={data.id} space={data.space} canEdit={chromeEditable} canManageTypes={canManageMembers(spaceRole)} />
         <div className="ph-no-capture min-h-0 flex-1">
           <CanvasPageView page={data} canConvert={canEditContent(spaceRole) && !isLocalPage} />
@@ -384,7 +386,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     return (
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
-        <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={chromeEditable} allowCover={false} compact />
+        <PageChrome pageId={data.id} space={data.space} icon={data.icon} verification={data.verification} canEdit={chromeEditable} allowCover={false} compact />
         <PagePropertiesPopover pageId={data.id} space={data.space} canEdit={chromeEditable} canManageTypes={canManageMembers(spaceRole)} />
         <div className="ph-no-capture min-h-0 flex-1 overflow-y-auto">
           <ArtifactPageView page={data} canReplace={chromeEditable} />
@@ -399,7 +401,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     return (
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
-        <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={chromeEditable} allowCover={false} compact />
+        <PageChrome pageId={data.id} space={data.space} icon={data.icon} verification={data.verification} canEdit={chromeEditable} allowCover={false} compact />
         <div className="ph-mask min-h-0 flex-1">
           <BasePageView pageId={data.id} space={data.space} canEditBase={editable && !isLocalPage} />
         </div>
@@ -416,7 +418,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     return (
       <div className="flex h-full flex-col">
         <PageConflictBanner space={data.space} pageId={data.id} />
-        <PageChrome pageId={data.id} space={data.space} icon={data.icon} canEdit={editable} allowCover={false} compact />
+        <PageChrome pageId={data.id} space={data.space} icon={data.icon} verification={data.verification} canEdit={editable} allowCover={false} compact />
         <PagePropertiesPopover pageId={data.id} space={data.space} canEdit={chromeEditable} canManageTypes={canManageMembers(spaceRole)} />
         <ReplaceFileDropZone space={data.space} pageId={data.id} pagePath={data.path} canEdit={chromeEditable} className="ph-no-capture min-h-0 flex-1">
           <OfficeView pageId={data.id} title={data.title} format={officeFormat(data.path) ?? 'docx'} version={data.updatedAt} />
@@ -430,6 +432,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
   return (
     <div className="flex h-full flex-col">
       <PageConflictBanner space={data.space} pageId={data.id} />
+      <ProposalBanner space={data.space} pageId={data.id} />
       {inAgentFolder && <AgentDemoNote className="shrink-0 bg-amber-50 px-4 py-1.5 dark:bg-amber-950/40" />}
       {/* Round 5: the outline panel is a flex sibling of the editor, not
           something bolted onto editor/'s own layout (out of this agent's area)
@@ -468,13 +471,21 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
                 isLocalPage
                   ? undefined
                   : ({ mode, startEditing }) => (
-                      <PageTitleProperties
-                        pageId={data.id}
-                        space={data.space}
-                        canEdit={editable && mode !== 'reading'}
-                        canManageTypes={canManageMembers(spaceRole)}
-                        onStartEditing={editable && mode === 'reading' ? startEditing : undefined}
-                      />
+                      <>
+                        {/* Under the title, not in the chrome row: the chrome row is hidden in reading mode, and the reader is who this is for. */}
+                        {data.verification && data.verification.state !== 'unverified' && (
+                          <div className="mb-1">
+                            <VerificationBadge verification={data.verification} />
+                          </div>
+                        )}
+                        <PageTitleProperties
+                          pageId={data.id}
+                          space={data.space}
+                          canEdit={editable && mode !== 'reading'}
+                          canManageTypes={canManageMembers(spaceRole)}
+                          onStartEditing={editable && mode === 'reading' ? startEditing : undefined}
+                        />
+                      </>
                     )
               }
               chromeStart={

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AgentWriteMode } from './proposals.js';
 
 /** Server port. Vite dev server (4871) proxies /api, /files and /collab here. */
 export const SERVER_PORT = 4870;
@@ -129,8 +130,42 @@ export const pageMetaSchema = z.object({
   icon: z.string().optional(),
   /** The URL of the cover from the frontmatter `cover:` (round 5). */
   cover: z.string().optional(),
+  /**
+   * Owner, verification date and review deadline with the computed state
+   * (shared/verification.ts). Present only on a page that has any of the three
+   * properties `owner`, `verified`, `review_by`.
+   */
+  verification: z
+    .object({
+      state: z.enum(['unverified', 'verified', 'changed', 'overdue']),
+      owner: z.string().optional(),
+      verified: z.string().optional(),
+      reviewBy: z.string().optional(),
+      daysOverdue: z.number().optional(),
+      invalid: z.array(z.enum(['verified', 'review_by'])).optional(),
+    })
+    .optional(),
 });
 export type PageMeta = z.infer<typeof pageMetaSchema>;
+
+/**
+ * PUT /api/pages/:id/verification (editor+): the owner / deadline fields and the
+ * "Mark as verified" button. Every field is optional; `null` removes the value.
+ * `markVerified` stamps `verified` with today and sets `review_by` to today plus
+ * `reviewDays` (default: the page's previous period, else 90).
+ */
+export const updateVerificationBodySchema = z.object({
+  owner: z.string().max(100).nullable().optional(),
+  reviewBy: z.string().max(40).nullable().optional(),
+  markVerified: z.boolean().optional(),
+  reviewDays: z.number().int().min(1).max(3650).optional(),
+});
+export type UpdateVerificationBody = z.infer<typeof updateVerificationBodySchema>;
+/** The answer: whether the file changed, and the page's verification state after. */
+export interface VerificationResponse {
+  written: boolean;
+  verification: PageMeta['verification'] | null;
+}
 
 export interface TreeNode extends PageMeta {
   children: TreeNode[];
@@ -230,6 +265,8 @@ export interface SpaceInfo {
    * client having to re-derive admin-ness itself.
    */
   agentRules?: { used: boolean; pages: number; path?: string; writingRules?: boolean };
+  /** Migration 062: 'direct' (agents write at once) or 'review' (their Markdown edits wait for an editor). Absent means direct. */
+  agentWriteMode?: AgentWriteMode;
 }
 
 // ---------- scan settings (Obsidian vault compatibility, wave 1a) ----------
@@ -2901,7 +2938,15 @@ export interface AdminAssistantUnansweredResponse extends AdminAssistantFilterOp
  * adding an @ mention or a reply in a comment is an extension of the list,
  * not a rework of the table and of the whole client.
  */
-export const notificationKindSchema = z.enum(['access_request', 'access_decision']);
+export const notificationKindSchema = z.enum([
+  'access_request',
+  'access_decision',
+  'comment_mention',
+  'comment_reply',
+  'proposal_pending',
+  'proposal_decided',
+  'review_due',
+]);
 export type NotificationKind = z.infer<typeof notificationKindSchema>;
 
 export type AccessRequestStatus = 'pending' | 'approved' | 'denied';
@@ -2933,13 +2978,34 @@ export interface AccessRequestSummary {
   grantedRole?: SpaceRole | null;
 }
 
+/** The kinds that are about a page (everything except the two access-request kinds). */
+export type PageNotificationKind = Exclude<NotificationKind, 'access_request' | 'access_decision'>;
+
+/**
+ * What a page notification needs to be drawn without a join. A snapshot taken
+ * at delivery; `commentId` is what makes a comment notification deliver once.
+ */
+export interface NotificationPayload {
+  space?: string;
+  pageTitle?: string;
+  threadId?: string;
+  commentId?: string;
+  authorId?: string;
+  authorName?: string;
+  excerpt?: string;
+  [key: string]: unknown;
+}
+
 export interface NotificationItem {
   id: string;
   kind: NotificationKind;
   createdAt: string;
   readAt: string | null;
-  /** For both current kinds it is the same request: the administrator sees the request, the requester sees the decision. */
-  accessRequest: AccessRequestSummary;
+  /** For the two access kinds it is the same request: the administrator sees the request, the requester sees the decision. Absent for page kinds. */
+  accessRequest?: AccessRequestSummary;
+  /** Page kinds: the page the row is about, and its snapshot. */
+  pageId?: string | null;
+  payload?: NotificationPayload;
 }
 
 /** GET /api/notifications */

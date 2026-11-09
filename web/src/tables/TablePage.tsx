@@ -22,6 +22,7 @@ import { Tooltip } from './ui/Tooltip';
 import { STATUS_OPTIONS } from './fixtures';
 import { visibleColumns } from './gridColumns';
 import { applyFilters, applySearch, applySort, parseCellText, uniqueColumnId } from './core';
+import { cellPlace } from './commentCells';
 import { applyPatches, makeEmptyRow, makeRowId } from './patch';
 import { canSaveViews, canEdit } from './types';
 import type { TableEditorProps, TablePatch } from './types';
@@ -106,6 +107,8 @@ export function TablePage({
   mentionable,
   rowLinkFor,
   onActiveViewChange,
+  comments,
+  toolbarExtra,
 }: TableEditorProps) {
   const { t } = useTranslation('tables');
   const { doc, dispatch } = useDocState(incoming, onPatch, pageId);
@@ -217,6 +220,19 @@ export function TablePage({
     // changes would fight the user's own later filter changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightRowId]);
+
+  // A cell asked for by a comment (a notification, the panel): its row may be filtered out of this view and its column hidden.
+  // Drop the filters like a ?row= link does, and show a hidden column's cell in the row panel, which lists every column.
+  const reveal = comments?.reveal;
+  useEffect(() => {
+    if (!reveal) return;
+    const place = cellPlace(reveal, doc.rows, rows, doc.columns, shownColumns);
+    if (place === 'gone') return;
+    if (place === 'unfilter') setIgnoreFilters(true);
+    if (!shownColumns.some((column) => column.id === reveal.columnId)) setOpenRowId(reveal.rowId);
+    // Keyed on the request only: re-running on every edit would fight the user's own later view changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal]);
 
   const openRowIndex = rows.findIndex((row) => row.id === openRowId);
   const openRow = openRowIndex >= 0 ? rows[openRowIndex] : undefined;
@@ -467,6 +483,7 @@ export function TablePage({
     // Grows the add-column slot after the last column header (gridColumns).
     onAddColumn: addColumn,
     onResizeColumn: resizeColumn,
+    comments,
   };
 
   return (
@@ -570,6 +587,8 @@ export function TablePage({
             className="shrink-0"
           />
         </Tooltip>
+
+        {toolbarExtra}
 
         <TableExportMenu onExport={handleExport} viewCount={rows.length} totalCount={doc.rows.length} />
 

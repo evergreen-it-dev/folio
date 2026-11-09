@@ -9,11 +9,13 @@ import { useApiErrorText } from '../errorText';
 import { useLocalStorage, useOutsideClick } from '../hooks';
 import { PropertiesSlotContext } from '../header/propertiesSlot';
 import { useToast } from '../ui/Toast';
+import { VERIFICATION_KEYS } from '@shared/verification';
 import { AddPropertyForm } from './AddPropertyForm';
 import type { NewProperty } from './AddPropertyForm';
 import { PropertyRow } from './PropertyRow';
 import { countProperties, effectiveType, emptyValueFor } from './propertyValues';
 import { usePageProperties } from './usePageProperties';
+import { VerificationRows } from './VerificationRows';
 import '../i18n/register';
 
 export interface PropertiesPanelProps {
@@ -67,6 +69,13 @@ export interface PropertiesHalfProps extends PropertiesPanelProps {
   addSignal?: number;
   /** "Add property" was closed (or the new row dropped) while the page still has no properties. */
   onEmptyDone?: () => void;
+  /**
+   * Owner and review live in this section as their own rows (owner, verified, review_by -> VerificationRows) instead of
+   * three plain ones. Set by PageTitleProperties only: the popover of tables and files has no owner / review UI.
+   */
+  withVerification?: boolean;
+  /** Changing it to a new non-zero value shows the owner / review rows on a page that has none yet ("Owner and review" ghost). */
+  assignSignal?: number;
 }
 
 export function propertiesBodyId(pageId: string): string {
@@ -152,7 +161,7 @@ export function PropertiesToggle({ pageId, space, canEdit, open, onToggle, varia
 }
 
 /** The editors, shown under the chrome row while the toggle is open. */
-export function PropertiesBody({ pageId, space, canEdit, canManageTypes, open, layout = 'column', addSignal = 0, onEmptyDone }: PropertiesHalfProps) {
+export function PropertiesBody({ pageId, space, canEdit, canManageTypes, open, layout = 'column', addSignal = 0, onEmptyDone, withVerification = false, assignSignal = 0 }: PropertiesHalfProps) {
   const { t } = useTranslation('app');
   const errorText = useApiErrorText();
   const showToast = useToast();
@@ -160,6 +169,7 @@ export function PropertiesBody({ pageId, space, canEdit, canManageTypes, open, l
   const { state, data, visible } = useView(pageId, space, canEdit);
   const [draft, setDraft] = useState<NewProperty | null>(null);
   const [adding, setAdding] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   // The row whose field has focus, and the last value/type each row showed: a property another user removes while it
   // is being edited here stays on screen (saying so) instead of vanishing under the caret (propertiesLive.ts).
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -170,6 +180,9 @@ export function PropertiesBody({ pageId, space, canEdit, canManageTypes, open, l
   useEffect(() => {
     if (addSignal > 0) setAdding(true);
   }, [addSignal]);
+  useEffect(() => {
+    if (assignSignal > 0) setAssigning(true);
+  }, [assignSignal]);
 
   const saveTypes = useMutation({
     mutationFn: async (property: NewProperty) => {
@@ -188,8 +201,10 @@ export function PropertiesBody({ pageId, space, canEdit, canManageTypes, open, l
 
   const readOnlyKeys = data.readOnly;
   const keys = Object.keys(state.properties);
-  const visibleKeys = keys.filter((key) => !readOnlyKeys.includes(key));
-  const lockedKeys = keys.filter((key) => readOnlyKeys.includes(key));
+  const ownKeys = withVerification ? keys.filter((key) => !(VERIFICATION_KEYS as readonly string[]).includes(key)) : keys;
+  const hasVerificationKeys = ownKeys.length !== keys.length;
+  const visibleKeys = ownKeys.filter((key) => !readOnlyKeys.includes(key));
+  const lockedKeys = ownKeys.filter((key) => readOnlyKeys.includes(key));
   const removedKey =
     editingKey !== null && !(editingKey in state.properties) && lastSeen.current.has(editingKey) && !(draft && draft.key === editingKey) ? editingKey : null;
   const listedKeys = removedKey !== null ? [...visibleKeys, removedKey] : visibleKeys;
@@ -246,6 +261,8 @@ export function PropertiesBody({ pageId, space, canEdit, canManageTypes, open, l
               </div>
             )}
 
+            {withVerification && <VerificationRows space={space} pageId={pageId} editable={editable} forceShow={assigning} />}
+
             {/* One keyed list for stored rows and the row being added: the new row keeps its place (and the caret) once its first value is saved. */}
             {rowKeys.map((key) => (
               <PropertyRow
@@ -276,7 +293,7 @@ export function PropertiesBody({ pageId, space, canEdit, canManageTypes, open, l
               />
             ))}
 
-            {visibleKeys.length === 0 && !draft && !(layout === 'title' && adding) && <p className="px-1.5 py-1 text-sm text-neutral-400">{t('properties.empty')}</p>}
+            {visibleKeys.length === 0 && !draft && !(layout === 'title' && adding) && !hasVerificationKeys && !assigning && <p className="px-1.5 py-1 text-sm text-neutral-400">{t('properties.empty')}</p>}
 
             {lockedKeys.map((key) => (
               <PropertyRow
@@ -291,6 +308,17 @@ export function PropertiesBody({ pageId, space, canEdit, canManageTypes, open, l
                 onCancelDraft={() => undefined}
               />
             ))}
+
+            {editable && withVerification && !hasVerificationKeys && !assigning && !adding && (
+              <button
+                type="button"
+                onClick={() => setAssigning(true)}
+                className="mt-1 flex items-center gap-1.5 rounded px-1.5 py-1 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              >
+                <Plus size={13} aria-hidden="true" />
+                {t('verification.assign')}
+              </button>
+            )}
 
             {editable &&
               (adding ? (
@@ -345,12 +373,19 @@ export function PageTitleProperties({ pageId, space, canEdit, canManageTypes, on
   // Adding the first property: the body is open although the remembered state may say closed.
   const [adding, setAdding] = useState(false);
   const [addSignal, setAddSignal] = useState(0);
+  const [assignSignal, setAssignSignal] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
   function startAdding() {
     setOpen(true);
     setAdding(true);
     setAddSignal((n) => n + 1);
+  }
+
+  function startAssigning() {
+    setOpen(true);
+    setAdding(true);
+    setAssignSignal((n) => n + 1);
   }
 
   // Arrived from the reading-mode ghost: open the form, and take focus once the editor has drawn this slot (the
@@ -391,11 +426,23 @@ export function PageTitleProperties({ pageId, space, canEdit, canManageTypes, on
       <span className="truncate">{t('properties.addShort')}</span>
     </button>
   );
+  // Only for someone who may edit right now (Live / Source): reading mode shows, never sets, an owner.
+  const assignGhost = canEdit && (
+    <button type="button" className={TITLE_BUTTON} onClick={startAssigning}>
+      <Plus size={13} className="shrink-0" aria-hidden="true" />
+      <span className="truncate">{t('verification.assign')}</span>
+    </button>
+  );
 
   return (
     <div ref={rootRef} className="folio-title-props" data-empty={empty ? '' : undefined}>
       {empty ? (
-        !adding && ghost
+        !adding && (
+          <div className="flex flex-wrap items-center gap-x-1">
+            {ghost}
+            {assignGhost}
+          </div>
+        )
       ) : (
         <PropertiesToggle pageId={pageId} space={space} canEdit={canEdit} open={open} onToggle={() => setOpen((v) => !v)} variant="title" />
       )}
@@ -406,7 +453,9 @@ export function PageTitleProperties({ pageId, space, canEdit, canManageTypes, on
         canManageTypes={canManageTypes}
         open={empty ? adding : open}
         layout="title"
+        withVerification
         addSignal={addSignal}
+        assignSignal={assignSignal}
         onEmptyDone={() => setAdding(false)}
       />
     </div>

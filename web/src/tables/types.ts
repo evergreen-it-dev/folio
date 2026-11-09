@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { TableCellValue, TableColumn, TableDoc, TableRow, TableView } from '@shared/contracts';
 
 /**
@@ -72,6 +73,26 @@ export const ROW_HEIGHT_PX: Record<TableView['rowHeight'], number> = {
   tall: 64,
 };
 
+/**
+ * Comments on cells, handed in by the shell (the comment data and panel live
+ * in app/comments; the grid only draws markers and reports clicks). Absent:
+ * the table has no comments (a share link, a signed-out reader).
+ */
+export interface TableCommentsProps {
+  /** May start a thread: shows the add button on a hovered cell. */
+  canComment: boolean;
+  /** Open threads per cell: rowId -> columnId -> thread ids. */
+  cells: ReadonlyMap<string, ReadonlyMap<string, readonly string[]>>;
+  /** The cell being talked about (a hovered or opened thread, the draft), ringed in the grid. */
+  highlight?: { rowId: string; columnId: string } | null;
+  /** Asks for a cell to be brought into view; a new object each time, even for the same cell. */
+  reveal?: { rowId: string; columnId: string } | null;
+  addLabel: string;
+  markerLabel: (count: number) => string;
+  onStart: (rowId: string, columnId: string) => void;
+  onOpenThread: (threadId: string) => void;
+}
+
 /** Props of the table zone's public entry point (wired by SHELL-TABLES in wave 3). */
 export interface TableEditorProps {
   pageId: string;
@@ -101,4 +122,8 @@ export interface TableEditorProps {
    * Pure notification — the table surface itself does not change behavior.
    */
   onActiveViewChange?: (viewId: string) => void;
+  /** Comments on cells (markers, the add button, reveal); see TableCommentsProps. */
+  comments?: TableCommentsProps;
+  /** Extra toolbar content (the shell puts the comments toggle here). */
+  toolbarExtra?: ReactNode;
 }

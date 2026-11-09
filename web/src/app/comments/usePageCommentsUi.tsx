@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams, useSearchParams } from 'react-router';
 import { MessageSquare } from 'lucide-react';
 import { normalizeEol } from '../../editor/collab-sync';
 import { createAnchors, quoteOf, type AnchoredThread } from '../../editor/comment-anchors';
@@ -21,10 +22,11 @@ import type { CommentMark, CommentsBridge } from '../../editor/comment-highlight
 import type { CollabSession } from '../../editor/collab';
 import { useAuthOptional } from '../auth/AuthProvider';
 import { useIsLocalPage } from '../offline';
-import { CommentsPanel, DRAFT_ID, type CommentDraft } from './CommentsPanel';
+import { CommentsPanel, DRAFT_ID, type TextCommentDraft } from './CommentsPanel';
 import { ReadingCommentButton, useReadingComments } from './ReadingComments';
 import { useCommentActions, useCommentsRealtime, usePageCommentsQuery } from './usePageComments';
 import { useResolvedAnchors } from './useResolvedAnchors';
+import { MentionCandidatesContext, useMentionCandidatesValue } from './mentionCandidates';
 import '../i18n/register';
 
 export interface PageCommentsOptions {
@@ -64,8 +66,10 @@ export function usePageComments({ enabled, pageId, session, synced, reading, mar
   useCommentsRealtime(session, pageId, active);
   const actions = useCommentActions(pageId, session);
 
+  const { space } = useParams();
+  const mentionCandidates = useMentionCandidatesValue(space, active);
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<CommentDraft | null>(null);
+  const [draft, setDraft] = useState<TextCommentDraft | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ id: string } | null>(null);
@@ -80,11 +84,34 @@ export function usePageComments({ enabled, pageId, session, synced, reading, mar
     setReveal(null);
   }, [pageId]);
 
-  const threads = useMemo(() => data?.threads ?? [], [data]);
+  // A notification links here as ?thread=<id>: open the panel on that thread once the list is in, then drop the parameter.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const wantedThread = searchParams.get('thread');
+  useEffect(() => {
+    if (!wantedThread || !data) return;
+    const found = data.threads.some((thread) => thread.id === wantedThread);
+    if (found) {
+      setOpen(true);
+      setFocus({ id: wantedThread });
+      setReveal({ id: wantedThread });
+      setFlashId(wantedThread);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('thread');
+    setSearchParams(next, { replace: true });
+  }, [wantedThread, data, searchParams, setSearchParams]);
+
+  // A document has text threads only; a thread with a target belongs to a board and is not placed in the text.
+  const threads = useMemo(() => (data?.threads ?? []).filter((thread) => thread.target === null), [data]);
   const openThreads = useMemo(() => threads.filter((thread) => thread.status === 'open'), [threads]);
   const resolvedThreads = useMemo(() => threads.filter((thread) => thread.status === 'resolved'), [threads]);
 
-  const toResolve = useMemo<AnchoredThread[]>(() => (draft ? [...openThreads, { id: DRAFT_ID, ...draft }] : openThreads), [openThreads, draft]);
+  const toResolve = useMemo<AnchoredThread[]>(() => {
+    const out: AnchoredThread[] = [];
+    for (const thread of openThreads) if (thread.anchorFrom && thread.anchorTo && thread.quotedText !== null) out.push({ id: thread.id, anchorFrom: thread.anchorFrom, anchorTo: thread.anchorTo, quotedText: thread.quotedText });
+    if (draft) out.push({ id: DRAFT_ID, ...draft });
+    return out;
+  }, [openThreads, draft]);
   const anchors = useResolvedAnchors(session, toResolve, active && synced);
   const marks = useMemo<CommentMark[]>(() => {
     const out: CommentMark[] = [];
@@ -171,7 +198,7 @@ export function usePageComments({ enabled, pageId, session, synced, reading, mar
   ) : null;
 
   const panel = visible ? (
-    <>
+    <MentionCandidatesContext.Provider value={mentionCandidates}>
       {open && (
         <CommentsPanel
           openThreads={openThreads}
@@ -196,7 +223,7 @@ export function usePageComments({ enabled, pageId, session, synced, reading, mar
         </p>
       )}
       {reading && canComment && <ReadingCommentButton rootRef={rootRef} markdown={markdown} onStart={startDraft} onUnanchorable={unanchorable} />}
-    </>
+    </MentionCandidatesContext.Provider>
   ) : null;
 
   const editor = useMemo<EditorComments | undefined>(

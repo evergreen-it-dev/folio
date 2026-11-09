@@ -29,6 +29,7 @@ import { registerPublicSeoRoutes } from './publicSeo.js';
 import { registerSpaceAppearanceRoutes } from './spaceAppearanceRoutes.js';
 import { registerPageTimerRoutes } from './pageTimerRoutes.js';
 import { registerPropertiesRoutes } from './propertiesRoutes.js';
+import { startReviewReminders } from './verification.js';
 import { registerBaseRoutes } from './bases/routes.js';
 import { registerSpaceFilesRoutes } from './spaceFilesRoutes.js';
 import { registerTrashRoutes } from './trash/routes.js';
@@ -36,6 +37,7 @@ import { registerPageChangeRoutes } from './pageChangesRoutes.js';
 import { registerTagRoutes } from './tagsRoutes.js';
 import { registerSavedSearchRoutes } from './savedSearchesRoutes.js';
 import { registerCommentRoutes } from './commentsRoutes.js';
+import { registerProposalRoutes } from './proposalsRoutes.js';
 import { registerAssistantRoutes } from './assistant/routes.js';
 import { registerPublicAssistantRoutes } from './assistant/publicRoutes.js';
 import { registerAssistantAdminRoutes } from './assistant/adminRoutes.js';
@@ -336,6 +338,8 @@ async function main(): Promise<void> {
     registerSavedSearchRoutes(protectedScope);
     // 02.11.2026: inline comment threads on doc pages (anchors are opaque Y.RelativePosition bytes).
     registerCommentRoutes(protectedScope);
+    // 09.11.2026: agent write mode of a space and its review queue (migration 062).
+    registerProposalRoutes(protectedScope);
     // Chat link previews: the person's own links, and the instance admin's status page.
     registerChatIntegrationProtectedRoutes(protectedScope);
   });
@@ -389,6 +393,7 @@ async function main(): Promise<void> {
   await startPeriodicFetchForAllSpaces();
 
   collab.initCollab();
+  startReviewReminders();
 
   if (isDemoMode() && trustProxy === false) {
     app.log.warn('demo mode without TRUST_PROXY: behind a reverse proxy every visitor shares one IP, so the login rate limit (10/min) is shared by all. Set TRUST_PROXY=true.');

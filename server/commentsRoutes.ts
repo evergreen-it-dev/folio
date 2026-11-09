@@ -1,10 +1,10 @@
 /**
- * The HTTP wrapper of server/comments.ts: inline comment threads on doc pages
+ * The HTTP wrapper of server/comments.ts: comment threads on doc pages (text anchors) and boards (element targets) and tables (cell targets)
  * (contract: shared/comments.ts). Cookie or PAT — reading needs any token, the
  * writes a write-scope one.
  *
  *   GET    /api/pages/:id/comments               viewer+ on the page -> PageCommentsResponse
- *   POST   /api/pages/:id/comments               signed-in reader, doc pages -> 201 CommentThread
+ *   POST   /api/pages/:id/comments               signed-in reader, doc pages (text anchor) and boards (target) -> 201 CommentThread
  *   POST   /api/comment-threads/:threadId/comments   same -> 201 PageComment (a reply)
  *   PATCH  /api/comments/:commentId              its author -> PageComment
  *   DELETE /api/comments/:commentId              its author or a moderator -> 204
@@ -59,7 +59,7 @@ async function threadAccess(user: User, threadId: string): Promise<PageAccess & 
 }
 
 function requireCanComment(rights: comments.CommentRights, entry: PageIndexEntry): void {
-  if (entry.kind !== 'doc') throw badRequest('comments are only available on documents');
+  if (!comments.isCommentableKind(entry.kind)) throw badRequest('comments are only available on documents, boards and tables');
   if (!rights.canComment) throw forbidden('commenting requires a signed-in account');
 }
 
@@ -81,9 +81,29 @@ export function registerCommentRoutes(app: FastifyInstance): void {
     session.requireWriteScope(request);
     requireCanComment(rights, entry);
     const body = parseBody(createCommentThreadBodySchema, request.body);
-    if (!comments.isValidAnchor(body.anchorFrom) || !comments.isValidAnchor(body.anchorTo)) throw badRequest('anchorFrom and anchorTo must be base64');
+    let input: comments.NewThread;
+    if (entry.kind === 'board') {
+      // A board thread hangs on an element, never on text; the label is the server's own reading of the element.
+      if (!body.target) throw badRequest('a comment on a board needs a target');
+      if (body.target.kind !== 'board_element') throw badRequest('a board takes comments on its elements only');
+      const target = await comments.boardElementTarget(id, body.target.elementId);
+      if (!target) throw badRequest('the board has no such element');
+      input = { target, body: body.body };
+    } else if (entry.kind === 'table') {
+      // A table thread hangs on a cell (row + column ids); the label is the server's reading of the cell.
+      if (!body.target) throw badRequest('a comment on a table needs a target');
+      if (body.target.kind !== 'table_cell') throw badRequest('a table takes comments on its cells only');
+      const target = await comments.tableCellTarget(id, body.target.rowId, body.target.columnId);
+      if (!target) throw badRequest('the table has no such row or column');
+      input = { target, body: body.body };
+    } else {
+      // A doc thread keeps requiring its anchor in the text.
+      if (body.target || !body.anchorFrom || !body.anchorTo || !body.quotedText) throw badRequest('a comment on a document needs anchorFrom, anchorTo and quotedText');
+      if (!comments.isValidAnchor(body.anchorFrom) || !comments.isValidAnchor(body.anchorTo)) throw badRequest('anchorFrom and anchorTo must be base64');
+      input = { anchorFrom: body.anchorFrom, anchorTo: body.anchorTo, quotedText: body.quotedText, body: body.body };
+    }
     limitWrites(user);
-    const thread = await comments.createThread(id, user.id, body);
+    const thread = await comments.createThread(id, user.id, input);
     recordAudit(user.id, 'comment.created', id, { threadId: thread.id });
     reply.status(201);
     return thread;

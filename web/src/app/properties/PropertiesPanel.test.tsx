@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import i18next from 'i18next';
@@ -409,5 +409,82 @@ describe('PageTitleProperties (under the page title)', () => {
     renderTitle({ canEdit: false, onStartEditing: startEditing });
     await userEvent.click(await screen.findByRole('button', { name: 'Add property' }));
     expect(startEditing).toHaveBeenCalledTimes(1);
+  });
+
+  /** The page's own query (verification) and the people picker, on top of the properties stub; returns the verification PUT bodies. */
+  function stubVerification(state: PagePropertiesResponse, verification: Record<string, unknown> | null) {
+    const calls = stubNetwork(state);
+    const base = globalThis.fetch;
+    const puts: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/pages/p1' && (init?.method ?? 'GET') === 'GET') return json({ id: 'p1', kind: 'doc', verification });
+        if (url === '/api/spaces/demo/mentionable') return json({ users: [{ username: 'ann', name: 'Ann' }] });
+        if (url === '/api/pages/p1/verification' && init?.method === 'PUT') {
+          puts.push(JSON.parse(String(init.body)));
+          return json({ written: true, verification });
+        }
+        return base(input, init);
+      }),
+    );
+    return { calls, puts };
+  }
+
+  async function openToggle(name: string) {
+    const toggle = await screen.findByRole('button', { name });
+    if (toggle.getAttribute('aria-expanded') !== 'true') await userEvent.click(toggle);
+  }
+
+  const WITH_OWNER: PagePropertiesResponse = {
+    ...BASE,
+    properties: { id: '01ABC', owner: 'ann', verified: '2026-10-01', review_by: '2026-12-01' },
+    types: { id: 'text', owner: 'text', verified: 'date', review_by: 'date' },
+  };
+  const VERIFICATION = { state: 'verified', owner: 'ann', verified: '2026-10-01', reviewBy: '2026-12-01' };
+
+  it('reading mode shows owner, verified and review values without fields or the button, and counts them once', async () => {
+    stubVerification(WITH_OWNER, VERIFICATION);
+    renderTitle({ canEdit: false });
+    await openToggle('Properties (3)');
+    const rows = await screen.findByTestId('verification-rows');
+    expect(within(rows).getByText('@ann')).toBeTruthy();
+    expect(within(rows).queryByRole('combobox')).toBeNull();
+    expect(within(rows).queryByRole('button')).toBeNull();
+    expect(rows.querySelector('input')).toBeNull();
+    // Not drawn a second time as ordinary rows.
+    expect(screen.getAllByRole('group', { name: 'Owner' })).toHaveLength(1);
+    expect(screen.queryByRole('group', { name: 'owner' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'review_by' })).toBeNull();
+  });
+
+  it('Live mode: owner picker, review date and "Mark as verified" write through the verification endpoint', async () => {
+    const { puts } = stubVerification(WITH_OWNER, VERIFICATION);
+    renderTitle({ canEdit: true });
+    await openToggle('Properties (3)');
+    const rows = await screen.findByTestId('verification-rows');
+    await userEvent.click(within(rows).getByRole('button', { name: 'Mark as verified' }));
+    await waitFor(() => expect(puts).toContainEqual({ markVerified: true }));
+    await userEvent.selectOptions(await within(rows).findByRole('combobox', { name: 'Owner' }), '');
+    await waitFor(() => expect(puts).toContainEqual({ owner: null }));
+    fireEvent.change(rows.querySelector('input[type="date"]')!, { target: { value: '2027-01-15' } });
+    await waitFor(() => expect(puts).toContainEqual({ reviewBy: '2027-01-15' }));
+  });
+
+  it('a page without them: the editor gets "Owner and review" and sets the owner; a reader sees no trace', async () => {
+    const { puts } = stubVerification(EMPTY, null);
+    renderTitle({ canEdit: true });
+    await userEvent.click(await screen.findByRole('button', { name: 'Owner and review' }));
+    const rows = await screen.findByTestId('verification-rows');
+    await userEvent.selectOptions(await within(rows).findByRole('option', { name: 'Ann (@ann)' }).then((o) => o.parentElement as HTMLSelectElement), 'ann');
+    await waitFor(() => expect(puts).toContainEqual({ owner: 'ann' }));
+    cleanup();
+
+    stubVerification(EMPTY, null);
+    const { container } = renderTitle({ canEdit: false });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(container.querySelector('[data-testid="verification-rows"]')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

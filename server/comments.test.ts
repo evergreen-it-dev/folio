@@ -121,12 +121,20 @@ describe('inline comments (real PG)', () => {
     expect((await app.inject({ method: 'PATCH', url: `/api/comment-threads/${thread.id}`, headers: auth.admin, payload: { status: 'closed' } })).statusCode).toBe(400);
   });
 
-  it('only doc pages take comments', async () => {
-    const board = await storage.createPage({ space, parentPath: '', title: 'Sketch', kind: 'board' });
-    const refused = await start('editor', 'x', board.id);
+  it('only documents, boards and tables take comments; a document still needs its text anchor', async () => {
+    const table = await storage.createPage({ space, parentPath: '', title: 'Feedback', kind: 'form' });
+    const refused = await start('editor', 'x', table.id);
     expect(refused.statusCode).toBe(400);
-    expect(refused.json<{ error: string }>().error).toMatch(/documents/);
-    expect((await read('editor', board.id)).json<PageCommentsResponse>()).toMatchObject({ threads: [], canComment: false, canModerate: false });
+    expect(refused.json<{ error: string }>().error).toMatch(/documents, boards and tables/);
+    expect((await read('editor', table.id)).json<PageCommentsResponse>()).toMatchObject({ threads: [], canComment: false, canModerate: false });
+
+    // The weakened schema does not weaken the doc path: no anchor, or a target instead of one, is refused.
+    const noAnchor = await app.inject({ method: 'POST', url: `/api/pages/${pageId}/comments`, headers: auth.editor, payload: { body: 'x' } });
+    expect(noAnchor.statusCode).toBe(400);
+    const targetOnDoc = await app.inject({ method: 'POST', url: `/api/pages/${pageId}/comments`, headers: auth.editor, payload: { target: { kind: 'board_element', elementId: 'e1' }, body: 'x' } });
+    expect(targetOnDoc.statusCode).toBe(400);
+    const half = await app.inject({ method: 'POST', url: `/api/pages/${pageId}/comments`, headers: auth.editor, payload: { anchorFrom: 'AQID', body: 'x' } });
+    expect(half.statusCode).toBe(400);
   });
 
   it('replies, edits (author only) and deletes (author or moderator)', async () => {
@@ -320,7 +328,8 @@ describe('MCP comment tools (real PG, in-memory transport)', () => {
     const threadId = (await listThreads(pageId))[0].id;
     expect((await call(outsider, ['read', 'write'], 'reply_comment', { threadId, body: 'x' })).text).toBe('comment thread not found');
 
-    const board = await storage.createPage({ space, parentPath: '', title: 'Board', kind: 'board' });
-    expect((await call(editor, ['read', 'write'], 'add_comment', { page: board.id, quote: 'x', body: 'x' })).text).toMatch(/only available on documents/);
+    const table = await storage.createPage({ space, parentPath: '', title: 'Feedback', kind: 'form' });
+    expect((await call(editor, ['read', 'write'], 'add_comment', { page: table.id, quote: 'x', body: 'x' })).text).toMatch(/only available on documents, boards and tables/);
+    expect((await call(editor, ['read', 'write'], 'add_comment', { page: pageId, body: 'x' })).text).toMatch(/needs quote/);
   });
 });

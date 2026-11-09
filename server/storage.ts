@@ -44,6 +44,7 @@ import { docIndexText, docIndexTextAsync } from './indexText.js';
 import { CANVAS_MAX_BYTES, canvasSearchText, parseJsonCanvas } from '../shared/canvas/index.js';
 import { inlineMarkdownToPlainText } from '../shared/inlineText.js';
 import { docExtOf, isMdxPath, isStrongIndexName, stripDocExt } from '../shared/mdx.js';
+import { computeVerification, hasVerificationProps, pickVerificationProps, type VerificationProps } from '../shared/verification.js';
 import { carryFrontmatterKeys, mergeFrontmatter, writeFrontmatterKeys, type FolioFrontmatter, type FrontmatterKeyEdit } from './frontmatter.js';
 import * as propsSidecar from './propsSidecar.js';
 import { ownProperties, reservedKeysOf } from './reservedPropertyKeys.js';
@@ -104,6 +105,8 @@ export interface PageIndexEntry {
   frontmatter?: Record<string, unknown>;
   /** A canvas page's parsed document — set only by indexCanvasFile during a scan, for the page index (its links and tags). */
   canvasDoc?: CanvasDocument;
+  /** Owner / verified / review_by as the index row holds them - set by rowToEntry only, for toPageMeta's verification state. */
+  verificationProps?: VerificationProps;
 }
 
 // ---------------------------------------------------------------------------
@@ -689,11 +692,14 @@ interface PagesIndexRow {
   updated_at: string;
   plain_text: string | null;
   is_index: boolean;
+  frontmatter?: unknown;
 }
 
 function rowToEntry(row: PagesIndexRow): PageIndexEntry {
   const relPath = row.path;
+  const verificationProps = pickVerificationProps(row.frontmatter);
   return {
+    ...(hasVerificationProps(verificationProps) ? { verificationProps } : {}),
     id: row.id,
     space: row.space_slug,
     relPath,
@@ -2328,6 +2334,8 @@ export function toPageMeta(e: PageIndexEntry): PageMeta {
   const meta: PageMeta = { id: e.id, space: e.space, path: e.relPath, kind: e.kind, title: e.title, order, status: e.status, updatedAt: e.updatedAt };
   if (e.icon) meta.icon = e.icon;
   if (e.cover) meta.cover = e.cover;
+  const verification = e.verificationProps ? computeVerification(e.verificationProps, e.updatedAt) : null;
+  if (verification) meta.verification = verification;
   return meta;
 }
 

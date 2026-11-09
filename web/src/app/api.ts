@@ -20,6 +20,13 @@ import type {
   PageComment,
   PageCommentsResponse,
 } from '@shared/comments';
+import type {
+  AgentWriteMode,
+  DecideProposalBody,
+  PageProposalDetail,
+  PageProposalsResponse,
+  ProposalListResponse,
+} from '@shared/proposals';
 import type { z } from 'zod';
 import { visitorHeaders } from '../analytics';
 import { getConnectivity, reportRequest } from './offline/connectivity';
@@ -154,6 +161,8 @@ import type {
   UpdatePageBody,
   UpdatePageAccessBody,
   UpdatePagePropertiesBody,
+  UpdateVerificationBody,
+  VerificationResponse,
   UpdatePropertyTypesBody,
   UndoPageChangeResponse,
   User,
@@ -728,6 +737,10 @@ export const api = {
 
   // ---------- Obsidian wave 3: properties (front matter), tags, saved searches ----------
 
+  /** PUT /api/pages/:id/verification — editor+: the owner, the review date and "Mark as verified" (shared/verification.ts). */
+  updateVerification: (id: string, body: UpdateVerificationBody) =>
+    request<VerificationResponse>(`/api/pages/${encodeURIComponent(id)}/verification`, { method: 'PUT', body: JSON.stringify(body) }),
+
   /** GET /api/pages/:id/properties — viewer+. */
   getPageProperties: (id: string) => request<PagePropertiesPayload>(`/api/pages/${encodeURIComponent(id)}/properties`),
 
@@ -1052,6 +1065,25 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+
+  /** PATCH /api/spaces/:space/agent-settings (space admin) — 'direct' (agents write at once) or 'review' (their Markdown edits wait for an editor). Callers re-fetch ['spaces']. */
+  updateAgentSettings: (space: string, agentWriteMode: AgentWriteMode) =>
+    request<{ slug: string; agentWriteMode: AgentWriteMode }>(`/api/spaces/${encodeURIComponent(space)}/agent-settings`, {
+      method: 'PATCH',
+      body: JSON.stringify({ agentWriteMode }),
+    }),
+
+  // ---------- review queue (agent write mode = review; shared/proposals.ts) ----------
+
+  /** GET /api/spaces/:space/proposals — the open proposals the caller may review (editor+); `decided` lists the history. */
+  listProposals: (space: string, status: 'open' | 'decided' = 'open') =>
+    request<ProposalListResponse>(`/api/spaces/${encodeURIComponent(space)}/proposals${status === 'decided' ? '?status=decided' : ''}`),
+  /** GET /api/pages/:id/proposals — the open proposals of one page (empty below editor). */
+  listPageProposals: (pageId: string) => request<PageProposalsResponse>(`/api/pages/${encodeURIComponent(pageId)}/proposals`),
+  getProposal: (id: string) => request<PageProposalDetail>(`/api/proposals/${encodeURIComponent(id)}`),
+  /** POST /api/proposals/:id/decision — 409 with code `proposal_stale` when the page changed and `currentHash` is missing or old. */
+  decideProposal: (id: string, body: DecideProposalBody) =>
+    request<PageProposalDetail>(`/api/proposals/${encodeURIComponent(id)}/decision`, { method: 'POST', body: JSON.stringify(body) }),
 
   // ---------- templates (round 5; any page kind with subpages since 19.10.2026) ----------
 

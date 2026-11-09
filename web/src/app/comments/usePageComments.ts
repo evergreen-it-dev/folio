@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CommentThreadStatus, CreateCommentThreadBody, PageCommentsResponse } from '@shared/comments';
 import { api } from '../api';
-import type { CollabSession } from '../../editor/collab';
+import type { Awareness } from 'y-protocols/awareness';
 
 export const pageCommentsKey = (pageId: string) => ['page-comments', pageId] as const;
 
@@ -32,13 +32,18 @@ export function usePageCommentsQuery(pageId: string, enabled: boolean) {
   });
 }
 
+/** What the change announcement needs of a room: a doc page's CollabSession and a board's BoardCollabSession both have it. */
+export interface AwarenessSession {
+  provider: { awareness: Awareness };
+}
+
 /** Tell the peers in the room that the comments changed. */
-export function announceCommentsChange(session: CollabSession | null): void {
+export function announceCommentsChange(session: AwarenessSession | null): void {
   session?.provider.awareness.setLocalStateField(COMMENTS_REV_FIELD, Date.now());
 }
 
 /** Refetch when any REMOTE client's `commentsRev` changes. */
-export function useCommentsRealtime(session: CollabSession | null, pageId: string, enabled: boolean): void {
+export function useCommentsRealtime(session: AwarenessSession | null, pageId: string, enabled: boolean): void {
   const queryClient = useQueryClient();
   useEffect(() => {
     if (!session || !enabled) return;
@@ -74,7 +79,7 @@ export interface CommentActions {
 }
 
 /** Every mutation: call the API, refresh the list, tell the peers. A failure is thrown to the caller, which shows it where the user typed. */
-export function useCommentActions(pageId: string, session: CollabSession | null): CommentActions {
+export function useCommentActions(pageId: string, session: AwarenessSession | null): CommentActions {
   const queryClient = useQueryClient();
   const done = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: pageCommentsKey(pageId) });

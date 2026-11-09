@@ -4,6 +4,56 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-09
+
+Notifications and @mentions, comments on whiteboard elements and table cells,
+a review mode for edits made by agents, a page owner with a review date, and
+team skills served over MCP. Adds migrations 061, 062 and 063.
+
+### Added
+
+- **Notifications for comments.** The bell reports an @mention in a comment and
+  a reply in a thread you took part in. Only a person who can see the page is
+  notified. A comment written by an agent through MCP notifies in the same way.
+  Typing `@` in the comment field offers people from the space. There
+  is no email.
+
+- **Comments on whiteboard elements and table cells.** Comment on a single
+  element of a board or on a cell of a data table, in the browser and through
+  `add_comment` (`elementId`; `rowId` and `columnId`). The link in a
+  notification opens the thread and shows the element or the cell. The thread
+  of a deleted element, row or column stays in the list with a note.
+
+- **Review mode for edits by agents.** Set per space: space menu, **AI agents**,
+  **Edit at once** or **Send edits for review**. The default is **Edit at
+  once**; only a space admin can change it. In review mode `update_page`,
+  `create_page` and `PUT /api/pages/:id` with an API token create a proposal
+  and leave the page text as it is, until an editor or admin accepts the
+  proposal in the **On review** list, which shows line-by-line differences. If
+  the page has changed since, the proposal is marked and can be accepted only
+  after the differences against the current text are shown. Only Markdown pages
+  are covered: while the mode is on, the agent tools for boards, tables, forms,
+  bases, properties, tags and artifacts are refused. Comments from agents are
+  posted at once. People editing in the browser do not go through the queue,
+  and `git push` is not intercepted.
+
+- **Page owner and review date.** The properties `owner`, `verified` and
+  `review_by` are stored in Git as ordinary page properties. In the properties
+  section under the title (in edit mode): choose the owner, set the date of the
+  next review and press **Mark as verified** (the term is 90 days, or the
+  page's previous period). A badge under the title shows **Verified**,
+  **Changed after verification** or **Review overdue**, and an overdue page is
+  marked in the tree. `read_page` and `fetch` give an agent a `verification`
+  block with the state. Once a day, overdue pages send a reminder to the
+  owner's bell, or to the space admins when there is no owner, at most once a
+  week per page.
+
+- **Team skills over MCP.** A page with the tag `skill` and a `description`
+  property is offered to agents through the tools `list_skills` and
+  `get_skill` and as MCP prompts. Only pages the user can see are available,
+  public sites refuse the calls, and a new page is visible to the agent at
+  once. See [docs/TEAM-SKILLS.md](docs/TEAM-SKILLS.md).
+
 ### Fixed
 
 - **`update_page` and `PUT /api/pages/:id` no longer silently replace newer

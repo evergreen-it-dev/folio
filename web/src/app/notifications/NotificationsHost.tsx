@@ -44,6 +44,8 @@ export function NotificationsHost() {
       onEvent: (event) => {
         if (event.type === 'notification') {
           addNotificationToCache(queryClient, event.item);
+          // A proposal arrived or was decided: the review list, the counter and the page banner are stale.
+          if (event.item.kind.startsWith('proposal_')) void queryClient.invalidateQueries({ queryKey: ['proposals'] });
           return;
         }
         if (event.type === 'tree') {

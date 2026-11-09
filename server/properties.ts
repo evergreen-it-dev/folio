@@ -73,6 +73,7 @@
  * `page.properties` with the changed keys.
  */
 import { createHash } from 'node:crypto';
+import { VERIFICATION_KEYS } from '../shared/verification.js';
 import fs from 'node:fs/promises';
 import type { PageKind, PagePropertiesResponse, PropertyType, UpdatePagePropertiesBody, User } from '../shared/contracts.js';
 import { recordAudit } from './audit.js';
@@ -629,6 +630,36 @@ async function updateManifestProperties(entry: PageIndexEntry, body: UpdatePageP
   return { response: await readPageProperties(current, roleCanEdit), written, keys: written ? keys : [] };
 }
 
+interface PageStamp {
+  updatedAt: string;
+  mtime: Date | null;
+}
+
+/** updated_at (from the index) and, for a file-backed front matter, the file's mtime - as they are right now. */
+async function stampOf(entry: PageIndexEntry): Promise<PageStamp | null> {
+  const row = await queryOne<{ updated_at: string }>('SELECT updated_at FROM pages_index WHERE id = $1', [entry.id]);
+  if (!row) return null;
+  let mtime: Date | null = null;
+  if (propertiesStoreOf(entry.kind) === 'frontmatter' || propertiesStoreOf(entry.kind) === 'embedded') {
+    mtime = await fs.stat(entry.absPath).then((st) => st.mtime, () => null);
+  }
+  return { updatedAt: new Date(row.updated_at).toISOString(), mtime };
+}
+
+/**
+ * Puts updated_at - and the file's mtime, which the next scan turns into updated_at again - back. A failure only
+ * costs the "verified" badge a flip to "changed", so it is logged and never thrown.
+ */
+async function restoreStamp(entry: PageIndexEntry, stamp: PageStamp): Promise<void> {
+  try {
+    await query('UPDATE pages_index SET updated_at = $2 WHERE id = $1', [entry.id, stamp.updatedAt]);
+    if (stamp.mtime) await fs.utimes(entry.absPath, stamp.mtime, stamp.mtime);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[properties] could not restore updated_at of ${entry.id}:`, err);
+  }
+}
+
 /**
  * PUT /api/pages/:id/properties and MCP set_page_properties for a page the caller may edit (the caller has checked the
  * role and the token scope): records the editor, writes, nudges the debounced auto-commit and audits the changed keys.
@@ -639,7 +670,13 @@ export async function savePageProperties(entry: PageIndexEntry, user: Pick<User,
   gitSync.recordEditor(entry.space, { name: user.name, email: user.email });
   // A board's / file's sidecar is committed by the write itself (attributed to the caller); a document's,
   // table's or form's file rides the debounced auto-commit like any page save.
+  const before = await stampOf(entry);
   const result = await updatePageProperties(entry.id, body, true, { name: user.name, email: user.email });
+  // Confirming a page (or changing its owner / deadline) is not an edit of its text: keep updated_at where it was,
+  // or the page would show "changed after verification" the moment it was verified.
+  if (result.written && before && result.keys.length > 0 && result.keys.every((k) => (VERIFICATION_KEYS as readonly string[]).includes(k))) {
+    await restoreStamp(entry, before);
+  }
   if (result.written) {
     gitSync.noteActivity(entry.space);
     recordAudit(user.id, 'page.properties', entry.id, { keys: result.keys, ...audit });

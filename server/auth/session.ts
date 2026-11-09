@@ -36,6 +36,8 @@ declare module 'fastify' {
      * this directly except those two helpers and the MCP mount.
      */
     tokenScopes?: ApiTokenScope[];
+    /** Id of the API token / OAuth grant that authenticated this request; undefined for a cookie session. Written to audit_log and the review queue. */
+    tokenId?: string;
   }
 }
 
@@ -338,6 +340,7 @@ export async function requireSession(request: FastifyRequest, reply: FastifyRepl
   }
   request.authUser = resolved.user;
   request.tokenScopes = resolved.tokenScopes;
+  request.tokenId = resolved.tokenId;
   setSentryUser(resolved.user.id);
 }
 

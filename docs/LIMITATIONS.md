@@ -148,6 +148,12 @@ what is not there.
 12. **Through MCP you cannot**: create an `index.md` for a folder, manage
     access rights, rename or delete a space. Those actions go through the
     interface only.
+12a. **Review mode covers Markdown pages only.** While a space is set to
+    **Send edits for review**, the agent tools for boards, tables, forms, bases,
+    properties, tags and artifacts are refused, `git push` is not intercepted,
+    and people editing in the browser do not go through the queue.
+12b. **Notifications are in the bell only.** There is no email, and no
+    notification for a person who cannot see the page.
 
 ## Import
 

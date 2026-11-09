@@ -506,7 +506,7 @@ export function OutlinePanel({ markdown, pageId, title }: OutlinePanelProps) {
                 container. */}
             <div className="flex-1 overflow-x-hidden overflow-y-auto px-3 py-2">
               <div className="flex flex-col gap-4">
-                {outlineSection('mobile')}
+                      {outlineSection('mobile')}
                 {notesSection('mobile')}
                 {todosSection('mobile')}
                 {hasGraph && <LocalGraphSection space={space!} pageId={pageId!} variant="mobile" onNavigate={() => setMobileOpen(false)} />}

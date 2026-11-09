@@ -30,7 +30,9 @@ const commentPersonOutput = z.looseObject({ name: z.string(), username: z.string
 const commentThreadOutput = z.looseObject({
   id: z.string().describe('Thread id — pass it to reply_comment'),
   status: z.string().describe('open or resolved'),
-  quotedText: z.string().describe('The text of the page the thread is attached to'),
+  quotedText: z.string().nullable().describe('The text of the page the thread is attached to; null for a board thread (see target)'),
+  target: z.looseObject({ kind: z.string(), elementId: z.string().optional(), rowId: z.string().optional(), columnId: z.string().optional(), label: z.string().optional() }).optional().describe('Board and table threads: the element (kind board_element) or the cell (kind table_cell: rowId and columnId) the thread is about, and what it looked like'),
+  targetDeleted: z.boolean().optional().describe('Board and table threads: true when that element, row or column has been removed'),
   createdBy: commentPersonOutput,
   createdAt: z.string().describe('ISO timestamp'),
   resolvedBy: commentPersonOutput,
@@ -164,6 +166,12 @@ export const outputSchemas = {
     entryHtml: z.string().optional().describe('Artifact pages: the HTML of the entry page'),
   },
   page: pageMetaOutput.shape,
+  /** update_page / create_page: the page, or in a review space (status 'proposed') the proposal that waits for an editor. */
+  page_or_proposal: {
+    ...pageMetaOutput.partial().shape,
+    proposalId: z.string().optional().describe('Review mode only: id of the proposal that was queued instead of writing the page'),
+    message: z.string().optional().describe('Review mode only: what happened and what to do next'),
+  },
   list_templates: {
     templates: z.array(pageMetaOutput.extend({ description: z.string().optional().describe('What the template is for, when it has a description') })).describe('Templates of the space'),
   },
@@ -248,6 +256,20 @@ export const outputSchemas = {
       )
       .describe('Unresolved links, sorted by target path, then source path'),
     total: z.number().describe('Unresolved links in the space before limit/offset'),
+  },
+  list_skills: {
+    skills: z
+      .array(z.looseObject({ name: z.string().describe('Page title'), description: z.string().describe('Front matter description; empty when the page has none'), id: z.string().describe('Page id'), space: z.string(), path: z.string(), updatedAt: z.string() }))
+      .describe('Team skills the caller can read, by name'),
+  },
+  get_skill: {
+    name: z.string().describe('Page title'),
+    description: z.string(),
+    id: z.string().describe('Page id'),
+    space: z.string(),
+    path: z.string(),
+    updatedAt: z.string(),
+    markdown: z.string().describe('The skill text (page body)'),
   },
   list_orphans: {
     pages: z

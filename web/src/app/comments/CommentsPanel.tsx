@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
-import type { CommentThread, PageComment } from '@shared/comments';
+import type { CommentTarget, CommentThread, CreateCommentThreadBody, PageComment } from '@shared/comments';
 import { sortByPosition, type ResolvedAnchor } from '../../editor/comment-anchors';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { CommentComposer } from './CommentComposer';
@@ -9,11 +9,24 @@ import { ThreadCard } from './ThreadCard';
 import type { CommentActions } from './usePageComments';
 import '../i18n/register';
 
-/** A thread being written: anchored, not yet sent. */
-export interface CommentDraft {
+/** A thread on a span of text being written: anchored, not yet sent. */
+export interface TextCommentDraft {
   anchorFrom: string;
   anchorTo: string;
   quotedText: string;
+}
+
+/** A thread on a board element being written; `preview` is what the draft card quotes (the element's label). */
+export interface TargetCommentDraft {
+  target: CommentTarget;
+  preview: string;
+}
+
+export type CommentDraft = TextCommentDraft | TargetCommentDraft;
+
+/** The body of POST /api/pages/:id/comments for a draft. */
+export function draftToThread(draft: CommentDraft, body: string): CreateCommentThreadBody {
+  return 'target' in draft ? { target: draft.target, body } : { ...draft, body };
 }
 
 export const DRAFT_ID = '__draft__';
@@ -35,6 +48,13 @@ export interface CommentsPanelProps {
   onSelect(id: string): void;
   onDraftDone(): void;
   onClose(): void;
+  /** Board: lays the panel over the page at every width instead of docking it beside the text on a wide screen. */
+  floating?: boolean;
+  /** Board: the hint shown when there is nothing to list (the default talks about selecting text). */
+  emptyHint?: string;
+  /** Board: starts picking an element to comment on; absent for a document. */
+  onPick?: () => void;
+  picking?: boolean;
 }
 
 /**
@@ -42,7 +62,7 @@ export interface CommentsPanelProps {
  * on a tablet, a bottom sheet on a phone — one element, three skins (classes).
  */
 export function CommentsPanel(props: CommentsPanelProps) {
-  const { openThreads, resolvedThreads, anchors, draft, meId, canComment, canModerate, activeId, focus, actions, onHover, onSelect, onDraftDone, onClose } = props;
+  const { openThreads, resolvedThreads, anchors, draft, meId, canComment, canModerate, activeId, focus, actions, onHover, onSelect, onDraftDone, onClose, floating, emptyHint, onPick, picking } = props;
   const { t } = useTranslation('app');
   const [showResolved, setShowResolved] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ comment: PageComment; isThread: boolean } | null>(null);
@@ -92,7 +112,7 @@ export function CommentsPanel(props: CommentsPanelProps) {
     <aside
       aria-label={t('comments.title')}
       data-comments-panel=""
-      className="ph-mask fixed inset-x-0 bottom-0 z-40 flex max-h-[65vh] flex-col rounded-t-xl border-t border-neutral-200 bg-neutral-50 shadow-2xl dark:border-neutral-800 dark:bg-neutral-950 md:inset-x-auto md:bottom-4 md:right-4 md:top-20 md:max-h-none md:w-80 md:rounded-xl md:border min-[1280px]:static min-[1280px]:z-auto min-[1280px]:w-80 min-[1280px]:shrink-0 min-[1280px]:rounded-none min-[1280px]:border-0 min-[1280px]:border-l min-[1280px]:shadow-none"
+      className={`ph-mask fixed inset-x-0 bottom-0 z-40 flex max-h-[65vh] flex-col rounded-t-xl border-t border-neutral-200 bg-neutral-50 shadow-2xl dark:border-neutral-800 dark:bg-neutral-950 md:inset-x-auto md:bottom-4 md:right-4 md:top-20 md:max-h-none md:w-80 md:rounded-xl md:border ${floating ? '' : 'min-[1280px]:static min-[1280px]:z-auto min-[1280px]:w-80 min-[1280px]:shrink-0 min-[1280px]:rounded-none min-[1280px]:border-0 min-[1280px]:border-l min-[1280px]:shadow-none'}`}
     >
       <div className="flex shrink-0 items-center gap-2 border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
         <h2 className="flex-1 text-sm font-medium text-neutral-700 dark:text-neutral-300">{t('comments.title')}</h2>
@@ -117,22 +137,35 @@ export function CommentsPanel(props: CommentsPanelProps) {
         </button>
       </div>
 
+      {onPick && canComment && (
+        <div className="shrink-0 border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
+          <button
+            type="button"
+            aria-pressed={picking}
+            onClick={onPick}
+            className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-xs text-neutral-700 hover:bg-neutral-100 aria-pressed:border-amber-400 aria-pressed:bg-amber-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:aria-pressed:border-amber-500 dark:aria-pressed:bg-amber-950"
+          >
+            {picking ? t('comments.board.pickingCancel') : t('comments.board.pick')}
+          </button>
+        </div>
+      )}
+
       <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
         {ordered.length === 0 && !showResolved && (
-          <p className="px-1 py-4 text-center text-sm text-neutral-400 dark:text-neutral-500">{canComment ? t('comments.emptyHint') : t('comments.empty')}</p>
+          <p className="px-1 py-4 text-center text-sm text-neutral-400 dark:text-neutral-500">{canComment ? (emptyHint ?? t('comments.emptyHint')) : t('comments.empty')}</p>
         )}
         {ordered.map((item) =>
           item.thread ? (
             card(item.thread)
           ) : draft ? (
             <article key={DRAFT_ID} data-thread-id={DRAFT_ID} className="rounded-lg border border-amber-400 bg-white p-3 shadow-sm ring-1 ring-amber-300 dark:border-amber-500 dark:bg-neutral-900 dark:ring-amber-600">
-              <blockquote className="mb-2 line-clamp-2 break-words border-l-2 border-amber-400 pl-2 text-xs text-neutral-500 dark:border-amber-500 dark:text-neutral-400">{draft.quotedText}</blockquote>
+              <blockquote className="mb-2 line-clamp-2 break-words border-l-2 border-amber-400 pl-2 text-xs text-neutral-500 dark:border-amber-500 dark:text-neutral-400">{'target' in draft ? draft.preview : draft.quotedText}</blockquote>
               <CommentComposer
                 autoFocus
                 placeholder={t('comments.newPlaceholder')}
                 submitLabel={t('comments.post')}
                 onSubmit={async (body) => {
-                  await actions.createThread({ ...draft, body });
+                  await actions.createThread(draftToThread(draft, body));
                   onDraftDone();
                 }}
                 onCancel={onDraftDone}

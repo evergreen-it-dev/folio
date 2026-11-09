@@ -101,6 +101,8 @@ import { resolveTextLanguage } from './serverText.js';
 import { createStarterWritingRules } from './writingRules.js';
 import { parseBody, queryString } from './validate.js';
 import * as session from './auth/session.js';
+import * as proposals from './proposals.js';
+import type { ProposedResult } from '../shared/proposals.js';
 import { assertDemoAgentRootIntact, assertNotDemo, assertNotDemoAccount } from './demo.js';
 import * as authStore from './auth/store.js';
 import { hashPassword } from './auth/passwords.js';
@@ -402,6 +404,8 @@ export function registerRoutes(app: FastifyInstance): void {
     const agentCounts = await storage.countAgentPages(memberSpaces.map((s) => s.slug));
     // Which of those spaces keep a writing-rules page (a boolean, like the count — nothing from inside `.agent`).
     const writingRulesSpaces = await storage.spacesWithWritingRules(memberSpaces.map((s) => s.slug));
+    // Spaces whose agents propose instead of writing (migration 062): every member sees it, a banner needs it.
+    const reviewSpaces = await proposals.reviewModeSpaces();
     // Same "only while actually conflicted" gate as buildAdminSpacesList —
     // this list is polled (Sidebar/ConflictBanner/SpaceSwitcher all share
     // the ['spaces'] query), so a `git grep` per space would be wasted work
@@ -416,6 +420,7 @@ export function registerRoutes(app: FastifyInstance): void {
         // The ignore list names folders of the repository: space admins only (the effective `lightFootprint` flag is not a secret).
         if (!adminSlugs.has(s.slug)) delete info.scanIgnore;
         info.agentRules = buildAgentRulesInfo(agentCounts.get(s.slug) ?? 0, adminSlugs.has(s.slug), writingRulesSpaces.has(s.slug));
+        if (reviewSpaces.has(s.slug)) info.agentWriteMode = 'review';
         return info;
       }),
     );
@@ -890,6 +895,10 @@ export function registerRoutes(app: FastifyInstance): void {
     await session.requireSpaceRole(request, body.space, 'editor');
     session.requireWriteScope(request);
     await session.requireAgentWriteAllowed(request.authUser!, body.space, storage.normalizeDirParam(body.parentPath));
+    // A page created with content (a Y.Doc state or a base) by an agent in a review space would skip the queue.
+    if (request.tokenScopes !== undefined && (body.ydocState !== undefined || body.base !== undefined)) {
+      await proposals.assertTokenMayWriteDirect(body.space, 'creating a page with content over the REST API');
+    }
 
     if (body.id !== undefined) {
       const existing = await storage.getEntry(body.id);
@@ -1139,6 +1148,34 @@ export function registerRoutes(app: FastifyInstance): void {
     const entry = await session.requirePageRole(request, id, 'editor');
     session.requireWriteScope(request);
     const user = request.authUser!;
+
+    // Agent write mode (migration 062). A request with an API token is an agent; in a review
+    // space its Markdown does not reach the page, it becomes a proposal. Everything else a token
+    // could write through this route (a form, a board...) has no review path yet and is refused.
+    // A browser session (no token) is a person typing and is never queued.
+    if (request.tokenScopes !== undefined && (await proposals.getAgentWriteMode(entry.space)) === 'review') {
+      if (entry.kind !== 'doc') throw forbidden(proposals.reviewRefusal('changing this kind of page'));
+      if (body.markdown !== undefined) {
+        const { body: proposedBody } = storage.splitLeadingFrontmatter(body.markdown);
+        let sent;
+        try {
+          sent = await proposals.submitProposal({
+            space: entry.space,
+            pageId: entry.id,
+            markdown: proposedBody,
+            baseRevision: body.baseRevision,
+            author: user,
+            tokenId: request.tokenId ?? 'api-token',
+            source: 'rest',
+          });
+        } catch (err) {
+          if (err instanceof collab.RevisionConflictError) return reply.status(409).send({ error: err.message, code: err.code, currentRevision: err.currentRevision });
+          throw err;
+        }
+        reply.status(202);
+        return { status: 'proposed', proposalId: sent.proposalId, message: proposals.PROPOSED_MESSAGE } satisfies ProposedResult;
+      }
+    }
 
     if (entry.kind === 'doc') {
       if (body.markdown === undefined && body.icon === undefined && body.cover === undefined && body.order === undefined) {
@@ -1562,6 +1599,8 @@ export function registerRoutes(app: FastifyInstance): void {
     const entry = await session.requirePageRole(request, id, 'editor');
     session.requireWriteScope(request);
     const user = request.authUser!;
+    // Restoring replaces the page text: for an agent in a review space that is a write the queue does not cover.
+    if (request.tokenScopes !== undefined) await proposals.assertTokenMayWriteDirect(entry.space, 'restoring an old version of a page');
     // A canvas is never written by Folio — not even to restore it (git or Obsidian can).
     if (entry.kind === 'canvas') throw badRequest('a canvas is read-only in Folio: restore it in Git or Obsidian');
     // An artifact is a folder: its versions are re-published (PUT /api/pages/:id/artifact), not restored file by file.

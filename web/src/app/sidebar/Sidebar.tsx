@@ -29,6 +29,7 @@ import {
   Database,
   AppWindow,
   Search,
+  GitPullRequest,
 } from 'lucide-react';
 import type { PageKind, PageMeta } from '@shared/contracts';
 import { emptySearchQuery, formatSearchQuery } from '@shared/searchQuery';
@@ -59,6 +60,8 @@ import { MembersDialog } from './MembersDialog';
 import { ConnectGitDialog } from './ConnectGitDialog';
 import { ImageStorageDialog } from './ImageStorageDialog';
 import { ScanSettingsDialog } from './ScanSettingsDialog';
+import { AgentSettingsDialog } from './AgentSettingsDialog';
+import { ReviewQueueButton } from '../review/ReviewQueueButton';
 import { ResetToRemoteDialog } from '../git/ResetToRemoteDialog';
 import { normalizeRepoUrlForDisplay } from './gitRepos';
 import { SpaceAssistantKeyDialog } from './SpaceAssistantKeyDialog';
@@ -153,6 +156,8 @@ export function Sidebar({ space, desktopCollapsed, mobileOpen, onMobileClose, on
   // Space setting: where pasted/uploaded images go (Folio storage vs. assets/ in the repository).
   const [editingImageStorage, setEditingImageStorage] = useState(false);
   const [editingScanSettings, setEditingScanSettings] = useState(false);
+  // Space setting: do agents write straight into pages or hand their edits over for review (migration 062).
+  const [editingAgentSettings, setEditingAgentSettings] = useState(false);
   // "Connect git" on a local space (owner ask, this round) — same admin gate
   // as the rest of this menu, see ConnectGitDialog's own doc comment.
   const [connectingGit, setConnectingGit] = useState(false);
@@ -469,6 +474,16 @@ export function Sidebar({ space, desktopCollapsed, mobileOpen, onMobileClose, on
                   >
                     {t('sidebar.spaceMenu.scanSettings')}
                   </MenuItem>
+                  {/* Agent write mode: direct, or review (an editor accepts what agents write). Space admins; the API checks the role too. */}
+                  <MenuItem
+                    icon={<GitPullRequest size={14} />}
+                    onSelect={() => {
+                      close();
+                      setEditingAgentSettings(true);
+                    }}
+                  >
+                    {t('sidebar.spaceMenu.agentSettings')}
+                  </MenuItem>
                   {/* Trash round: this space's trash — same /trash page the user
                       menu's admin section opens, pre-filtered to this space.
                       Gated by the same canManageMembers (= space admin) check
@@ -655,6 +670,7 @@ export function Sidebar({ space, desktopCollapsed, mobileOpen, onMobileClose, on
         {/* The panel and its run tracking live in AssistantHost (App level), so page
             and space navigation never remounts or closes them; this is just the toggle. */}
         <div className="flex shrink-0 flex-col gap-px border-t border-neutral-200 px-2 py-1.5 dark:border-neutral-800">
+          <ReviewQueueButton space={space} onNavigate={onMobileClose} />
           {canEditContent(role) && <RecentChangesButton space={space} />}
           <AssistantButton />
         </div>
@@ -679,6 +695,7 @@ export function Sidebar({ space, desktopCollapsed, mobileOpen, onMobileClose, on
         )}
         {editingImageStorage && <ImageStorageDialog space={space} onClose={() => setEditingImageStorage(false)} />}
         {editingScanSettings && <ScanSettingsDialog space={space} onClose={() => setEditingScanSettings(false)} />}
+        {editingAgentSettings && <AgentSettingsDialog space={space} onClose={() => setEditingAgentSettings(false)} />}
 
         {connectingGit && <ConnectGitDialog space={space} onClose={() => setConnectingGit(false)} />}
 

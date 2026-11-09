@@ -10,6 +10,7 @@ import { cellToText, formatCellText } from '../core';
 import { colorForValue, isOutOfList } from '../colors';
 import { Chip } from './Chip';
 import { ROW_HEIGHT_PX } from '../types';
+import type { TableCommentsProps } from '../types';
 
 /**
  * Round 26 (DATA TABLES) — cell editors for all nine column types (spec §3).
@@ -39,6 +40,8 @@ export interface CellContext {
   search?: string;
   /** The view's row-height token, so `longtext` knows how many lines it may render (spec: toolbar Low/Medium/High). */
   rowHeight?: TableView['rowHeight'];
+  /** Comments on cells: markers, the add button, the highlight ring (see CommentableCell). */
+  comments?: TableCommentsProps;
 }
 
 type Props = CellProps<TableRow, CellContext>;

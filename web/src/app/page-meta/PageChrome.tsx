@@ -3,9 +3,11 @@ import type { ChangeEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ImageOff, ImagePlus } from 'lucide-react';
+import type { PageMeta } from '@shared/contracts';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { useToast } from '../ui/Toast';
+import { VerificationBadge } from './VerificationBadge';
 import '../i18n/register';
 
 export interface PageChromeProps {
@@ -14,6 +16,8 @@ export interface PageChromeProps {
   icon?: string;
   cover?: string;
   canEdit: boolean;
+  /** Owner / verification state of the page (PageMeta.verification): shown as a badge. */
+  verification?: PageMeta['verification'];
   /** Hosted inline in the editor's chrome row (cover-less pages): tighter spacing, smaller icon. */
   compact?: boolean;
   /**
@@ -49,7 +53,7 @@ export interface PageChromeProps {
  * Renders nothing for a viewer on a page with neither an icon nor a cover
  * — zero visual footprint until something is actually set.
  */
-export function PageChrome({ pageId, space, icon, cover, canEdit, compact, allowCover = true }: PageChromeProps) {
+export function PageChrome({ pageId, space, icon, cover, canEdit, verification, compact, allowCover = true }: PageChromeProps) {
   const { t } = useTranslation('app');
   const errorText = useApiErrorText();
   const queryClient = useQueryClient();
@@ -93,7 +97,14 @@ export function PageChrome({ pageId, space, icon, cover, canEdit, compact, allow
     onError: (err) => showToast(errorText(err, 'pageChrome.uploadFailed')),
   });
 
-  if (!allowCover || (!canEdit && !displayCover)) return null;
+  const showBadge = verification !== undefined && verification.state !== 'unverified';
+  const badge = showBadge ? (
+    <div className="mb-1">
+      <VerificationBadge verification={verification} />
+    </div>
+  ) : null;
+
+  if (!allowCover || (!canEdit && !displayCover)) return badge;
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -105,6 +116,7 @@ export function PageChrome({ pageId, space, icon, cover, canEdit, compact, allow
 
   return (
     <div className={compact ? undefined : 'mb-1'}>
+      {badge}
       {allowCover && canEdit && <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />}
 
       {allowCover && displayCover && (

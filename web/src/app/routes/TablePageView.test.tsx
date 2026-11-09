@@ -57,6 +57,8 @@ vi.mock('../../diagrams', () => ({
 
 vi.mock('../auth/AuthProvider', () => ({
   useSpaceRole: () => 'editor',
+  // Comments on cells ask who is signed in; nobody is, so the surface stays off.
+  useAuthOptional: () => null,
 }));
 
 const TABLE_META = {

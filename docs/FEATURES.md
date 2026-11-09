@@ -148,6 +148,33 @@ is deleted. Comments are stored in the database (migration 060), not in the
 Markdown file: they are not in Git, exports or published sites. The MCP tools
 `list_comments`, `add_comment` and `reply_comment` give agents the same access.
 
+**Comments on boards and tables.** A single element of a whiteboard or a cell of
+a data table can have its own thread; `add_comment` takes `elementId`, or
+`rowId` and `columnId`. A notification link opens the thread and shows the
+element or the cell. The thread of a deleted element, row or column stays in
+the list with a note.
+
+**Review of agent edits.** Per space (space menu, **AI agents**): **Edit at
+once** (default) or **Send edits for review**; only a space admin changes it. In
+review mode `update_page`, `create_page` and `PUT /api/pages/:id` with an API
+token create a proposal; the page text does not change until an editor or admin
+accepts it in the **On review** list, which shows line-by-line differences. A
+proposal whose page has changed since is marked and can be accepted only after
+the differences against the current text are shown. Only Markdown pages are
+covered; while the mode is on, agent tools for boards, tables, forms, bases,
+properties, tags and artifacts are refused. Comments from agents are posted at
+once, people editing in the browser do not go through the queue, and `git push`
+is not intercepted.
+
+**Owner and review date.** The properties `owner`, `verified` and `review_by`
+are stored in Git like other page properties. The properties section (edit mode)
+has an owner picker, the next review date and **Mark as verified** (90 days, or
+the page's previous period). A badge under the title shows **Verified**,
+**Changed after verification** or **Review overdue**; an overdue page is marked
+in the tree. `read_page` and `fetch` return a `verification` block. Once a day,
+overdue pages send a reminder to the owner's bell, or to the space admins when
+there is no owner, at most once a week per page.
+
 **Shared page timer.** Every page has a timer icon in its header (document, table,
 whiteboard, form, PDF/Office, a space's home page; a folder listing has one for
 the space): presets of 1, 3, 5 and 10 minutes, or a custom time (minutes and
@@ -981,7 +1008,7 @@ work continues; come back and read on from where it stopped.
 ## 12. Integration for external tools (MCP)
 
 The `/mcp` endpoint with a personal access token (`folio_pat_…`), scopes
-`read` and `write`. 49 tools: listing spaces and trees, reading a page,
+`read` and `write`. 51 tools: listing spaces and trees, reading a page,
 search (plus `search` and `fetch` for ChatGPT deep research), creating and updating pages, resolving a Folio link, backlinks
 with context, a page's metadata (outline, tags, properties, links), a space's
 unresolved links and orphan pages, the link graph of a space or a page's neighbourhood, the rows of an Obsidian base (and creating or replacing one), publishing an interactive artifact, listing a space's templates and creating pages from them or saving a page as a template, checking a page against the space's writing rules, a space's tags and property keys, renaming a tag across a space, setting a page's properties, history and reading a page at a given
@@ -1042,7 +1069,10 @@ See [INSTALL](INSTALL.md).
   headers say so.
 - **Trash** with restore. Deleting a page that has children takes them along,
   and restoring brings them back.
-- **Notifications** about access requests, delivered instantly.
+- **Notifications** about access requests, delivered instantly. The bell also
+  reports an @mention in a comment and a reply in a thread you took part in
+  (only to people who can see the page; an agent's comment through MCP counts),
+  and an overdue page review (see below). There is no email.
 - **Interface languages**: English and Ukrainian; a new language is a set
   of bundle files. Content is not translated — it is data.
 - **Theme**: light, dark, system.

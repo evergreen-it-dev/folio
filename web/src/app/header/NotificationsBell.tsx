@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Bell } from 'lucide-react';
-import { spaceRoleSchema, type DecideAccessRequestBody, type NotificationItem, type SpaceRole } from '@shared/contracts';
+import { spaceRoleSchema, type AccessRequestSummary, type DecideAccessRequestBody, type NotificationItem, type SpaceRole } from '@shared/contracts';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { formatDateTime } from '../formatDate';
@@ -31,13 +32,69 @@ function describePerson(person: { name: string; username?: string | null }): str
  * right to decide (store.listAccessRequestRecipients), and a second,
  * client-side guess about the same right would only drift away from it.
  */
-function NotificationRow({ item }: { item: NotificationItem }) {
+function NotificationRow({ item, onNavigate }: { item: NotificationItem; onNavigate: () => void }) {
+  if (item.accessRequest) return <AccessNotificationRow item={item} request={item.accessRequest} />;
+  return <PageNotificationRow item={item} onNavigate={onNavigate} />;
+}
+
+/** A comment mention or reply: one click opens the page with the thread in view (?thread= is read by usePageComments). */
+function PageNotificationRow({ item, onNavigate }: { item: NotificationItem; onNavigate: () => void }) {
+  const { t, i18n } = useTranslation('app');
+  const navigate = useNavigate();
+  const payload = item.payload ?? {};
+  const title = payload.pageTitle || t('notifications.untitledPage');
+  const who = payload.authorName || t('notifications.someone');
+  let headline: string;
+  if (item.kind === 'comment_mention') headline = t('notifications.comment.mention', { name: who, page: title });
+  else if (item.kind === 'comment_reply') headline = t('notifications.comment.reply', { name: who, page: title });
+  else if (item.kind === 'proposal_pending') {
+    headline = t(payload.proposalKind === 'create' ? 'notifications.proposal.pendingCreate' : 'notifications.proposal.pending', { name: who, page: title });
+  } else if (item.kind === 'proposal_decided') {
+    headline = t(payload.decision === 'accepted' ? 'notifications.proposal.accepted' : 'notifications.proposal.rejected', { name: payload.reviewerName || t('notifications.someone'), page: title });
+  } else if (item.kind === 'review_due') headline = t('notifications.review.due', { page: title, date: typeof payload.reviewBy === 'string' ? payload.reviewBy : '' });
+  else headline = t('notifications.comment.generic', { page: title });
+  const isProposal = item.kind === 'proposal_pending' || item.kind === 'proposal_decided';
+  const canOpen = isProposal ? Boolean(payload.space) : Boolean(item.pageId && payload.space);
+  const open = () => {
+    if (!canOpen) return;
+    if (isProposal) {
+      // A proposal opens the review dialog on the space (a page to create has no page of its own yet; a decided
+      // one is no longer in the list, the dialog then shows what is still open).
+      const review = item.kind === 'proposal_pending' && payload.proposalId ? `?review=${encodeURIComponent(String(payload.proposalId))}` : '';
+      const base = item.pageId ? `/s/${encodeURIComponent(payload.space!)}/p/${encodeURIComponent(item.pageId)}` : `/s/${encodeURIComponent(payload.space!)}`;
+      navigate(`${base}${review}`);
+      onNavigate();
+      return;
+    }
+    const query = payload.threadId ? `?thread=${encodeURIComponent(payload.threadId)}` : '';
+    navigate(`/s/${encodeURIComponent(payload.space!)}/p/${encodeURIComponent(item.pageId!)}${query}`);
+    onNavigate();
+  };
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={open}
+        disabled={!canOpen}
+        className="flex w-full flex-col gap-1 rounded-md px-2.5 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+      >
+        <span className="flex items-start gap-2">
+          {!item.readAt && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" aria-hidden="true" />}
+          <span className={item.readAt ? 'ml-3.5' : ''}>{headline}</span>
+        </span>
+        {payload.excerpt && <span className="ml-3.5 line-clamp-2 break-words text-xs text-neutral-500 dark:text-neutral-400">{payload.excerpt}</span>}
+        <span className="ml-3.5 text-xs text-neutral-400">{formatDateTime(item.createdAt, i18n.language)}</span>
+      </button>
+    </li>
+  );
+}
+
+function AccessNotificationRow({ item, request }: { item: NotificationItem; request: AccessRequestSummary }) {
   const { t, i18n } = useTranslation('app');
   const queryClient = useQueryClient();
   const errorText = useApiErrorText();
   const [role, setRole] = useState<SpaceRole>('viewer');
   const [error, setError] = useState<string | null>(null);
-  const request = item.accessRequest;
 
   const decide = useMutation({
     mutationFn: (body: DecideAccessRequestBody) => api.decideAccessRequest(request.id, body),
@@ -245,7 +302,7 @@ export function NotificationsBell() {
             ) : (
               <ul className="flex max-h-[min(70vh,26rem)] flex-col gap-0.5 overflow-y-auto">
                 {items.map((item) => (
-                  <NotificationRow key={item.id} item={item} />
+                  <NotificationRow key={item.id} item={item} onNavigate={() => setOpen(false)} />
                 ))}
               </ul>
             )}

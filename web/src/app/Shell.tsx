@@ -3,6 +3,7 @@ import { Outlet, useLocation, useParams } from 'react-router';
 import { Sidebar } from './sidebar/Sidebar';
 import { Header } from './header/Header';
 import { ConflictBanner } from './git/ConflictBanner';
+import { ReviewHost } from './review/ReviewHost';
 import { DemoBanner } from './DemoBanner';
 import { QuickSwitcher } from './switcher/QuickSwitcher';
 import { SEARCH_REQUEST_EVENT, type SearchRequestDetail } from '../markdown/searchEvent';
@@ -183,6 +184,7 @@ export function Shell() {
           propertiesSlotRef={setPropertiesSlot}
         />
         <ConflictBanner space={space} />
+        <ReviewHost space={space} />
         {/* min-h-0 alongside flex-1: without it, a flex item's automatic
             minimum size can refuse to shrink below its content's natural
             height, which is exactly how a nested overflow can bubble up

@@ -66,13 +66,13 @@ describe('notifications/routes (round 31, real PG)', () => {
     const adminFeed = await listNotifications(spaceAdmin);
     expect(adminFeed.items).toHaveLength(1);
     expect(adminFeed.items[0].kind).toBe('access_request');
-    expect(adminFeed.items[0].accessRequest.id).toBe(created.id);
-    expect(adminFeed.items[0].accessRequest.spaceName).toBe(space.name);
-    expect(adminFeed.items[0].accessRequest.requester.name).toBe('Requester');
+    expect(adminFeed.items[0].accessRequest!.id).toBe(created.id);
+    expect(adminFeed.items[0].accessRequest!.spaceName).toBe(space.name);
+    expect(adminFeed.items[0].accessRequest!.requester.name).toBe('Requester');
     expect(adminFeed.items[0].readAt).toBeNull();
     expect(adminFeed.unread).toBe(1);
 
-    expect((await listNotifications(instanceAdmin)).items.map((i) => i.accessRequest.id)).toContain(created.id);
+    expect((await listNotifications(instanceAdmin)).items.map((i) => i.accessRequest!.id)).toContain(created.id);
     expect((await listNotifications(requester)).items).toEqual([]);
     expect((await listNotifications(editor)).items).toEqual([]);
 
@@ -90,7 +90,7 @@ describe('notifications/routes (round 31, real PG)', () => {
     expect(second.id).toBe(first.id);
 
     const feed = await listNotifications(spaceAdmin);
-    expect(feed.items.filter((i) => i.accessRequest.id === first.id)).toHaveLength(1);
+    expect(feed.items.filter((i) => i.accessRequest!.id === first.id)).toHaveLength(1);
     expect(feed.items).toHaveLength(1);
 
     await deleteTestSpace(space.slug);
@@ -136,7 +136,7 @@ describe('notifications/routes (round 31, real PG)', () => {
     // The requester sees the decision in their feed — a silent refusal is no better than "it got lost".
     const requesterFeed = await listNotifications(requester);
     expect(requesterFeed.items[0].kind).toBe('access_decision');
-    expect(requesterFeed.items[0].accessRequest.status).toBe('denied');
+    expect(requesterFeed.items[0].accessRequest!.status).toBe('denied');
 
     // A second attempt (a second administrator with an open tab) — 409, not an overwrite.
     expect(await statusOf(decideAccessRequest(spaceAdmin, request.id, { decision: 'approve', role: 'admin' }))).toBe(409);
@@ -160,8 +160,8 @@ describe('notifications/routes (round 31, real PG)', () => {
     const requesterFeed = await listNotifications(requester);
     expect(requesterFeed.items).toHaveLength(1);
     expect(requesterFeed.items[0].kind).toBe('access_decision');
-    expect(requesterFeed.items[0].accessRequest.grantedRole).toBe('editor');
-    expect(requesterFeed.items[0].accessRequest.decidedBy?.id).toBe(spaceAdmin.id);
+    expect(requesterFeed.items[0].accessRequest!.grantedRole).toBe('editor');
+    expect(requesterFeed.items[0].accessRequest!.decidedBy?.id).toBe(spaceAdmin.id);
     expect(requesterFeed.unread).toBe(1);
 
     // After the approval access is already there — a new request for the same space is pointless.

@@ -11,7 +11,7 @@
  */
 import { query, queryOne } from '../db/pool.js';
 import { spaceRoleSql } from '../access/roleSql.js';
-import type { AccessRequestStatus, AccessRequestSummary, NotificationItem, NotificationKind, SpaceRole } from '../../shared/contracts.js';
+import type { AccessRequestStatus, AccessRequestSummary, NotificationItem, NotificationKind, NotificationPayload, PageNotificationKind, SpaceRole } from '../../shared/contracts.js';
 
 /** How many feed rows are returned at a time: a feed is "what happened recently", not an archive. */
 export const NOTIFICATION_LIMIT = 50;
@@ -162,6 +162,19 @@ export async function listAccessRequestRecipients(space: string, requesterId: st
   return rows.map((r) => r.user_id);
 }
 
+/** Active people with the admin role in a space (the instance administrators among them, as the role query sees them): who hears about a page nobody owns. */
+export async function listSpaceAdminIds(space: string): Promise<string[]> {
+  const rows = await query<{ user_id: string }>(
+    `SELECT u.id AS user_id
+       FROM users u
+      WHERE u.disabled = false
+        AND NOT u.is_system
+        AND ${spaceRoleSql('u.id', '$1')} = 'admin'`,
+    [space],
+  );
+  return rows.map((r) => r.user_id);
+}
+
 /**
  * Those who already have a row about this request in their feed — they are
  * the ones to be told "re-read" after the decision, because their row is stale.
@@ -196,33 +209,83 @@ export async function insertNotifications(userIds: string[], kind: NotificationK
   return rows.map((r) => ({ id: r.id, userId: r.user_id }));
 }
 
-interface NotificationRow extends SummaryRow {
+/**
+ * Rows about a page. `ON CONFLICT DO NOTHING` hits the once-per-person indexes
+ * (notifications_comment_once_uniq, notifications_proposal_once_uniq): the same person
+ * never gets a second row for the same comment or proposal. `pageId` is null for a
+ * proposal to create a page that does not exist yet. Returns only
+ * the rows really created, so the caller pushes only those into the socket.
+ */
+export async function insertPageNotifications(
+  userIds: string[],
+  kind: PageNotificationKind,
+  pageId: string | null,
+  payload: NotificationPayload,
+): Promise<InsertedNotification[]> {
+  if (userIds.length === 0) return [];
+  const rows = await query<{ id: string; user_id: string }>(
+    `INSERT INTO notifications (user_id, kind, page_id, payload)
+     SELECT u, $2, $3, $4::jsonb FROM unnest($1::uuid[]) AS u
+     ON CONFLICT DO NOTHING
+     RETURNING id, user_id`,
+    [userIds, kind, pageId, JSON.stringify(payload)],
+  );
+  return rows.map((r) => ({ id: r.id, userId: r.user_id }));
+}
+
+/** Active, non-system users by lower-cased username — the targets of @mentions. */
+export async function findUserIdsByUsernames(usernames: string[]): Promise<string[]> {
+  if (usernames.length === 0) return [];
+  const rows = await query<{ id: string }>('SELECT id FROM users WHERE username = ANY($1::text[]) AND NOT disabled AND NOT is_system', [usernames]);
+  return rows.map((r) => r.id);
+}
+
+interface NotificationRow extends Omit<SummaryRow, 'id' | 'space_slug' | 'status' | 'created_at' | 'space_name' | 'requester_id' | 'requester_name'> {
+  // Null for a page notification: it has no access request behind it.
+  id: string | null;
+  space_slug: string | null;
+  status: AccessRequestStatus | null;
+  created_at: Date | null;
+  space_name: string | null;
+  requester_id: string | null;
+  requester_name: string | null;
   notification_id: string;
   kind: NotificationKind;
   notification_created_at: Date;
   read_at: Date | null;
+  page_id: string | null;
+  payload: NotificationPayload;
 }
 
-// JOIN (not LEFT JOIN) on access_requests — a row without a request simply
-// does not get into the feed: the column is nullable for the sake of future
-// kinds of notifications, which the client of this round cannot show anyway.
+// LEFT JOINs: a page notification has no access request and must stay in the
+// feed. Access rows look exactly as they did with the inner joins.
 const NOTIFICATION_SELECT = `SELECT n.id AS notification_id,
          n.kind,
          n.created_at AS notification_created_at,
          n.read_at,
+         n.page_id,
+         n.payload,
          ${SUMMARY_COLUMNS}
     FROM notifications n
-    JOIN access_requests ar ON ar.id = n.access_request_id
-    ${SUMMARY_JOINS}`;
+    LEFT JOIN access_requests ar ON ar.id = n.access_request_id
+    LEFT JOIN spaces s ON s.slug = ar.space_slug
+    LEFT JOIN users req ON req.id = ar.requester_user_id
+    LEFT JOIN users dec ON dec.id = ar.decided_by_user_id`;
 
 function toItem(row: NotificationRow): NotificationItem {
-  return {
+  const item: NotificationItem = {
     id: row.notification_id,
     kind: row.kind,
     createdAt: row.notification_created_at.toISOString(),
     readAt: row.read_at ? row.read_at.toISOString() : null,
-    accessRequest: toSummary(row),
   };
+  if (row.id) item.accessRequest = toSummary(row as unknown as SummaryRow);
+  // A page kind carries its snapshot even when it has no page (a proposal to create one: pageId null).
+  if (row.kind !== 'access_request' && row.kind !== 'access_decision') {
+    item.pageId = row.page_id;
+    item.payload = row.payload ?? {};
+  }
+  return item;
 }
 
 /** A user's feed: newest first, with the request expanded. */

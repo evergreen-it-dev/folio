@@ -433,6 +433,7 @@
     "none": "No assignee"
   },
   "comments": {
+    "mentionList": "Suggested people",
     "title": "Comments",
     "toggleCount": "Comments — {{count}} open",
     "comment": "Comment",
@@ -459,7 +460,25 @@
     "deleteThreadTitle": "Delete this thread?",
     "deleteThreadBody": "Deleting the first comment deletes the whole thread with its replies.",
     "saveFailed": "Could not save the comment",
-    "cannotAnchor": "Could not attach a comment to this selection. Try selecting plain text without formatting."
+    "cannotAnchor": "Could not attach a comment to this selection. Try selecting plain text without formatting.",
+    "board": {
+      "pick": "Comment on an element",
+      "pickingCancel": "Click an element… (cancel)",
+      "pickHint": "Click the element to comment on",
+      "element": "Element",
+      "elementDeleted": "The commented element was deleted",
+      "commentOn": "Comment on this element",
+      "markerLabel": "Comments on this element — {{count}} open",
+      "emptyHint": "No open comments. Select an element and press the comment button, or use “Comment on an element”.",
+      "show": "Comments"
+    },
+    "table": {
+      "element": "Cell",
+      "cellDeleted": "The row or column of the commented cell was deleted",
+      "commentOn": "Comment on this cell",
+      "markerLabel": "Comments on this cell — {{count}} open",
+      "emptyHint": "No open comments. Hover a cell and press its comment button to start a thread."
+    }
   },
   "pageChrome": {
     "saveFailed": "Could not save",
@@ -962,6 +981,7 @@
       "assistantKey": "Folio AI key",
       "imageStorage": "Image storage",
       "scanSettings": "Indexing & files…",
+      "agentSettings": "AI agents…",
       "openRepo": "Open repository",
       "connectGit": "Connect git",
       "publish": "Publish as website"
@@ -1692,7 +1712,57 @@
     "soundLockedToast": "Click anywhere to enable the sound.",
     "failed": "Could not change the timer"
   },
+  "review": {
+    "title": "On review",
+    "sidebar": "On review",
+    "sidebarCount": "{{count}} waiting",
+    "listLabel": "Proposed edits",
+    "loading": "Loading…",
+    "empty": "Nothing is waiting for review.",
+    "loadFailed": "Could not load the proposal",
+    "decideFailed": "Could not save the decision",
+    "decided": "Decision saved.",
+    "kind": {"update": "Edit", "create": "New page"},
+    "source": {"mcp": "external agent", "rest": "API token", "assistant": "Folio AI"},
+    "status": {"stale": "Page changed since"},
+    "meta": "Proposed by {{name}} via {{source}}, {{date}}",
+    "staleNotice": "The page has changed since this edit was proposed. The differences below are against the text the page has now. Accepting replaces the page text with the proposed one.",
+    "staleAgain": "The page changed again while you were looking. The differences were reloaded; check them and accept once more.",
+    "createNotice": "This page does not exist yet. It will be created in {{path}}.",
+    "commentLabel": "Comment for the author (optional)",
+    "accept": "Accept",
+    "acceptStale": "Accept the changes anyway",
+    "reject": "Reject",
+    "legend": "- the page now, + the proposed text",
+    "unchanged": "… {{count}} unchanged lines",
+    "noChanges": "The proposed text is the same as the page.",
+    "tooLarge": "The texts are too large to compare line by line.",
+    "diffLabel": "Differences between the page and the proposal",
+    "newText": "Proposed text of the new page",
+    "emptyText": "(empty page)",
+    "banner_one": "An agent proposed an edit to this page. It stays as it is until an editor accepts it.",
+    "banner_other": "{{count}} agent edits to this page are waiting for an editor.",
+    "open": "Review",
+    "sidebarHint": "Edits made by AI agents wait here for an editor"
+  },
+  "agentSettings": {
+    "title": "AI agents",
+    "intro": "What happens when an AI agent (an external client over MCP or the API, or Folio AI) edits a page of this space.",
+    "direct": {"label": "Edit at once", "hint": "The default. The agent's edit goes into the page right away, as a person's edit does."},
+    "review": {"label": "Send edits for review", "hint": "An agent's edit to a Markdown page does not change the page until an editor accepts it. You and the other editors see it under \u201cOn review\u201d, with the differences."},
+    "scopeNote": "In review mode only Markdown pages are covered. Whiteboards, data tables, forms, bases, page properties, tags and artifacts cannot be changed by an agent at all while the mode is on; its comments still go through at once. People typing in the browser are never queued.",
+    "gitNote": "git push is not covered: whoever can push to the space's Git remote can still change files directly. That is controlled by the access rights on the remote itself.",
+    "save": "Save",
+    "saving": "Saving…",
+    "saveFailed": "Could not save the setting"
+  },
+  "verification": {"assign": "Owner and review", "owner": "Owner", "noOwner": "No owner", "unknownOwner": "@{{name}} (no such person)", "verifiedOn": "Verified", "reviewBy": "Next review", "mark": "Mark as verified", "saveFailed": "Could not save", "invalid": "Ignored, not a valid date: {{keys}}", "treeOverdue": "Review overdue", "state": {"unverified": "Not verified"}, "badge": {"verified": "Verified {{date}} {{owner}}", "changed": "Changed after verification", "overdue": "Review overdue ({{days}} d)"}},
   "notifications": {
+    "untitledPage": "Untitled page",
+    "someone": "Someone",
+    "comment": {"mention": "{{name}} mentioned you in a comment on “{{page}}”", "reply": "{{name}} replied in a thread on “{{page}}”", "generic": "New activity on “{{page}}”"},
+    "proposal": {"pending": "{{name}} proposed an edit to \u201c{{page}}\u201d", "pendingCreate": "{{name}} proposed a new page \u201c{{page}}\u201d", "accepted": "{{name}} accepted your edit to \u201c{{page}}\u201d", "rejected": "{{name}} rejected your edit to \u201c{{page}}\u201d"},
+    "review": {"due": "“{{page}}” is overdue for review (due {{date}})"},
     "bell": "Notifications",
     "bellUnread": "Notifications ({{count}} unread)",
     "empty": "No notifications yet.",

@@ -8,6 +8,8 @@
  *                                          body UpdatePagePropertiesBody  -> PagePropertiesResponse (409 + current on an etag mismatch)
  *                                          documents, data tables, forms (front matter), boards, PDFs, Office
  *                                          pages (sidecar `.folio/<path>.props.yaml`); a folder: 400
+ *   PUT /api/pages/:id/verification        editor+ on the page, cookie or write-scope PAT
+ *                                          body UpdateVerificationBody    -> VerificationResponse (owner, review_by, "Mark as verified")
  *   GET /api/spaces/:space/property-types  viewer+ on the space           -> SpacePropertyTypesResponse
  *   PUT /api/spaces/:space/property-types  admin of the space, cookie session only, not the shared demo login
  *                                          body UpdatePropertyTypesBody   -> SpacePropertyTypesResponse
@@ -18,7 +20,7 @@
  * settings.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { updatePagePropertiesBodySchema, updatePropertyTypesBodySchema } from '../shared/contracts.js';
+import { updatePagePropertiesBodySchema, updatePropertyTypesBodySchema, updateVerificationBodySchema } from '../shared/contracts.js';
 import { userViewer } from './accessSql.js';
 import { recordAudit } from './audit.js';
 import * as session from './auth/session.js';
@@ -27,6 +29,7 @@ import { badRequest } from './errors.js';
 import { PropertiesConflictError, propertiesStoreOf, readPageProperties, savePageProperties } from './properties.js';
 import { readSpacePropertyTypes, writeSpacePropertyTypes } from './propertyTypes.js';
 import type { PageIndexEntry } from './storage.js';
+import { updateVerification } from './verification.js';
 import { parseBody } from './validate.js';
 
 /** Editor+ on the page, and not a read-only token: what `canEdit` reports. */
@@ -54,6 +57,20 @@ export function registerPropertiesRoutes(app: FastifyInstance): void {
       return result.response;
     } catch (err) {
       if (err instanceof PropertiesConflictError) return reply.status(409).send({ error: err.message, ...err.current });
+      throw err;
+    }
+  });
+
+  // Owner, deadline and "Mark as verified" (shared/verification.ts): a merge into the page's own properties.
+  app.put('/api/pages/:id/verification', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = parseBody(updateVerificationBodySchema, request.body);
+    const entry = await session.requirePageRole(request, id, 'editor');
+    session.requireWriteScope(request);
+    try {
+      return await updateVerification(entry, request.authUser!, body);
+    } catch (err) {
+      if (err instanceof PropertiesConflictError) return reply.status(409).send({ error: err.message });
       throw err;
     }
   });

@@ -11,5 +11,5 @@
  *   web/src/app/share/SharedPageView.tsx   the same branch for public shares
  */
 export { TablePage, TablePage as TableEditor } from './TablePage';
-export type { TableEditorProps, TablePatch, TablePatchSink, TableRole } from './types';
+export type { TableCommentsProps, TableEditorProps, TablePatch, TablePatchSink, TableRole } from './types';
 export { makeMockTableDoc, makeLargeMockTableDoc } from './fixtures';

@@ -1,6 +1,6 @@
 {
   "name": "folio",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Collaborative wiki backed by Git: documents, tables, whiteboards, forms, and MCP access for AI agents.",
   "license": "MIT",
   "private": true,

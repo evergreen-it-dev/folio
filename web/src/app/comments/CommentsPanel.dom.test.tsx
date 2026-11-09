@@ -26,6 +26,7 @@ function thread(id: string, over: Partial<CommentThread> = {}): CommentThread {
     anchorFrom: 'a',
     anchorTo: 'b',
     quotedText: `quote of ${id}`,
+    target: null,
     status: 'open',
     createdBy: author('me', 'Me'),
     createdAt: at,
@@ -100,6 +101,37 @@ describe('CommentsPanel', () => {
     const mention = screen.getByText('@ann');
     expect(mention.tagName).toBe('SPAN');
     expect(mention.closest('p')?.textContent).toBe('First line\nsecond line, ping @ann');
+  });
+
+  it('a board thread names its element, says so when the element was deleted, and a draft posts a target', async () => {
+    const onBoard = thread('b1', { quotedText: null, anchorFrom: null, anchorTo: null, target: { kind: 'board_element', elementId: 'e1', label: 'Checkout box' } });
+    const gone = { id: 'b1', state: 'detached' as const, from: 0, to: 0 };
+    mount({ openThreads: [onBoard], anchors: new Map([['b1', gone]]) });
+    expect(screen.getByText('Checkout box')).toBeTruthy();
+    expect(screen.getByText('The commented element was deleted')).toBeTruthy();
+    cleanup();
+
+    mount({ openThreads: [], draft: { target: { kind: 'board_element', elementId: 'e2' }, preview: 'Login box' } });
+    expect(screen.getByText('Login box')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Add a comment…' }), { target: { value: 'Needs a retry' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    await vi.waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+    expect(calls.find((c) => c.method === 'POST')).toMatchObject({ url: '/api/pages/p1/comments', body: { target: { kind: 'board_element', elementId: 'e2' }, body: 'Needs a retry' } });
+  });
+
+  it('a table thread names its cell, says so when its row or column was deleted, and a draft posts a cell target', async () => {
+    const onCell = thread('c1', { quotedText: null, anchorFrom: null, anchorTo: null, target: { kind: 'table_cell', rowId: 'r1', columnId: 'owner', label: 'alice' } });
+    const gone = { id: 'c1', state: 'detached' as const, from: 0, to: 0 };
+    mount({ openThreads: [onCell], anchors: new Map([['c1', gone]]) });
+    expect(screen.getByText('alice')).toBeTruthy();
+    expect(screen.getByText('The row or column of the commented cell was deleted')).toBeTruthy();
+    cleanup();
+
+    mount({ openThreads: [], draft: { target: { kind: 'table_cell', rowId: 'r2', columnId: 'week' }, preview: 'W8' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Add a comment…' }), { target: { value: 'Check the week' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    await vi.waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+    expect(calls.find((c) => c.method === 'POST')).toMatchObject({ body: { target: { kind: 'table_cell', rowId: 'r2', columnId: 'week' }, body: 'Check the week' } });
   });
 
   it('posts a reply to the thread', async () => {
