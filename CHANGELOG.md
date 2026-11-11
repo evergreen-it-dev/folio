@@ -4,6 +4,12 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Fixed
+
+- **Undo after an agent edit.** REST/MCP document updates preserve unchanged
+  text before and after the changed passage, so browser Undo/Redo and cursor
+  anchors there survive the update. Emoji stay intact at edit boundaries.
+
 ## [0.4.5] - 2026-11-09
 
 Folio AI can run on Claude through an Anthropic API key, next to Cursor. Adds

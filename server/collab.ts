@@ -1018,11 +1018,18 @@ function deepEquals(a: unknown, b: unknown): boolean {
 function setYText(t: Y.Text, next: string): void {
   const cur = t.toString();
   if (cur === next) return;
+  const splitsSurrogate = (text: string, at: number): boolean => {
+    const high = text.charCodeAt(at - 1);
+    const low = text.charCodeAt(at);
+    return high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
+  };
   const max = Math.min(cur.length, next.length);
   let prefix = 0;
   while (prefix < max && cur[prefix] === next[prefix]) prefix++;
+  if (splitsSurrogate(cur, prefix) || splitsSurrogate(next, prefix)) prefix--;
   let suffix = 0;
   while (suffix < max - prefix && cur[cur.length - 1 - suffix] === next[next.length - 1 - suffix]) suffix++;
+  if (splitsSurrogate(cur, cur.length - suffix) || splitsSurrogate(next, next.length - suffix)) suffix--;
   const removed = cur.length - prefix - suffix;
   const inserted = next.slice(prefix, next.length - suffix);
   if (removed > 0) t.delete(prefix, removed);
@@ -2673,7 +2680,7 @@ export class RevisionConflictError extends HttpError {
 }
 
 /**
- * Routes a PUT's markdown through the live Y.Doc (full-text replace inside a
+ * Routes a PUT's markdown through the live Y.Doc (changed span inside a
  * transaction) instead of writing the file directly. The doc's own 'update'
  * listener (attached in bindState) picks this up and debounces the disk
  * write; we additionally patch the in-memory index synchronously so the
@@ -2719,10 +2726,7 @@ export async function applyMarkdownUpdate(id: string, rawMarkdown: string, overr
   if (baseRevision !== undefined && bodyRevision(before) !== baseRevision) throw new RevisionConflictError(bodyRevision(before));
   const changed = before !== markdown;
   if (changed) {
-    doc.transact(() => {
-      ytext.delete(0, ytext.length);
-      ytext.insert(0, markdown);
-    });
+    doc.transact(() => setYText(ytext, markdown));
   }
   if (baseRevision !== undefined) await persistIconCover();
   if (changed) await backupRoomText(id, 'body replaced through the API', before);

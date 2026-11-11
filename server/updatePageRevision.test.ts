@@ -152,6 +152,50 @@ describe('update_page / PUT /api/pages/:id — baseRevision (real PG)', () => {
     }
   });
 
+  it('a matching MCP update preserves local Undo and Redo outside the changed passage', async () => {
+    const initial = '# Page\n\nStatus: draft.\n\nOriginal paragraph.\n';
+    const id = await newPage(initial);
+    const ytext = openRoom(id, initial);
+    const browserOrigin = {};
+    const undo = new Y.UndoManager(ytext, { trackedOrigins: new Set([browserOrigin]) });
+    const sentence = '\nBrowser sentence.\n';
+    try {
+      ytext.doc!.transact(() => ytext.insert(ytext.length, sentence), browserOrigin);
+      undo.stopCapturing();
+      const read = (await callJson('read_page', { id })).json!;
+      const proposed = (read.markdown as string).replace('Status: draft.', 'Status: reviewed.');
+      expect((await callJson('update_page', { id, markdown: proposed, baseRevision: read.bodyRevision })).isError).toBe(false);
+      expect(ytext.toString()).toBe(proposed);
+
+      undo.undo();
+      expect(ytext.toString()).toBe(initial.replace('Status: draft.', 'Status: reviewed.'));
+      undo.redo();
+      expect(ytext.toString()).toBe(proposed);
+    } finally {
+      undo.destroy();
+      ywsDocs.delete(id);
+    }
+  });
+
+  it.each([
+    ['😀', '😁'], // shared high surrogate at the prefix boundary
+    ['😀', '🨀'], // shared low surrogate at the suffix boundary
+  ])('a matching REST update preserves an unchanged text position when %s becomes %s', async (before, after) => {
+    const initial = `# Page\n\nMood: ${before}.\n\nKeep this paragraph.\n`;
+    const id = await newPage(initial);
+    const ytext = openRoom(id, initial);
+    const bookmark = Y.createRelativePositionFromTypeIndex(ytext, initial.indexOf('this'));
+    const proposed = initial.replace(before, after);
+    try {
+      const result = await put(id, { markdown: proposed, baseRevision: collab.bodyRevision(initial) });
+      expect(result.statusCode).toBe(200);
+      expect(ytext.toString()).toBe(proposed);
+      expect(Y.createAbsolutePositionFromRelativePosition(bookmark, ytext.doc!)?.index).toBe(proposed.indexOf('this'));
+    } finally {
+      ywsDocs.delete(id);
+    }
+  });
+
   it('a refused write does not persist icon/cover either', async () => {
     const id = await newPage('# Page\n\nfirst\n');
     const ytext = openRoom(id, '# Page\n\nfirst\n');

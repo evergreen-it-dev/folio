@@ -190,6 +190,11 @@ Viewers get a connection whose updates the server discards, and a page the
 person may only view (page access) opens read-only instead of in an editor
 whose typing would be dropped. A write made by an agent goes through the live
 document when the room is open, so it appears in every open tab at once.
+REST/MCP body updates reuse `setYText`: only the span between the common
+prefix and suffix is replaced, preserving those unchanged characters and
+their local Undo/Redo and cursor anchors. Boundaries never split a UTF-16
+surrogate pair. This remains a whole-body replacement, not a merge; the
+existing optional `baseRevision` check still protects against a stale read.
 
 **Typed text must reach the server, and the browser must know it did.**
 
@@ -217,7 +222,7 @@ document when the room is open, so it appears in every open tab at once.
   Files are written atomically (temporary file, then rename); the temporary
   files are excluded from every `git add -A` and orphans are removed by a scan.
   A live room never holds `\r`: CRLF and CR become LF wherever text enters a
-  `Y.Text`. Before the server replaces all of a live room's text (a file changed
+  `Y.Text`. Before the server replaces a live room's body (a file changed
   while closed, a REST or MCP body write, "Take the version from Git") the old
   text goes to `page_text_backups` (migration 035, no foreign key on purpose, so
   a backup outlives its page; pruned by age at boot and daily).
