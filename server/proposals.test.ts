@@ -10,12 +10,13 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import * as fastifyCookieModule from '@fastify/cookie';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ApiTokenScope, User } from '../shared/contracts.js';
 import type { PageProposalDetail, PageProposalSummary, ProposalListResponse } from '../shared/proposals.js';
 import * as authStore from './auth/store.js';
 import * as session from './auth/session.js';
-import { query } from './db/pool.js';
+import { getPool, query } from './db/pool.js';
+import * as collab from './collab.js';
 import { deleteTestSpace, setUpTestSchema } from './db/testSchema.js';
 import { HttpError } from './errors.js';
 import * as gitSync from './gitSync.js';
@@ -367,4 +368,44 @@ describe('agent write mode and the review queue (real PG)', () => {
     expect(toOwner[0].payload?.pageTitle).toBe('Owned');
     expect((await feed(admin, 'proposal_pending')).filter((i) => i.pageId === owned)).toEqual(adminBefore);
   });
+  it('refuses acceptance when a conditional page edit arrives while the proposal claim waits', async () => {
+    await setMode('review');
+    const original = '# Queued acceptance\n\nStatus: draft.\n';
+    const page = await storage.createPage({ space, parentPath: '', title: 'Queued acceptance', kind: 'doc' }, { docBody: original });
+    let proposalId = '';
+    await withMcp(agentOwner, 'tok-queued-accept', async (call) => {
+      const sent = await call('update_page', { id: page.id, markdown: original.replace('draft', 'reviewed'), baseRevision: collab.bodyRevision(original) });
+      expect(sent.isError).toBe(false);
+      proposalId = String(sent.structured?.proposalId);
+    });
+    const blocker = await getPool().connect();
+    let released = false;
+    await blocker.query('BEGIN');
+    await blocker.query('SELECT id FROM page_proposals WHERE id = $1 FOR UPDATE', [proposalId]);
+    const pid = (await blocker.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const accepting = Promise.resolve(decide('editor', proposalId, { decision: 'accept' }));
+    try {
+      await vi.waitFor(async () => {
+        const [state] = await query<{ blocked: boolean }>('SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))) AS blocked', [pid]);
+        expect(state.blocked).toBe(true);
+      }, { timeout: 5000, interval: 20 });
+      const newer = original + '\nNewer sentence: preserve this edit.\n';
+      const edited = await app.inject({ method: 'PUT', url: `/api/pages/${page.id}`, headers: cookies.editor, payload: { markdown: newer, baseRevision: collab.bodyRevision(original) } });
+      expect(edited.statusCode).toBe(200);
+      expect(await storage.readFreshDocBody(page.id)).toBe(newer);
+      await blocker.query('COMMIT');
+      released = true;
+      const result = await accepting;
+      expect(result.statusCode).toBe(409);
+      expect(result.json().code).toBe('revision_conflict');
+      expect(await storage.readFreshDocBody(page.id)).toBe(newer);
+      expect((await detail(proposalId)).status).toBe('stale');
+      expect((await query<{ status: string }>('SELECT status FROM page_proposals WHERE id = $1', [proposalId]))[0].status).toBe('pending');
+    } finally {
+      if (!released) await blocker.query('ROLLBACK');
+      blocker.release();
+      await accepting;
+    }
+  });
+
 });

@@ -4,6 +4,12 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Fixed
+
+- Accepting a proposed page edit refuses a stale replacement if the page changes
+  while the acceptance request waits. The newer text is preserved and the
+  proposal stays pending for another review.
+
 ## [0.4.5] - 2026-11-09
 
 Folio AI can run on Claude through an Anthropic API key, next to Cursor. Adds

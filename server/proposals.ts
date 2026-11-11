@@ -332,9 +332,12 @@ export async function decideProposal(reviewer: User, id: string, decision: Decis
   if (!row || !(await mayReview(reviewer, row))) throw notFound('proposal');
   if (row.status !== 'pending') throw conflict('this proposal has already been decided');
 
+  let baseRevision: string | undefined;
   if (decision.decision === 'accept' && row.page_id) {
-    const hash = await currentHashOf(row);
-    if (hash === undefined) throw conflict('the page no longer exists; reject this proposal');
+    if (!(await storage.getEntry(row.page_id))) throw conflict('the page no longer exists; reject this proposal');
+    const current = await currentText(row.page_id);
+    const hash = hashText(current);
+    baseRevision = collab.bodyRevision(current);
     if (hash !== row.base_hash && decision.currentHash !== hash) {
       // The page has changed since the proposal: it can be accepted only by someone who was shown the differences.
       throw new HttpError(409, 'The page changed after this proposal was made: review the differences against the current text before accepting.', 'proposal_stale');
@@ -352,7 +355,7 @@ export async function decideProposal(reviewer: User, id: string, decision: Decis
   let resultPageId: string | null = null;
   if (decision.decision === 'accept') {
     try {
-      resultPageId = await applyAccepted(reviewer, row);
+      resultPageId = await applyAccepted(reviewer, row, baseRevision);
     } catch (err) {
       await query("UPDATE page_proposals SET status = 'pending', reviewer_id = NULL, review_comment = NULL, decided_at = NULL WHERE id = $1", [id]);
       throw err;
@@ -376,11 +379,11 @@ export async function decideProposal(reviewer: User, id: string, decision: Decis
 }
 
 /** Writes the accepted text through the path every direct write takes. Returns the id of a page that was created. */
-async function applyAccepted(reviewer: User, row: ProposalRow): Promise<string | null> {
+async function applyAccepted(reviewer: User, row: ProposalRow, baseRevision?: string): Promise<string | null> {
   const space = row.space_slug;
   gitSync.recordEditor(space, { name: reviewer.name, email: reviewer.email });
   if (row.page_id) {
-    await collab.editDocBody(row.page_id, row.markdown);
+    await collab.editDocBody(row.page_id, row.markdown, undefined, undefined, baseRevision);
     gitSync.noteActivity(space);
     recordAudit(reviewer.id, 'page.updated', row.page_id, { source: 'proposal', proposalId: row.id, authorId: row.author_id, tokenId: row.token_id });
     return null;

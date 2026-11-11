@@ -6,6 +6,11 @@ update rather than appended to, so there is no history to dig through.
 
 Version: **0.4.5**.
 
+Proposal acceptance carries the exact current body revision through the database
+claim into `editDocBody`. If a newer edit arrives while acceptance waits, the
+write returns `revision_conflict` and the proposal returns to pending, preserving
+the newer text for another review.
+
 ## What Folio is
 
 A team wiki whose content lives in Git. People write in the browser, together
