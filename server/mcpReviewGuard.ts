@@ -30,6 +30,7 @@ export const REVIEW_REFUSED_TOOL_NAMES: ReadonlySet<string> = new Set([
   'update_board',
   'board_ops',
   'create_template',
+  'move_page',
   'folio_table_insert',
   'folio_table_update',
   'folio_table_delete',

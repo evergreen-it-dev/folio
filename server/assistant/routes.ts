@@ -32,6 +32,7 @@ import type {
 } from '../../shared/contracts.js';
 import {
   assistantFeedbackBodySchema,
+  assistantWarmBodySchema,
   assistantSurveyBodySchema,
   saveAssistantKeyBodySchema,
   sendAssistantMessageBodySchema,
@@ -51,6 +52,7 @@ import * as analytics from './analytics.js';
 import { authorizeAssistantNavigation, requireAssistantSpaceAccess } from './access.js';
 import { cursorRuntimeAvailable, listCursorModels, verifyCursorApiKey } from './cursorRuntime.js';
 import * as sharedKeys from './sharedKeys.js';
+import { warmAssistant, warmRateLimitAllows } from './warm.js';
 import { isKnownProviderModel, parseAssistantModel, PROVIDER_MODELS, providerModelId } from './models.js';
 import {
   buildProviderKeyInfo,
@@ -609,6 +611,23 @@ export function registerAssistantRoutes(app: FastifyInstance): void {
     const { runId, conversationId } = await startRunForRequest(request);
     reply.status(202);
     return { conversationId, runId } satisfies StartAssistantRunResponse;
+  });
+
+  // The panel was opened (or its conversation switched): prepare for the next message. Same checks as a run;
+  // the preparation itself runs after the 202 and costs no model tokens (warm.ts).
+  app.post('/api/assistant/warm', async (request, reply) => {
+    assertNotDemo('The AI assistant');
+    session.requireCookieAuth(request);
+    const user = request.authUser!;
+    const input = parseBody(assistantWarmBodySchema, request.body);
+    const navigation = await authorizeAssistantNavigation(user, input);
+    const conversation = input.conversationId ? await assistantStore.findConversation(input.conversationId, user.id) : null;
+    if (input.conversationId && !conversation) throw notFound('assistant conversation');
+    reply.status(202);
+    if (warmRateLimitAllows(user.id, [input.conversationId ?? null, navigation.space, navigation.pageId, input.runMode])) {
+      void warmAssistant({ user, space: navigation.space, pageId: navigation.pageId, currentPath: input.currentPath ?? null, runMode: input.runMode, conversation });
+    }
+    return {};
   });
 
   app.get('/api/assistant/runs/:runId/events', async (request, reply) => {

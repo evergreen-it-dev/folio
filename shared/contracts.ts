@@ -2717,6 +2717,16 @@ export const sendAssistantMessageBodySchema = z.object({
 });
 export type SendAssistantMessageBody = z.infer<typeof sendAssistantMessageBodySchema>;
 
+/** POST /api/assistant/warm → 202 `{}`: the panel was opened / the conversation switched; get ready for the next message (no model call). */
+export const assistantWarmBodySchema = z.object({
+  conversationId: z.string().uuid().nullable().optional(),
+  runMode: z.enum(['ask', 'agent']).default('ask'),
+  currentPath: z.string().trim().max(1000).nullable().optional(),
+  space: z.string().trim().max(200).nullable().optional(),
+  pageId: z.string().trim().max(100).nullable().optional(),
+});
+export type AssistantWarmBody = z.infer<typeof assistantWarmBodySchema>;
+
 export type AssistantStreamEvent =
   | { type: 'conversation'; conversationId: string }
   | { type: 'status'; status: 'starting' | 'thinking' | 'tool' | 'writing'; label?: string; tokens?: number; generating?: boolean }

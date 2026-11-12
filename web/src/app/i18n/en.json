@@ -1018,6 +1018,8 @@
       "conflictMarker": "This page has an unresolved git merge conflict",
       "lockRestricted": "Access to this page is restricted",
       "lockInherited": "Restricted by a parent page",
+      "childCount_one": "{{count}} subpage",
+      "childCount_other": "{{count}} subpages",
       "moreActions": "More actions",
       "copyLink": "Copy link",
       "linkCopied": "Link copied",

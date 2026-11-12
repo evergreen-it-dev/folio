@@ -127,6 +127,7 @@ import type {
   SavedSearchesResponse,
   SearchHit,
   SendAssistantMessageBody,
+  AssistantWarmBody,
   ShareLinkInfo,
   SharedPagePayload,
   SpaceInfo,
@@ -1512,6 +1513,9 @@ export const api = {
   /** POST /api/assistant/runs — starts a run (a server-side task) and returns immediately; see assistant/runState.tsx. */
   startAssistantRun: (body: SendAssistantMessageBody) =>
     request<StartAssistantRunResponse>('/api/assistant/runs', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** POST /api/assistant/warm — the panel was opened / the conversation switched: the server prepares for the next message (no model call). Fire and forget. */
+  warmAssistant: (body: AssistantWarmBody) => request<unknown>('/api/assistant/warm', { method: 'POST', body: JSON.stringify(body) }),
 
   /** GET /api/assistant/runs/active — the caller's one in-flight run, if any (drives reconnection after F5/navigation). */
   getActiveAssistantRun: () => request<ActiveAssistantRunResponse>('/api/assistant/runs/active'),

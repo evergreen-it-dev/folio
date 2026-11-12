@@ -72,6 +72,7 @@ import { queryBaseForAgent, AGENT_BASE_MAX_ROWS } from './bases/agent.js';
 import { baseAsMarkdown } from './bases/compact.js';
 import { applyBoardOps, boardOpSchema, type BoardOp } from './boardOps.js';
 import { HttpError } from './errors.js';
+import { assertDemoAgentRootIntact } from './demo.js';
 import { normalizeRenameTags, renameTag } from './tags.js';
 import { assertNoReservedKey, mergePropertyPatch, PropertiesConflictError, propertiesStoreOf, readPageProperties, savePageProperties } from './properties.js';
 import { listPropertySamples, readSpacePropertyTypes } from './propertyTypes.js';
@@ -136,6 +137,7 @@ export const MCP_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   'board_ops',
   'create_page',
   'update_page',
+  'move_page',
   'create_page_from_template',
   'save_page_as_template',
   'create_template',
@@ -169,7 +171,7 @@ export const FOLIO_MCP_INSTRUCTIONS = [
   '',
   'Find, then read: call list_spaces, then search_pages (full text) or list_tree (page tree) to locate a page, then read_page by id. search and fetch are the same for clients that accept only those. resolve_folio_url turns a pasted Folio link into a page id. get_backlinks, page_history and page_at_sha show links and past versions. get_page_metadata gives a page\'s outline, tags, properties and links; list_unresolved_links, list_orphans and get_graph map links; list_tags and list_properties show the tags and property keys in use; query_base answers a base.',
   '',
-  'Write minimally: every write is committed to Git under the connected user, and update_page replaces the page (use baseRevision). Change only what was asked; create_page for new pages (set parentPath); re-read after writing. Before writing to a data table, call folio_table_schema and use its exact column ids and select/status options; then folio_table_insert / folio_table_update / folio_table_delete; columns and views: folio_table_add_column, _update_column, _save_view. Forms: create_form / update_form. Claude artifacts, Cursor canvases, HTML: publish_artifact. Templates: list_templates, create_page_from_template. Page properties: set_page_properties (merge: true to change one key); tags: rename_tag; bases: save_base.',
+  'Write minimally: every write is committed to Git under the connected user, and update_page replaces the page (use baseRevision). Change only what was asked; create_page for new pages, move_page to relocate; re-read after writing. Before writing to a data table, call folio_table_schema and use its exact column ids and select/status options; then folio_table_insert / folio_table_update / folio_table_delete; columns and views: folio_table_add_column, _update_column, _save_view. Forms: create_form / update_form. Claude artifacts, Cursor canvases, HTML: publish_artifact. Templates: list_templates, create_page_from_template. Page properties: set_page_properties (merge: true to change one key); tags: rename_tag; bases: save_base.',
   '',
   'Permissions: you act with the rights of the connected user, limited by the granted scope (read-only connections cannot write). If a tool reports a missing role or scope, tell the user instead of retrying.',
   '',
@@ -1159,6 +1161,45 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
       gitSync.noteActivity(space);
       recordAudit(actor.user.id, 'page.created', meta.id, { source: 'mcp', tool: 'create_template' });
       return structuredResult({ ...result, url: pageUrl(result.space, result.id) });
+    },
+  );
+
+  server.registerTool(
+    'move_page',
+    {
+      outputSchema: outputSchemas.page,
+      annotations: WRITE_OVERWRITES,
+      title: 'Move a page',
+      description:
+        'Moves a page, with its subpages, into another folder of the same space. Links to it and from it are rewritten so they keep working, and the move is one Git commit. Requires a write-scoped token and an editor role in the space. Not available in a space set to review mode. Use list_tree to find the destination path. Returns the page at its new path.',
+      inputSchema: {
+        id: z.string().describe('Id of the page to move'),
+        parentPath: z.string().describe('Destination parent directory relative to the space root; "" for the space root'),
+      },
+    },
+    async ({ id, parentPath }) => {
+      if (!hasWriteScope) return errorResult('this action requires a token with write scope');
+      const { entry, error } = await checkPageRole(actor, id, 'editor');
+      if (error || !entry) return errorResult(error ?? 'page not found');
+      try {
+        assertDemoAgentRootIntact(actor.user, entry.relPath, 'Moving the .agent folder');
+        const dest = storage.normalizeDirParam(parentPath);
+        const agentErr = await checkAgentWriteAllowed(actor.user, entry.space, dest);
+        if (agentErr) return errorResult(agentErr);
+        if (storage.isUnderTemplates(dest)) return errorResult('a page cannot be moved into the templates folder — use save_page_as_template to make a template of it');
+        const before = snapshotPageChange(entry);
+        const author = { name: actor.user.name, email: actor.user.email };
+        gitSync.recordEditor(entry.space, author);
+        const result = await collab.movePage(id, dest, author);
+        const after = snapshotPageChange(await storage.requireEntry(id));
+        if (before.path !== after.path) await recordPageChange(actor.user.id, 'page.move', id, entry.space, before, after);
+        gitSync.noteActivity(entry.space);
+        recordAudit(actor.user.id, 'page.moved', id, { source: 'mcp', tool: 'move_page' });
+        return structuredResult(result);
+      } catch (moveErr) {
+        if (moveErr instanceof HttpError) return errorResult(moveErr.message);
+        throw moveErr;
+      }
     },
   );
 

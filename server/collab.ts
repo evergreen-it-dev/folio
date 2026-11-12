@@ -1015,7 +1015,7 @@ function deepEquals(a: unknown, b: unknown): boolean {
  * undo entry), and a one-word change to a paragraph doesn't blow away every
  * collaborator's cursor inside it the way a whole-text replace would.
  */
-function setYText(t: Y.Text, next: string): void {
+export function setYText(t: Y.Text, next: string): void {
   const cur = t.toString();
   if (cur === next) return;
   const max = Math.min(cur.length, next.length);
@@ -1023,10 +1023,107 @@ function setYText(t: Y.Text, next: string): void {
   while (prefix < max && cur[prefix] === next[prefix]) prefix++;
   let suffix = 0;
   while (suffix < max - prefix && cur[cur.length - 1 - suffix] === next[next.length - 1 - suffix]) suffix++;
-  const removed = cur.length - prefix - suffix;
-  const inserted = next.slice(prefix, next.length - suffix);
-  if (removed > 0) t.delete(prefix, removed);
-  if (inserted) t.insert(prefix, inserted);
+  // Never split a surrogate pair at either edge of the changed span.
+  if (prefix > 0 && isHighSurrogate(cur.charCodeAt(prefix - 1))) prefix--;
+  if (suffix > 0 && isLowSurrogate(cur.charCodeAt(cur.length - suffix))) suffix--;
+  const oldMid = cur.slice(prefix, cur.length - suffix);
+  const newMid = next.slice(prefix, next.length - suffix);
+  const ops = oldMid && newMid ? diffOps(oldMid, newMid, SET_YTEXT_DIFF_CAP) : null;
+  if (!ops) {
+    if (oldMid) t.delete(prefix, oldMid.length);
+    if (newMid) t.insert(prefix, newMid);
+    return;
+  }
+  // End to start, so earlier offsets stay valid while the text changes.
+  for (let i = ops.length - 1; i >= 0; i--) {
+    const op = ops[i];
+    if (op.del > 0) t.delete(prefix + op.pos, op.del);
+    if (op.ins) t.insert(prefix + op.pos, op.ins);
+  }
+}
+
+/** Most code points a character-level diff may insert plus delete before setYText gives up and replaces the whole span. */
+const SET_YTEXT_DIFF_CAP = 1024;
+
+function isHighSurrogate(c: number): boolean {
+  return c >= 0xd800 && c <= 0xdbff;
+}
+function isLowSurrogate(c: number): boolean {
+  return c >= 0xdc00 && c <= 0xdfff;
+}
+
+interface DiffOp {
+  /** UTF-16 offset in the old string. */
+  pos: number;
+  /** UTF-16 length deleted at pos. */
+  del: number;
+  /** Text inserted at pos. */
+  ins: string;
+}
+
+/**
+ * Character-level (code-point) Myers diff of `a` into `b`, as ordered, non-overlapping ops over `a`'s
+ * UTF-16 offsets. Returns null when more than `cap` code points would have to be inserted plus deleted.
+ */
+function diffOps(a: string, b: string, cap: number): DiffOp[] | null {
+  const A = Array.from(a);
+  const B = Array.from(b);
+  const N = A.length;
+  const M = B.length;
+  const off = cap + 1;
+  const v = new Int32Array(2 * cap + 3);
+  const trace: Int32Array[] = [];
+  let found = -1;
+  for (let d = 0; d <= cap && found < 0; d++) {
+    trace.push(v.slice());
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[k - 1 + off] < v[k + 1 + off]) ? v[k + 1 + off] : v[k - 1 + off] + 1;
+      let y = x - k;
+      while (x < N && y < M && A[x] === B[y]) { x++; y++; }
+      v[k + off] = x;
+      if (x >= N && y >= M) { found = d; break; }
+    }
+  }
+  if (found < 0) return null;
+  const deleted = new Uint8Array(N);
+  const insertsAt = new Map<number, string[]>();
+  let x = N;
+  let y = M;
+  for (let d = found; d >= 1; d--) {
+    const vv = trace[d];
+    const k = x - y;
+    const prevK = k === -d || (k !== d && vv[k - 1 + off] < vv[k + 1 + off]) ? k + 1 : k - 1;
+    const prevX = vv[prevK + off];
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) { x--; y--; }
+    if (x === prevX) {
+      const list = insertsAt.get(prevX);
+      if (list) list.unshift(B[prevY]);
+      else insertsAt.set(prevX, [B[prevY]]);
+    } else {
+      deleted[prevX] = 1;
+    }
+    x = prevX;
+    y = prevY;
+  }
+  const ops: DiffOp[] = [];
+  let u16 = 0;
+  let i = 0;
+  while (i <= N) {
+    const ins = (insertsAt.get(i) ?? []).join('');
+    let del = 0;
+    let j = i;
+    while (j < N && deleted[j]) { del += A[j].length; j++; }
+    if (del > 0 || ins) ops.push({ pos: u16, del, ins });
+    if (j === i) {
+      if (i < N) u16 += A[i].length;
+      i++;
+    } else {
+      u16 += del;
+      i = j;
+    }
+  }
+  return ops;
 }
 
 /** Deep copy of a Y.Map into a fresh, unintegrated one built by `E` — a Y type can only be integrated once. */
@@ -2719,10 +2816,9 @@ export async function applyMarkdownUpdate(id: string, rawMarkdown: string, overr
   if (baseRevision !== undefined && bodyRevision(before) !== baseRevision) throw new RevisionConflictError(bodyRevision(before));
   const changed = before !== markdown;
   if (changed) {
-    doc.transact(() => {
-      ytext.delete(0, ytext.length);
-      ytext.insert(0, markdown);
-    });
+    // setYText keeps unchanged text (even between two edits) under its old Yjs identity, so a
+    // browser user's Undo still finds their earlier typing after an agent edit (issue #18).
+    doc.transact(() => setYText(ytext, markdown));
   }
   if (baseRevision !== undefined) await persistIconCover();
   if (changed) await backupRoomText(id, 'body replaced through the API', before);

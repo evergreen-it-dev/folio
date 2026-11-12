@@ -933,6 +933,20 @@ export function TreeRow({
           </div>
         )}
 
+        {/* Direct-child counter: the same list the expanded branch renders. The hover
+            actions above keep their layout slot (opacity only), so this sits to their
+            right and never overlaps or jumps. Folder rows have no actions: push right. */}
+        {!editing && hasChildren && (
+          <span
+            className={`shrink-0 text-xs tabular-nums text-neutral-400 dark:text-neutral-500 ${isFolder ? 'ml-auto' : ''}`}
+            data-testid="tree-child-count"
+            title={t('sidebar.tree.childCount', { count: node.children.length })}
+            aria-label={t('sidebar.tree.childCount', { count: node.children.length })}
+          >
+            {node.children.length}
+          </span>
+        )}
+
         {hasChildren && (
           <DisclosureChevron
             open={isOpen}

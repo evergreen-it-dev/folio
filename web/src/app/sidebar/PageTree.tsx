@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api';
@@ -75,25 +75,44 @@ export function PageTree({ space, activeId, activeFolderPath, canEdit }: PageTre
   // asks to be shown: once the fresh tree holds it, expand its ancestors, then
   // scroll its row into view (the row is rendered by the next commit).
   const revealRequest = useTreeRevealRequest(space);
-  const [scrollToId, setScrollToId] = useState<string | null>(null);
+  const [scrollTo, setScrollTo] = useState<{ id: string; block: ScrollLogicalPosition } | null>(null);
   useEffect(() => {
     if (!revealRequest || !data) return;
     const ancestors = ancestorIds(data.tree, revealRequest.pageId);
     if (!ancestors) return; // not in the tree yet: the invalidated query is still on its way
     if (ancestors.length > 0) setExpanded((prev) => new Set([...prev, ...ancestors]));
-    setScrollToId(revealRequest.pageId);
+    setScrollTo({ id: revealRequest.pageId, block: 'center' });
     clearTreeReveal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealRequest, data]);
+
+  // The page open in the main area is shown in the tree too (owner, 10.11.2026:
+  // "I followed a link, but the tree has a different page expanded"). Opening a
+  // page from a link, a breadcrumb, search or a fresh tab expands its ancestors
+  // once per page — branches opened earlier stay open, and collapsing an
+  // ancestor afterwards is not undone by the next tree refetch. The row is
+  // scrolled only as far as needed ('nearest'), so a click inside the tree
+  // does not move it.
+  const revealedActiveId = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!scrollToId) return;
+    if (!activeId || !data || revealedActiveId.current === activeId) return;
+    const ancestors = ancestorIds(data.tree, activeId);
+    if (!ancestors) return; // not in this tree (yet): a new page whose tree refetch is on its way
+    revealedActiveId.current = activeId;
+    if (ancestors.some((id) => !expanded.has(id))) setExpanded((prev) => new Set([...prev, ...ancestors]));
+    setScrollTo((current) => current ?? { id: activeId, block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, data]);
+
+  useEffect(() => {
+    if (!scrollTo) return;
     const frame = requestAnimationFrame(() => {
-      const row = document.querySelector<HTMLElement>(`[data-tree-page-id="${scrollToId.replace(/["\\]/g, '\\$&')}"]`);
-      row?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-      setScrollToId(null);
+      const row = document.querySelector<HTMLElement>(`[data-tree-page-id="${scrollTo.id.replace(/["\\]/g, '\\$&')}"]`);
+      row?.scrollIntoView?.({ block: scrollTo.block, behavior: 'smooth' });
+      setScrollTo(null);
     });
     return () => cancelAnimationFrame(frame);
-  }, [scrollToId, expandedArray]);
+  }, [scrollTo, expandedArray]);
 
   // Which row is being dragged right now, lifted to the whole tree because
   // every OTHER row needs it to decide whether it is a legal drop target.

@@ -409,6 +409,7 @@ function finishTiming(run: RunState, outcome: 'done' | 'error' | 'cancelled'): R
     mode: run.runMode,
     model: run.model,
     outcome,
+    warm: snapshot.warm,
     totalMs: snapshot.totalMs,
     toolsReadyMs: snapshot.toolsReadyMs,
     agentReadyMs: snapshot.agentReadyMs,
@@ -467,6 +468,7 @@ async function executeRun(run: RunState, input: StartRunInput): Promise<void> {
         onMilestone: (milestone) => {
           logTiming(run, milestone.replace('-', '_'), { ms: run.timing.milestone(milestone) });
         },
+        onWarm: (warm) => run.timing.setWarm(warm),
         onToolFinished: (timing) => {
           run.timing.toolFinished(timing);
           logTiming(run, 'tool', { tool: timing.tool, ms: timing.ms, ok: timing.ok });

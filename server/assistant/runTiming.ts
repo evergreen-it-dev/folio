@@ -5,6 +5,9 @@
  */
 import type { SdkUpdateLike } from './genProgress.js';
 
+/** Did the run find a warm agent waiting (warmSlots.ts)? `off`: warm-up disabled or not used by this provider. */
+export type RunWarm = 'hit' | 'miss' | 'off';
+
 export type RunMilestone = 'tools-ready' | 'agent-ready' | 'sent';
 
 export interface ToolTiming {
@@ -15,6 +18,8 @@ export interface ToolTiming {
 }
 
 export interface RunTimingSnapshot {
+  /** Cursor runs: whether a warm agent (made when the panel was opened) was used, so that agentReadyMs shows the effect. */
+  warm: RunWarm;
   /** Workspace + tool set built (before the SDK agent is touched). */
   toolsReadyMs: number | null;
   /** SDK agent created or resumed and reloaded. */
@@ -41,6 +46,7 @@ export interface RunTiming {
   /** Feed every SDK update; returns which "first" it was, so the caller can log it. */
   onUpdate: (update: SdkUpdateLike) => { firstDelta: number | null; firstText: number | null };
   toolFinished: (timing: ToolTiming) => void;
+  setWarm: (warm: RunWarm) => void;
   snapshot: () => RunTimingSnapshot;
 }
 
@@ -63,6 +69,7 @@ export function createRunTiming(now: () => number = Date.now): RunTiming {
   let toolCalls = 0;
   let toolMs = 0;
   const tools: ToolTiming[] = [];
+  let warm: RunWarm = 'off';
 
   return {
     milestone(name) {
@@ -103,6 +110,9 @@ export function createRunTiming(now: () => number = Date.now): RunTiming {
       }
       return result;
     },
+    setWarm(value) {
+      warm = value;
+    },
     toolFinished(timing) {
       toolCalls += 1;
       toolMs += timing.ms;
@@ -110,6 +120,7 @@ export function createRunTiming(now: () => number = Date.now): RunTiming {
     },
     snapshot() {
       return {
+        warm,
         toolsReadyMs: marks['tools-ready'] ?? null,
         agentReadyMs: marks['agent-ready'] ?? null,
         sentMs: marks.sent ?? null,

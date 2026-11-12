@@ -19,6 +19,7 @@ import { writingRulesFixMessage, writingRulesLanguageName } from './writingRules
 import type { PendingAssistantAsk } from './AssistantHost';
 import { AssistantFeedbackButtons, useAssistantFeedback } from './AssistantFeedback';
 import { AssistantSurveyCard } from './AssistantSurvey';
+import { useAssistantWarm } from './useAssistantWarm';
 import '../i18n/register';
 
 export interface AssistantPanelProps {
@@ -254,6 +255,8 @@ export function AssistantPanel({ open, onClose, pendingAsk = null, onAskHandled 
   const storedMessages = startNew ? [] : (conversation.data?.messages ?? []);
   const messages = useMemo(() => [...storedMessages, ...pendingMessages], [storedMessages, pendingMessages]);
   const activeConversationId = conversationId ?? conversation.data?.conversationId ?? null;
+  // The panel became visible or its conversation changed: let the server get ready (no model call; useAssistantWarm.ts).
+  useAssistantWarm({ open, ready, conversationId: startNew ? null : activeConversationId, runMode, space, pageId: pageId ?? null, currentPath });
   const dueSurveyId = conversation.data?.surveyDue?.afterMessageId ?? null;
   // Only for the latest answer: a cached `surveyDue` from before a newer message must not resurface.
   const surveyId =

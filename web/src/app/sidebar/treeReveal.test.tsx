@@ -56,17 +56,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderTree() {
+function renderTree(activeId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const tree = (id: string | undefined) => (
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <ToastProvider>
-          <PageTree space="sp" activeId="nb" activeFolderPath={undefined} canEdit />
+          <PageTree space="sp" activeId={id} activeFolderPath={undefined} canEdit />
         </ToastProvider>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(tree(activeId));
+  return { ...view, open: (id: string | undefined) => view.rerender(tree(id)) };
 }
 
 describe('ancestorIds', () => {
@@ -106,6 +108,31 @@ describe('reveal request', () => {
     act(() => requestTreeReveal('sp', 'not-yet'));
     await new Promise((r) => setTimeout(r, 30));
     expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(screen.queryByText('Новая база')).toBeNull();
+  });
+});
+
+describe('the open page is shown in the tree', () => {
+  it('opening a page (link, breadcrumb, new tab) expands its ancestors and brings its row into view', async () => {
+    renderTree('nb');
+    expect(await screen.findByText('Новая база')).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem('folio:expanded:sp')!)).toEqual(expect.arrayContaining(['cases', 'deepdir']));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', behavior: 'smooth' }));
+  });
+
+  it('keeps branches opened earlier, and does not reopen an ancestor collapsed afterwards', async () => {
+    window.localStorage.setItem('folio:expanded:sp', JSON.stringify(['other-branch']));
+    const { open } = renderTree(undefined);
+    await screen.findByText('Cases');
+    expect(screen.queryByText('Новая база')).toBeNull();
+    open('nb');
+    expect(await screen.findByText('Новая база')).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem('folio:expanded:sp')!)).toEqual(expect.arrayContaining(['other-branch', 'cases', 'deepdir']));
+    // The user collapses «Cases» while the page stays open; a re-render with the same page leaves it collapsed.
+    act(() => screen.getByText('Cases').closest('[role="button"]')!.parentElement!.querySelector<HTMLButtonElement>('button[aria-expanded="true"]')!.click());
+    await waitFor(() => expect(screen.queryByText('Новая база')).toBeNull());
+    open('nb');
+    await new Promise((r) => setTimeout(r, 30));
     expect(screen.queryByText('Новая база')).toBeNull();
   });
 });

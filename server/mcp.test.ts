@@ -63,11 +63,11 @@ describe('server/mcp.ts — server identity', () => {
 describe('server/mcp.ts — tool annotations and instructions', () => {
   const actor: McpActor = { user: { id: 'nobody' } as User, scopes: ['read'], tokenId: 'test-annotations-token' };
 
-  it('annotates all 51 tools: a title, explicit booleans, and readOnlyHint or destructiveHint', async () => {
+  it('annotates all 52 tools: a title, explicit booleans, and readOnlyHint or destructiveHint', async () => {
     const { client, close } = await connectedClient(actor);
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(51);
+      expect(tools).toHaveLength(52);
       for (const tool of tools) {
         const a = tool.annotations;
         expect(a?.title ?? tool.title, `${tool.name} title`).toBeTruthy();
@@ -86,7 +86,7 @@ describe('server/mcp.ts — tool annotations and instructions', () => {
       expect(readOnly).toContain('fetch');
       // Tools that replace or delete content say so.
       const byName = new Map(tools.map((t) => [t.name, t.annotations]));
-      for (const name of ['update_page', 'update_board', 'folio_table_update', 'folio_table_delete', 'set_page_properties', 'save_base', 'rename_tag', 'update_form', 'folio_table_update_column', 'folio_table_delete_column', 'folio_table_save_view', 'folio_table_delete_view']) expect(byName.get(name)?.destructiveHint, name).toBe(true);
+      for (const name of ['update_page', 'move_page', 'update_board', 'folio_table_update', 'folio_table_delete', 'set_page_properties', 'save_base', 'rename_tag', 'update_form', 'folio_table_update_column', 'folio_table_delete_column', 'folio_table_save_view', 'folio_table_delete_view']) expect(byName.get(name)?.destructiveHint, name).toBe(true);
       for (const name of ['create_page', 'create_board', 'folio_table_insert', 'folio_table_create', 'folio_table_add_column', 'create_form', 'convert_canvas_to_board']) expect(byName.get(name)?.destructiveHint, name).toBe(false);
       // rename_tag rewrites many files, so clients should ask; it is not the same call twice (the second finds nothing)
       expect(byName.get('rename_tag')?.destructiveHint).toBe(true);
@@ -118,7 +118,7 @@ describe('server/mcp.ts — tool annotations and instructions', () => {
       expect(writers.map((t) => t.name).sort()).toEqual(
         [
           'add_comment', 'board_ops', 'convert_canvas_to_board', 'create_board', 'create_form', 'create_page', 'create_page_from_template', 'create_template', 'folio_table_add_column', 'folio_table_create', 'folio_table_delete',
-          'folio_table_delete_column', 'folio_table_delete_view', 'folio_table_insert', 'folio_table_save_view', 'folio_table_update', 'folio_table_update_column', 'publish_artifact', 'rename_tag',
+          'folio_table_delete_column', 'folio_table_delete_view', 'folio_table_insert', 'folio_table_save_view', 'folio_table_update', 'folio_table_update_column', 'move_page', 'publish_artifact', 'rename_tag',
           'reply_comment', 'save_base', 'save_page_as_template', 'set_page_properties', 'update_board', 'update_form', 'update_page',
         ],
       );
@@ -485,6 +485,101 @@ describe('server/mcp.ts — folio_table_* tools (real fs + real PG, in-memory MC
       const result = await client.callTool({ name: 'folio_table_create', arguments: { space: spaceSlug, parentPath: '', title: 'Should Not Exist' } });
       expect(result.isError).toBe(true);
       expect(resultText(result)).toMatch(/write scope/);
+    } finally {
+      await close();
+    }
+  });
+});
+
+describe('server/mcp.ts — move_page (real fs + real PG, in-memory MCP transport)', () => {
+  let teardownSchema: () => Promise<void>;
+  let editorUser: User;
+  let viewerUser: User;
+  let spaceSlug: string;
+
+  beforeAll(async () => {
+    teardownSchema = await setUpTestSchema();
+    const stamp = Date.now();
+    editorUser = await authStore.createUser({ email: `mcp-mv-editor-${stamp}@test.local`, name: 'Mover', passwordHash: 'x', isAdmin: false });
+    viewerUser = await authStore.createUser({ email: `mcp-mv-viewer-${stamp}@test.local`, name: 'Looker', passwordHash: 'x', isAdmin: false });
+    const space = await storage.createSpace(`MCP Move ${stamp}`, null);
+    spaceSlug = space.slug;
+    await authStore.setMembership(spaceSlug, editorUser.id, 'editor');
+    await authStore.setMembership(spaceSlug, viewerUser.id, 'viewer');
+  });
+  afterAll(async () => {
+    await deleteTestSpace(spaceSlug);
+    await teardownSchema();
+  });
+
+  const actorOf = (user: User, scopes: McpActor['scopes'] = ['read', 'write']): McpActor => ({ user, scopes, tokenId: `test-move-${user.id}` });
+  const mk = async (client: Client, parentPath: string, title: string) =>
+    resultJson(await client.callTool({ name: 'create_page', arguments: { space: spaceSlug, parentPath, title, markdown: `# ${title}\n\nBody.\n` } })) as { id: string; path: string };
+
+  it('moves a page into another folder (path changes), and back to the space root with ""', async () => {
+    const { client, close } = await connectedClient(actorOf(editorUser));
+    try {
+      const folder = await mk(client, '', 'Move target');
+      const doc = await mk(client, '', 'Moving doc');
+      const dir = folder.path.replace(/\.md$/, '');
+      const moved = await client.callTool({ name: 'move_page', arguments: { id: doc.id, parentPath: dir } });
+      expect(moved.isError, resultText(moved)).toBeFalsy();
+      const meta = moved.structuredContent as { id: string; path: string; space: string };
+      expect(meta).toMatchObject({ id: doc.id, space: spaceSlug });
+      expect(meta.path.startsWith(`${dir}/`)).toBe(true);
+      expect((await storage.requireEntry(doc.id)).relPath).toBe(meta.path);
+
+      const back = await client.callTool({ name: 'move_page', arguments: { id: doc.id, parentPath: '' } });
+      expect(back.isError, resultText(back)).toBeFalsy();
+      expect((back.structuredContent as { path: string }).path.includes('/')).toBe(false);
+    } finally {
+      await close();
+    }
+  });
+
+  it('refuses a viewer and a read-only token', async () => {
+    const editor = await connectedClient(actorOf(editorUser));
+    const viewer = await connectedClient(actorOf(viewerUser));
+    const readOnly = await connectedClient(actorOf(editorUser, ['read']));
+    try {
+      const doc = await mk(editor.client, '', 'Guarded doc');
+      const asViewer = await viewer.client.callTool({ name: 'move_page', arguments: { id: doc.id, parentPath: '' } });
+      expect(asViewer.isError).toBe(true);
+      expect(resultText(asViewer)).toMatch(/editor|role/i);
+      const asReadOnly = await readOnly.client.callTool({ name: 'move_page', arguments: { id: doc.id, parentPath: '' } });
+      expect(asReadOnly.isError).toBe(true);
+      expect(resultText(asReadOnly)).toMatch(/write scope/);
+    } finally {
+      await editor.close();
+      await viewer.close();
+      await readOnly.close();
+    }
+  });
+
+  it('refuses a non-admin moving a page into .agent, and into the templates folder', async () => {
+    const { client, close } = await connectedClient(actorOf(editorUser));
+    try {
+      const doc = await mk(client, '', 'Not for agent');
+      const agent = await client.callTool({ name: 'move_page', arguments: { id: doc.id, parentPath: '.agent' } });
+      expect(agent.isError).toBe(true);
+      expect(resultText(agent)).toMatch(/\.agent is admin-only/);
+      const tpl = await client.callTool({ name: 'move_page', arguments: { id: doc.id, parentPath: '_templates' } });
+      expect(tpl.isError).toBe(true);
+      expect(resultText(tpl)).toMatch(/templates/);
+    } finally {
+      await close();
+    }
+  });
+
+  it('moving a page into its own subtree is an error result, not a thrown error', async () => {
+    const { client, close } = await connectedClient(actorOf(editorUser));
+    try {
+      const parent = await mk(client, '', 'Outer page');
+      const dir = parent.path.replace(/\.md$/, '');
+      await mk(client, dir, 'Inner page');
+      const result = await client.callTool({ name: 'move_page', arguments: { id: parent.id, parentPath: dir } });
+      expect(result.isError).toBe(true);
+      expect(resultText(result)).toMatch(/own subtree/);
     } finally {
       await close();
     }
