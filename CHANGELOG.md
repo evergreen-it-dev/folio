@@ -7,8 +7,9 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 ### Fixed
 
 - **Undo after an agent edit.** REST/MCP document updates preserve unchanged
-  text before and after the changed passage, so browser Undo/Redo and cursor
+  text between separate passage changes, so browser Undo/Redo and cursor
   anchors there survive the update. Emoji stay intact at edit boundaries.
+  Large rewrites fall back to replacing one span to bound diff computation.
 
 ## [0.4.5] - 2026-11-09
 

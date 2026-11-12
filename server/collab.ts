@@ -21,11 +21,13 @@
 import { createRequire } from 'node:module';
 import * as fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { diffChars } from 'diff';
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import * as Y from 'yjs';
 import * as WS from 'ws';
 import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';
+import { simpleDiffString } from 'lib0/diff';
 import * as syncProtocol from 'y-protocols/sync';
 import * as storage from './storage.js';
 import * as session from './auth/session.js';
@@ -1018,18 +1020,11 @@ function deepEquals(a: unknown, b: unknown): boolean {
 function setYText(t: Y.Text, next: string): void {
   const cur = t.toString();
   if (cur === next) return;
-  const splitsSurrogate = (text: string, at: number): boolean => {
-    const high = text.charCodeAt(at - 1);
-    const low = text.charCodeAt(at);
-    return high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
-  };
   const max = Math.min(cur.length, next.length);
   let prefix = 0;
   while (prefix < max && cur[prefix] === next[prefix]) prefix++;
-  if (splitsSurrogate(cur, prefix) || splitsSurrogate(next, prefix)) prefix--;
   let suffix = 0;
   while (suffix < max - prefix && cur[cur.length - 1 - suffix] === next[next.length - 1 - suffix]) suffix++;
-  if (splitsSurrogate(cur, cur.length - suffix) || splitsSurrogate(next, next.length - suffix)) suffix--;
   const removed = cur.length - prefix - suffix;
   const inserted = next.slice(prefix, next.length - suffix);
   if (removed > 0) t.delete(prefix, removed);
@@ -2680,7 +2675,7 @@ export class RevisionConflictError extends HttpError {
 }
 
 /**
- * Routes a PUT's markdown through the live Y.Doc (changed span inside a
+ * Routes a PUT's markdown through the live Y.Doc (character edits inside a
  * transaction) instead of writing the file directly. The doc's own 'update'
  * listener (attached in bindState) picks this up and debounces the disk
  * write; we additionally patch the in-memory index synchronously so the
@@ -2726,7 +2721,23 @@ export async function applyMarkdownUpdate(id: string, rawMarkdown: string, overr
   if (baseRevision !== undefined && bodyRevision(before) !== baseRevision) throw new RevisionConflictError(bodyRevision(before));
   const changed = before !== markdown;
   if (changed) {
-    doc.transact(() => setYText(ytext, markdown));
+    const span = simpleDiffString(before, markdown);
+    const changes = diffChars(before.slice(span.index, span.index + span.remove), span.insert, { maxEditLength: 1024 });
+    doc.transact(() => {
+      if (!changes) {
+        if (span.remove) ytext.delete(span.index, span.remove);
+        if (span.insert) ytext.insert(span.index, span.insert);
+        return;
+      }
+      let index = span.index;
+      for (const change of changes) {
+        if (change.removed) ytext.delete(index, change.value.length);
+        else {
+          if (change.added) ytext.insert(index, change.value);
+          index += change.value.length;
+        }
+      }
+    });
   }
   if (baseRevision !== undefined) await persistIconCover();
   if (changed) await backupRoomText(id, 'body replaced through the API', before);

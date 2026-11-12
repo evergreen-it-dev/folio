@@ -33,6 +33,7 @@
     "@openai/codex-sdk": "0.167.0",
     "@sentry/node": "^11.8.0",
     "bcryptjs": "^3.0.3",
+    "diff": "^9.0.0",
     "docx": "^9.7.1",
     "fastify": "^5.12.6",
     "gray-matter": "^4.0.3",

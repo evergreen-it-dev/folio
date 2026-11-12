@@ -178,6 +178,42 @@ describe('update_page / PUT /api/pages/:id — baseRevision (real PG)', () => {
   });
 
   it.each([
+    ['separate paragraphs', '# Page\n\nFirst: old.\n\nMiddle: original.\n\nLast: old.\n', 'First: old.', 'First: new.', 'Last: old.', 'Last: new.'],
+    ['one paragraph', '# Page\n\nFirst: old. Middle: original. Last: old.\n', 'First: old.', 'First: new.', 'Last: old.', 'Last: new.'],
+    ['repeated words', '# Page\n\nold same same old\n', 'old', 'new', 'old', 'new'],
+    ['Unicode boundaries', '# Page\n\nFirst: 😀.\n\nMiddle: original.\n\nLast: 😀.\n', 'First: 😀.', 'First: 😁.', 'Last: 😀.', 'Last: 🨀.'],
+  ])('a matching MCP update preserves Undo and a bookmark BETWEEN two changes (%s)', async (_label, initial, first, firstNext, last, lastNext) => {
+    const id = await newPage(initial);
+    const ytext = openRoom(id, initial);
+    const browserOrigin = {};
+    const undo = new Y.UndoManager(ytext, { trackedOrigins: new Set([browserOrigin]) });
+    const sentence = 'Browser sentence. ';
+    const insertAt = initial.lastIndexOf(last);
+    try {
+      ytext.doc!.transact(() => ytext.insert(insertAt, sentence), browserOrigin);
+      undo.stopCapturing();
+      const bookmark = Y.createRelativePositionFromTypeIndex(ytext, insertAt + 8);
+      const read = (await callJson('read_page', { id })).json!;
+      const current = read.markdown as string;
+      const firstChanged = current.replace(first, firstNext);
+      const lastAt = firstChanged.lastIndexOf(last);
+      const proposed = firstChanged.slice(0, lastAt) + lastNext + firstChanged.slice(lastAt + last.length);
+      expect((await callJson('update_page', { id, markdown: proposed, baseRevision: read.bodyRevision })).isError).toBe(false);
+      expect(ytext.toString()).toBe(proposed);
+      const bookmarkAfter = Y.createAbsolutePositionFromRelativePosition(bookmark, ytext.doc!)?.index;
+
+      undo.undo();
+      expect(ytext.toString()).toBe(proposed.replace(sentence, ''));
+      undo.redo();
+      expect(ytext.toString()).toBe(proposed);
+      expect(bookmarkAfter).toBe(proposed.indexOf(sentence) + 8);
+    } finally {
+      undo.destroy();
+      ywsDocs.delete(id);
+    }
+  });
+
+  it.each([
     ['😀', '😁'], // shared high surrogate at the prefix boundary
     ['😀', '🨀'], // shared low surrogate at the suffix boundary
   ])('a matching REST update preserves an unchanged text position when %s becomes %s', async (before, after) => {
@@ -190,6 +226,23 @@ describe('update_page / PUT /api/pages/:id — baseRevision (real PG)', () => {
       const result = await put(id, { markdown: proposed, baseRevision: collab.bodyRevision(initial) });
       expect(result.statusCode).toBe(200);
       expect(ytext.toString()).toBe(proposed);
+      expect(Y.createAbsolutePositionFromRelativePosition(bookmark, ytext.doc!)?.index).toBe(proposed.indexOf('this'));
+    } finally {
+      ywsDocs.delete(id);
+    }
+  });
+
+  it('a large replacement still applies exactly with complete Unicode boundaries', async () => {
+    const initial = `# Page\n\nFirst: 😀.\n\n${'a'.repeat(600)}\n\nLast: 😀.\n\nKeep this paragraph.\n`;
+    const proposed = initial.replace('First: 😀.', 'First: 😁.').replace('a'.repeat(600), 'b'.repeat(600)).replace('Last: 😀.', 'Last: 🨀.');
+    const id = await newPage(initial);
+    const ytext = openRoom(id, initial);
+    const bookmark = Y.createRelativePositionFromTypeIndex(ytext, initial.indexOf('this'));
+    try {
+      const result = await put(id, { markdown: proposed, baseRevision: collab.bodyRevision(initial) });
+      expect(result.statusCode).toBe(200);
+      expect(ytext.toString()).toBe(proposed);
+      expect((await get(id)).markdown).toBe(proposed);
       expect(Y.createAbsolutePositionFromRelativePosition(bookmark, ytext.doc!)?.index).toBe(proposed.indexOf('this'));
     } finally {
       ywsDocs.delete(id);
