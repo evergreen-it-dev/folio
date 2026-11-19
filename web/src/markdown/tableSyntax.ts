@@ -535,27 +535,24 @@ export function cellHasList(cellText: string): boolean {
 
 /** The inverse of parseCellLines: back to the single-line cell body the file stores. */
 export function formatCellLines(lines: readonly CellLine[]): string {
-  // Ordered runs are renumbered from 1 per (depth, contiguous run), so the
-  // numbers a plain GFM renderer prints are always the right ones no matter how
-  // the list was edited. A run ends at any line that is not an `ol` item of the
-  // same depth.
-  const counters = new Map<number, number>();
+  // Each run keeps its first marker and counts on from it at its own depth.
+  const nextOrdinal = new Map<number, number>();
   return lines
     .map((l) => {
-      if (!l.marker) counters.clear(); // a paragraph ends every run
+      if (!l.marker) nextOrdinal.clear(); // a paragraph ends every run
       else {
         // Going shallower ends the deeper runs; a bullet at this depth ends the
         // numbered run at this depth. Nesting on its own does NOT: `1. / 1.1 /
         // 1.2 / 2.` has to keep counting the outer list.
-        for (const d of [...counters.keys()]) if (d > l.depth) counters.delete(d);
-        if (l.marker !== 'ol') counters.delete(l.depth);
+        for (const d of nextOrdinal.keys()) if (d > l.depth) nextOrdinal.delete(d);
+        if (l.marker !== 'ol') nextOrdinal.delete(l.depth);
       }
       if (!l.marker) return l.text;
       const indent = '  '.repeat(Math.max(0, l.depth - 1));
       if (l.marker === 'task') return `${indent}[${l.checked ? 'x' : ' '}] ${l.text}`;
       if (l.marker === 'ul') return `${indent}• ${l.text}`;
-      const n = (counters.get(l.depth) ?? 0) + 1;
-      counters.set(l.depth, n);
+      const n = nextOrdinal.get(l.depth) ?? (Number.isFinite(l.ordinal) ? l.ordinal! : 1);
+      nextOrdinal.set(l.depth, n + 1);
       return `${indent}${n}. ${l.text}`;
     })
     .join('<br>');

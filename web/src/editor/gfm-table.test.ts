@@ -534,10 +534,10 @@ describe('round 28: cell lists', () => {
     expect(cellTextToRaw('[ ] todo\n   [x] done')).toBe('[ ] todo<br>  [x] done');
   });
 
-  it('renumbers each ordered run from one, the way the contract says', () => {
+  it('saves each ordered run from its own starting number', () => {
     // Nesting does not end the outer run; a paragraph does.
-    expect(cellTextToRaw('3. a\n  1. n\n7. b\ntext\n9. c')).toBe(
-      '1. a<br>  1. n<br>2. b<br>text<br>1. c',
+    expect(cellTextToRaw('3. a\n  0. n\n7. b\ntext\n9. c')).toBe(
+      '3. a<br>  0. n<br>4. b<br>text<br>9. c',
     );
   });
 

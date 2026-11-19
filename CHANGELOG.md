@@ -6,6 +6,7 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Fixed
 
+- Ordered lists in table cells keep their starting number in Reading and after a cell edit.
 - Browser Undo keeps working after an agent edits several separate passages of a page through REST/MCP (reported in #18).
 
 ### Changed

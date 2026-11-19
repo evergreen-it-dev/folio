@@ -339,6 +339,15 @@ describe('renderMarkdownToHtml: lists inside cells', () => {
     expect(html).toContain('<ol><li>a draft</li><li>a review</li></ol>');
   });
 
+  it('keeps the starting number of each cell and nested list', () => {
+    const md = '| Step |\n| --- |\n| 1. One |\n| 2. **Two** |\n| 3. 3<br>  7. Nested<br>4. Four |\n| 0. Zero |';
+    const result = renderMarkdownToHtml(md, opts);
+    expect(result).toContain('<td><ol><li>One</li></ol></td>');
+    expect(result).toContain('<td><ol start="2"><li><strong>Two</strong></li></ol></td>');
+    expect(result).toContain('<td><ol start="3"><li>3<ol start="7"><li>Nested</li></ol></li><li>Four</li></ol></td>');
+    expect(result).toContain('<td><ol start="0"><li>Zero</li></ol></td>');
+  });
+
   it('keeps paragraphs and the list in the order they were written', () => {
     expect(html).toContain('<td>First:<ol><li>a draft</li><li>a review</li></ol>Then the release.</td>');
   });

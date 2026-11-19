@@ -848,9 +848,7 @@ function toListLine(line: string): ListLine {
   if (parsed.kind === 'bullet') return { ...shared, marker: 'ul' };
   if (parsed.kind === 'task') return { ...shared, marker: 'task', checked: parsed.checked };
   if (parsed.kind === 'ordered') {
-    // The ordinal is what the file says; `formatCellLines` renumbers each run
-    // itself, so this only has to be honest, not right.
-    return { ...shared, marker: 'ol', ordinal: Number.parseInt(parsed.marker.trimStart(), 10) || 1 };
+    return { ...shared, marker: 'ol', ordinal: Number.parseInt(parsed.marker, 10) };
   }
   return { depth: 0, marker: null, markerWidth: 0, text: line };
 }

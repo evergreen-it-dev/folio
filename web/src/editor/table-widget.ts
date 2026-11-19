@@ -1721,10 +1721,7 @@ function renderCell(
   const openList = (ordered: boolean, start: number): void => {
     const list = document.createElement(ordered ? 'ol' : 'ul');
     list.className = 'cm-md-cell-list';
-    // The browser numbers the items; the file's own numbers only matter when a
-    // run does not start at 1 — an import can do that, and until its cell is
-    // edited (`formatCellLines` renumbers each run) it should still read as 3, 4.
-    if (ordered && Number.isFinite(start) && start > 1) list.setAttribute('start', String(start));
+    if (ordered && Number.isFinite(start) && start !== 1) list.setAttribute('start', String(start));
 
     const parent = stack.length > 0 ? stack[stack.length - 1].list : null;
     const last = parent?.lastElementChild;
