@@ -168,6 +168,8 @@ export class CalloutLabelWidget extends WidgetType {
   }
 }
 
+let activeImageEditor: { anchor: HTMLElement; close: () => void } | null = null;
+
 export class ImageWidget extends WidgetType {
   constructor(
     readonly alt: string,
@@ -223,6 +225,10 @@ export class ImageWidget extends WidgetType {
     return wrap;
   }
 
+  destroy(dom: HTMLElement): void {
+    if (activeImageEditor?.anchor === dom) activeImageEditor.close();
+  }
+
   ignoreEvent(): boolean {
     return true;
   }
@@ -252,7 +258,7 @@ function openImageEditor(
   src: string,
   width?: string,
 ): void {
-  document.querySelector('.folio-image-editor')?.remove();
+  activeImageEditor?.close();
   const panel = document.createElement('div');
   panel.className = 'folio-image-editor';
   panel.setAttribute('role', 'dialog');
@@ -296,7 +302,13 @@ function openImageEditor(
   actions.append(cancel, save);
   panel.append(descriptionLabel, sizeLabel, actions);
 
-  const close = () => panel.remove();
+  const dismiss = new AbortController();
+  const close = () => {
+    dismiss.abort();
+    panel.remove();
+    if (activeImageEditor?.close === close) activeImageEditor = null;
+  };
+  activeImageEditor = { anchor, close };
   cancel.addEventListener('click', close);
   panel.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') close();
@@ -317,6 +329,17 @@ function openImageEditor(
   const panelRect = panel.getBoundingClientRect();
   panel.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - panelRect.width - 12))}px`;
   panel.style.top = `${Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - panelRect.height - 12))}px`;
+
+  // Close before an outside press reaches its target, without consuming the press.
+  const dismissOptions = { capture: true, signal: dismiss.signal };
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target instanceof Node && !panel.contains(event.target)) close();
+  }, dismissOptions);
+  // The panel is fixed to the viewport, so an ancestor's scroll can move its anchor away.
+  document.addEventListener('scroll', (event) => {
+    if (event.target instanceof Node && event.target.contains(anchor)) close();
+  }, dismissOptions);
+
   description.focus({ preventScroll: true });
   description.select();
 }
