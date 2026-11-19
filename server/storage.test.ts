@@ -1087,6 +1087,41 @@ describe('explicit page order for boards and tables (files are the only truth)',
     }
   });
 
+  // #19: on a big space the tree pulled every page's indexed text and search vector into memory.
+  // Checked on the raw rows the database returns - dropping `body` after the fact would pass a mapped-result check.
+  it('the page tree and the template list read only metadata from pages_index (no plain_text, tsv or full front matter)', async () => {
+    const space = await storage.createSpace(`Vitest Tree Metadata ${Date.now()}`, null);
+    const { getPool } = await import('./db/pool.js');
+    const { vi } = await import('vitest');
+    const spy = vi.spyOn(getPool(), 'query');
+    try {
+      const page = await storage.createPage({ space: space.slug, parentPath: '', title: 'Heavy page' }, { docBody: `# Heavy page\n\n${'needle '.repeat(500)}\n` });
+      const { query } = await import('./db/pool.js');
+      await query(`UPDATE pages_index SET frontmatter = $2::jsonb WHERE id = $1`, [page.id, JSON.stringify({ owner: 'ann', verified: '2099-01-01', review_by: '2099-12-31', big: 'x'.repeat(2000) })]);
+      await storage.createPage({ space: space.slug, parentPath: '_templates', title: 'Tpl' });
+
+      spy.mockClear();
+      const tree = await storage.getTree(space.slug);
+      await storage.getTemplatesTree(space.slug);
+      await storage.listTemplates(space.slug);
+      const results = (await Promise.all(spy.mock.results.map((r) => r.value as Promise<{ rows: Array<Record<string, unknown>> }>))).filter((r) => r.rows.length > 0);
+      const keys = new Set(results.flatMap((r) => r.rows.flatMap((row) => Object.keys(row))));
+      expect(keys.has('plain_text')).toBe(false);
+      expect(keys.has('tsv')).toBe(false);
+      expect(JSON.stringify(results.map((r) => r.rows))).not.toContain('needle');
+      expect(JSON.stringify(results.map((r) => r.rows))).not.toContain('xxxxxxxx');
+
+      // The tree still carries what it needs: structure, and the verification badge from the three keys.
+      const node = tree[0].children.find((c) => c.id === page.id)!;
+      expect(node.title).toBe('Heavy page');
+      expect(node.verification?.state).toBe('verified');
+      expect(node.verification?.owner).toBe('ann');
+    } finally {
+      spy.mockRestore();
+      await deleteTestSpace(space.slug);
+    }
+  });
+
   it('a board with NO order comment falls back to name ordering (sorts after ordered siblings), not to a random slot', async () => {
     const space = await storage.createSpace(`Vitest Board Fallback ${Date.now()}`, null);
     try {

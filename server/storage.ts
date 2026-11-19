@@ -690,7 +690,8 @@ interface PagesIndexRow {
   icon: string | null;
   cover: string | null;
   updated_at: string;
-  plain_text: string | null;
+  /** Absent from a metadata-only row (listEntryMetadata): the indexed text is what makes a big space's listing heavy. */
+  plain_text?: string | null;
   is_index: boolean;
   frontmatter?: unknown;
 }
@@ -2433,6 +2434,23 @@ export async function listEntries(space?: string): Promise<PageIndexEntry[]> {
   return rows.map(rowToEntry);
 }
 
+/**
+ * The structural list of a space's pages: everything the page tree, the template
+ * list and the like need (ids, paths, titles, order, status, icon, cover, the three
+ * verification keys) and NOT the indexed text, the search vector or the rest of the
+ * front matter. On a space with tens of thousands of pages `listEntries` drags all of
+ * that into the server's memory per request (#19). The entries come back with no `body`.
+ */
+export async function listEntryMetadata(space: string): Promise<PageIndexEntry[]> {
+  const rows = await query<PagesIndexRow>(
+    `SELECT id, space_slug, path, kind, title, sort_order, status, icon, cover, updated_at, is_index,
+            jsonb_strip_nulls(jsonb_build_object('owner', frontmatter->'owner', 'verified', frontmatter->'verified', 'review_by', frontmatter->'review_by')) AS frontmatter
+       FROM pages_index WHERE space_slug = $1`,
+    [space],
+  );
+  return rows.map(rowToEntry);
+}
+
 export async function spaceExists(space: string): Promise<boolean> {
   if (!space || space.includes('/') || space.includes('\\')) return false;
   const row = await queryOne<{ exists: boolean }>('SELECT EXISTS(SELECT 1 FROM spaces WHERE slug = $1) AS exists', [space]);
@@ -2551,7 +2569,7 @@ export async function spacesWithWritingRules(spaces: readonly string[]): Promise
  */
 export async function getTree(space: string, allowedPageIds?: ReadonlySet<string>): Promise<TreeNode[]> {
   if (!(await spaceExists(space))) throw notFound('space');
-  const entries = (await listEntries(space)).filter((e) => !isUnderTemplates(e.relPath) && (!allowedPageIds || allowedPageIds.has(e.id)));
+  const entries = (await listEntryMetadata(space)).filter((e) => !isUnderTemplates(e.relPath) && (!allowedPageIds || allowedPageIds.has(e.id)));
   return buildTreeFromEntries(space, entries);
 }
 
@@ -2562,7 +2580,7 @@ export async function getTree(space: string, allowedPageIds?: ReadonlySet<string
  */
 export async function getTemplatesTree(space: string, allowedPageIds?: ReadonlySet<string>): Promise<TreeNode[]> {
   if (!(await spaceExists(space))) throw notFound('space');
-  const entries = (await listEntries(space)).filter((e) => isUnderTemplates(e.relPath) && (!allowedPageIds || allowedPageIds.has(e.id)));
+  const entries = (await listEntryMetadata(space)).filter((e) => isUnderTemplates(e.relPath) && (!allowedPageIds || allowedPageIds.has(e.id)));
   if (entries.length === 0) return [];
   const root = buildTreeFromEntries(space, entries)[0];
   return root.children.find((n) => n.path === TEMPLATES_DIR_NAME)?.children ?? [];
@@ -2851,7 +2869,7 @@ export async function getSubtree(entry: PageIndexEntry, depth: number, allowedPa
  */
 export async function listTemplates(space: string): Promise<TemplateListItem[]> {
   if (!(await spaceExists(space))) throw notFound('space');
-  const entries = await listEntries(space);
+  const entries = await listEntryMetadata(space);
   const top = entries
     .filter((e) => (e.isIndex ? posixParent(e.dirPath) === TEMPLATES_DIR_NAME : e.dirPath === TEMPLATES_DIR_NAME))
     .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));

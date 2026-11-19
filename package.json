@@ -12,6 +12,7 @@
     "dev": "concurrently -k -n server,web -c blue,green \"tsx watch server/index.ts\" \"vite --config web/vite.config.ts\"",
     "build": "vite build --config web/vite.config.ts",
     "start": "NODE_ENV=production tsx server/index.ts",
+    "mcp:stdio": "tsx server/mcpStdio.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
     "access:inherit-report": "tsx server/tools/access-inherit-report.ts"

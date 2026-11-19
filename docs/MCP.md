@@ -40,6 +40,42 @@ Three access rules:
   Publishing settings can be changed only from a browser session, never with a
   token.
 
+## stdio bridge
+
+For MCP clients that only speak stdio, a small bridge in this repository
+(`server/mcpStdio.ts`) connects to your instance's `/mcp` endpoint and exposes
+it over stdio. It forwards tools, prompts and the server instructions
+unchanged. It needs Node 22.12 or newer and `npm ci`, but no web build,
+database or Redis.
+
+| Variable | Meaning |
+| --- | --- |
+| `FOLIO_URL` | Base URL of your Folio instance, for example `https://wiki.example.com`. |
+| `FOLIO_TOKEN` | A personal access token (`folio_pat_…`). |
+
+```json
+{
+  "mcpServers": {
+    "folio": {
+      "command": "npx",
+      "args": ["tsx", "server/mcpStdio.ts"],
+      "cwd": "/path/to/folio",
+      "env": {
+        "FOLIO_URL": "https://wiki.example.com",
+        "FOLIO_TOKEN": "folio_pat_…"
+      }
+    }
+  }
+}
+```
+
+Use the same `command`, `args`, `cwd` and `env` in any other stdio client, or
+run it by hand with `npm run mcp:stdio`. Without a reachable instance (both
+variables missing, the host unreachable, or the token rejected) the bridge
+still starts, but only lists Folio's tools and prompts nothing: every tool call
+returns an error that tells you to set `FOLIO_URL` and `FOLIO_TOKEN`. It logs
+to stderr only and never prints the token.
+
 ## OAuth: connect from claude.ai / ChatGPT
 
 Clients that run in a vendor's cloud (claude.ai, Claude Desktop, ChatGPT) cannot send a static header, so Folio is also an OAuth 2.1 authorization server for `/mcp`. A personal access token keeps working exactly as before.

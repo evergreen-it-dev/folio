@@ -571,6 +571,18 @@ PostgreSQL, not in Git.
   REST, and a `read` grant cannot run write tools. Metadata and audience are
   built from `PUBLIC_URL`, so it must be set to the public address, and the
   reverse proxy must pass `/.well-known/*` and `/oauth/*` to the app.
+- **stdio bridge** (`server/mcpStdio.ts`, `npm run mcp:stdio`): for clients
+  that only speak stdio and for directories that start a server from a Docker
+  image to inspect it. With `FOLIO_URL` and `FOLIO_TOKEN` it forwards tools,
+  prompts and instructions to `<FOLIO_URL>/mcp` unchanged. Without a reachable
+  instance (or with a rejected token, checked within 5 s at startup) it starts
+  in catalog mode: `tools/list` comes from `buildFolioMcpServer` with a
+  placeholder actor, so the definitions never drift, and every tool call is an
+  error that says what to configure. Importing `server/mcp.ts` must stay free
+  of side effects (no Postgres or Redis at import time), or catalog mode
+  breaks. stdout carries only the protocol; logs go to stderr and never
+  contain the token. It needs no web build: `npm ci` and
+  `node --import tsx server/mcpStdio.ts`.
 - **Markdown links**: `/share/<token>.md` returns a page, or a page with its
   subtree, as one Markdown document.
 - **The built-in assistant** runs on the server as a job, survives a closed

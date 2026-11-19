@@ -4,8 +4,13 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Added
+
+- A stdio bridge for the MCP endpoint (`npm run mcp:stdio`, with `FOLIO_URL` and `FOLIO_TOKEN`) for clients that only speak stdio; without a reachable instance it still lists the tools.
+
 ### Fixed
 
+- The page tree, the template picker and the template list of a large space no longer load every page's indexed text and search vector into server memory, so a space with tens of thousands of pages stays responsive instead of exhausting the Node heap (reported in #19).
 - Browser Undo keeps working after an agent edits several separate passages of a page through REST/MCP (reported in #18).
 
 ### Changed
