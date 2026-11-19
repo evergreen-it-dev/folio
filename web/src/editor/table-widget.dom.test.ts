@@ -679,11 +679,19 @@ describe('cell mini-slash', () => {
     expect(field.value).toBe('1. one\n2. ');
     type(field, 'two');
     commit(field);
-    // The file holds the round-28 shape, which renumbers each run from 1 —
-    // here that is exactly what was typed.
     expect(h.text()).toContain('1. one<br>2. two');
     const items = h.cell(0, 0).querySelectorAll('ol.cm-md-cell-list > .cm-md-cell-line');
     expect(items).toHaveLength(2);
+  });
+
+  it('keeps the starting number when editing a numbered table cell', () => {
+    const h = mount('| Step |\n| --- |\n| 2. Review |');
+    const field = openCell(h, 0, 0);
+    field.setSelectionRange(field.value.length, field.value.length);
+    type(field, ' draft');
+    commit(field);
+    expect(h.text()).toContain('2. Review draft');
+    expect(h.cell(0, 0).querySelector('ol')?.start).toBe(2);
   });
 
   it('inserts Heading 1–3 and renders them as headings without HTML table fallback', () => {

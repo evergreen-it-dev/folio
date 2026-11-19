@@ -50,10 +50,10 @@ describe('round 28 contract gaps closed after the renderer zone reported them', 
     expect(formatCellLines(lines)).toBe(src); // the round-trip that used to lose them
   });
 
-  it('renumbers ordered runs so a plain GFM reader sees 1. 2. 3., not 1. 1. 1.', () => {
+  it('numbers an edited run consecutively from its first item', () => {
     const lines = parseCellLines('5. five<br>9. nine<br>2. two');
     expect(lines.map((l) => l.ordinal)).toEqual([5, 9, 2]);
-    expect(formatCellLines(lines)).toBe('1. five<br>2. nine<br>3. two');
+    expect(formatCellLines(lines)).toBe('5. five<br>6. nine<br>7. two');
   });
 
   it('restarts numbering after the run is broken, and per nesting level', () => {

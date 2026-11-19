@@ -36,9 +36,7 @@ import {
   isTableAttrLine,
   parseCellLines,
   parseTableAttrLine,
-  splitCellBreaks,
   splitPipeRow,
-  type CellLine,
   type TableAttrs,
 } from './tableSyntax';
 
@@ -281,6 +279,7 @@ function applyWidths(table: Element, attrs: TableAttrs, width: number): void {
  */
 interface RenderLine {
   kind: 'text' | 'bullet' | 'task' | 'ordered';
+  ordinal?: number;
   /** 1-based nesting, as the contract counts it; 0 for a paragraph line. */
   depth: number;
   checked: boolean;
@@ -310,22 +309,6 @@ function splitLines(children: ElementContent[]): ElementContent[][] {
 }
 
 /**
- * How many characters of `raw` the marker took (indent + bullet + the spacing
- * after it), or -1 when that can't be located. Deliberately derived from the
- * contract's own output rather than from a second copy of its regex — a second
- * copy is exactly how this pass drifted before round 28, recognising `•` but
- * not the `- ` the DEV-PLAN writes. `line.text` is the item with the marker
- * already stripped, so where that text starts is where the marker ended.
- */
-function markerWidth(raw: string, line: CellLine): number {
-  const segment = splitCellBreaks(raw)[0] ?? raw;
-  // Marker alone in this text node: the item's content is in the nodes after it.
-  if (line.text === '') return segment.length;
-  const at = segment.indexOf(line.text);
-  return at < 0 ? -1 : at;
-}
-
-/**
  * Read one line's list marker off its first text node, removing it. Which
  * markers exist and how indentation nests are tableSyntax.ts's call, not this
  * file's; a line the contract doesn't call an item stays a paragraph line.
@@ -344,12 +327,10 @@ function readLine(nodes: ElementContent[]): RenderLine {
   const plain: RenderLine = { kind: 'text', depth: 0, checked: false, content: nodes };
   const [line] = parseCellLines(value);
   if (!line?.marker) return plain;
-  const width = markerWidth(value, line);
-  if (width < 0) return plain;
-
-  text!.value = value.slice(width);
+  text!.value = value.slice(line.markerWidth);
   return {
     kind: line.marker === 'ol' ? 'ordered' : 'bullet',
+    ordinal: line.ordinal,
     depth: line.depth,
     checked: false,
     content: nodes,
@@ -377,10 +358,11 @@ function listItem(line: RenderLine): Element {
  */
 function buildList(lines: RenderLine[], at: number, level: number): { node: Element; next: number } {
   const ordered = lines[at].kind === 'ordered';
+  const start = lines[at].ordinal ?? 1;
   const list: Element = {
     type: 'element',
     tagName: ordered ? 'ol' : 'ul',
-    properties: {},
+    properties: ordered && Number.isFinite(start) && start !== 1 ? { start } : {},
     children: [],
   };
 

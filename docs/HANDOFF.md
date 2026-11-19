@@ -315,6 +315,9 @@ Plain TypeScript with no DOM lives in `shared/` so both sides import it.
   (`gfm-table.ts`); it now builds a nested tree, so a cell draws bold inside
   underline, highlight inside bold and a status tag, and reading a rich cell
   back keeps underline and highlight.
+  In Reading and Live edit, each ordered list in a cell starts at its first
+  written number. Saving a cell edit keeps that start and numbers subsequent
+  items consecutively at the same nesting depth.
 
 ### Git synchronization
 
