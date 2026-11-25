@@ -22,7 +22,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.search) return;
   if (Object.hasOwn(READER.assets, url.pathname)) {
-    event.respondWith(caches.open(cacheName).then(async (cache) => (await cache.match(request)) ?? fetch(request)));
+    // Installation and module loads can send different Origin headers. Every response
+    // here is pinned to the build's exact bytes, independent of its Vary header.
+    event.respondWith(caches.open(cacheName).then(async (cache) => (await cache.match(url.href, { ignoreVary: true })) ?? fetch(request)));
     return;
   }
   if (request.mode !== 'navigate' || request.destination !== 'document') return;
