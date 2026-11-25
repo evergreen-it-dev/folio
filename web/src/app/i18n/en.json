@@ -1965,6 +1965,17 @@
     }
   },
   "offline": {
+    "reader": {
+      "saveMenu": "Save for offline reading…",
+      "saveTitle": "Save for offline reading?",
+      "saveAction": "Save on this device",
+      "trustedDevice": "Save the current server copy on this trusted device. Anyone using this browser profile offline can read it until you remove it or sign out.",
+      "saved": "Saved for offline reading.",
+      "saveFailed": "Could not save this document. Reconnect and check that offline reading is available in this browser.",
+      "removeAction": "Remove offline copy",
+      "removed": "Offline copy removed.",
+      "removeFailed": "Could not remove the offline copy."
+    },
     "pageUnavailable": "This page is not available offline: it has not been opened on this device yet. It will load by itself as soon as the connection is back.",
     "status": {
       "offline": "Offline",

@@ -5,6 +5,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { KeyRound } from 'lucide-react';
 import { normalizeUsername, usernameSchema } from '@shared/contracts';
+import { useOfflineReaderSession } from '../offline/useOfflineReaderSession';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { roleLabel } from '../auth/roles';
@@ -48,6 +49,7 @@ export function AcceptInviteView() {
   const { setTheme } = useSettings();
 
   const authState = useQuery({ queryKey: ['auth', 'state'], queryFn: api.getAuthState, retry: false });
+  useOfflineReaderSession(authState);
   const invite = useQuery({
     queryKey: ['invite', token],
     queryFn: () => api.getInvite(token!),
@@ -85,6 +87,7 @@ export function AcceptInviteView() {
 
   const logout = useMutation({
     mutationFn: api.logout,
+    networkMode: 'always',
     onSuccess: () => {
       queryClient.clear();
       void authState.refetch();

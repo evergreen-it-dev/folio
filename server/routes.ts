@@ -101,6 +101,7 @@ import { resolveTextLanguage } from './serverText.js';
 import { createStarterWritingRules } from './writingRules.js';
 import { parseBody, queryString } from './validate.js';
 import * as session from './auth/session.js';
+import { bindOfflineReaderAccount } from './auth/offlineReader.js';
 import * as proposals from './proposals.js';
 import type { ProposedResult } from '../shared/proposals.js';
 import { assertDemoAgentRootIntact, assertNotDemo, assertNotDemoAccount } from './demo.js';
@@ -960,7 +961,7 @@ export function registerRoutes(app: FastifyInstance): void {
     return meta;
   });
 
-  app.get('/api/pages/:id', async (request) => {
+  app.get('/api/pages/:id', { preHandler: bindOfflineReaderAccount }, async (request) => {
     const { id } = request.params as { id: string };
     const entry = await session.requirePageRole(request, id, 'viewer');
     return buildPageDoc(entry, userViewer(request.authUser!));
@@ -1110,7 +1111,7 @@ export function registerRoutes(app: FastifyInstance): void {
    * on a page the caller can't see: `role: null` IS the answer for that case
    * (the guest/share-token path is then the correct fallback), not an error.
    */
-  app.get('/api/pages/:id/my-role', async (request) => {
+  app.get('/api/pages/:id/my-role', { preHandler: bindOfflineReaderAccount }, async (request) => {
     const { id } = request.params as { id: string };
     const entry = await storage.requireEntry(id);
     const role = await session.effectivePageRole(request.authUser!, entry);

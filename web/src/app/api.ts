@@ -1,4 +1,6 @@
+import { setOfflineReaderAccount } from './offline/savedDocuments';
 import {
+  OFFLINE_READER_ACCOUNT_HEADER,
   acceptInviteBodySchema,
   accessBulkBodySchema,
   createApiTokenBodySchema,
@@ -294,7 +296,10 @@ function artifactBody(fields: Partial<ArtifactPublishBody>, file?: File): BodyIn
   return body;
 }
 
-async function request<T>(input: string, init?: RequestInit): Promise<T> {
+async function request<T>(input: string, init?: RequestInit, offlineAccount?: string): Promise<T> {
+  if (offlineAccount !== undefined) {
+    init = { ...init, cache: 'no-store', redirect: 'error', headers: { ...init?.headers, [OFFLINE_READER_ACCOUNT_HEADER]: offlineAccount } };
+  }
   // FormData (asset upload) must NOT get a hand-set content-type — fetch
   // sets its own `multipart/form-data; boundary=...` from the FormData body,
   // and overriding it to application/json would break the upload server-side.
@@ -345,6 +350,10 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
     }
     if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
     throw new ApiError(res.status, message, parsedBody);
+  }
+  if (offlineAccount !== undefined && res.headers.get(OFFLINE_READER_ACCOUNT_HEADER) !== offlineAccount) {
+    // A server that predates account-bound reads cannot provide a verifiable snapshot.
+    throw new Error('The server could not confirm the offline reader account.');
   }
   if (res.status === 204) return undefined as T;
   try {
@@ -542,7 +551,7 @@ export const api = {
     return page;
   },
 
-  getPage: (id: string) => request<PageDoc>(`/api/pages/${encodeURIComponent(id)}`),
+  getPage: (id: string, offlineAccount?: string) => request<PageDoc>(`/api/pages/${encodeURIComponent(id)}`, undefined, offlineAccount),
 
   /** Obsidian canvas: what "Convert to Folio board" would lose (nothing is written). */
   getCanvasConversionReport: (id: string) => request<CanvasConversionReport>(`/api/pages/${encodeURIComponent(id)}/canvas/convert`),
@@ -637,7 +646,7 @@ export const api = {
   getMovedPage: (space: string, id: string) =>
     request<PageMeta>(`/api/spaces/${encodeURIComponent(space)}/moved-page/${encodeURIComponent(id)}`),
 
-  getMyPageRole: (id: string) => request<{ role: SpaceRole | null }>(`/api/pages/${encodeURIComponent(id)}/my-role`),
+  getMyPageRole: (id: string, offlineAccount?: string, signal?: AbortSignal) => request<{ role: SpaceRole | null }>(`/api/pages/${encodeURIComponent(id)}/my-role`, { signal }, offlineAccount),
 
   updatePageAccess: (id: string, body: UpdatePageAccessBody) =>
     request<PageAccessInfo>(`/api/pages/${encodeURIComponent(id)}/access`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -876,7 +885,7 @@ export const api = {
   // ---------- auth (round 2) ----------
 
   /** Public. Drives the client auth gate: needsSetup | logged out | logged in. */
-  getAuthState: () => request<AuthState>('/api/auth/state', { headers: visitorHeaders() }),
+  getAuthState: () => request<AuthState>('/api/auth/state', { cache: 'no-store', headers: visitorHeaders() }),
 
   /** First-run only (409 once a user exists). The response body isn't relied on — callers re-fetch auth state after. */
   setupInstance: (body: SetupBody) =>
@@ -902,7 +911,15 @@ export const api = {
   revokeScimToken: (providerId: string) =>
     request<ScimStatusInfo>(`/api/admin/auth/providers/${encodeURIComponent(providerId)}/scim/token`, { method: 'DELETE' }),
 
-  logout: () => request<unknown>('/api/auth/logout', { method: 'POST' }),
+  logout: async () => {
+    // Revoke the local opt-in even when the network sign-out fails.
+    const forget = setOfflineReaderAccount(null).catch(() => {});
+    try {
+      return await request<unknown>('/api/auth/logout', { method: 'POST' });
+    } finally {
+      await forget;
+    }
+  },
 
   // ---------- users admin (instance admin only) ----------
 

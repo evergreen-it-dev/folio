@@ -6,13 +6,20 @@
  */
 import { createRef } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { hasOfflineDocument, removeOfflineDocument } from '../offline/savedDocuments';
+import { saveDocumentForOfflineReading } from '../offline/readerAccess';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import i18next from 'i18next';
 import { ToastProvider } from '../ui/Toast';
 import { PageActionsMenu, type PageActionsMenuProps } from './PageActionsMenu';
 import '../i18n/register';
+
+vi.mock('../offline/savedDocuments', () => ({
+  hasOfflineDocument: vi.fn(), removeOfflineDocument: vi.fn(), subscribeOfflineDocuments: () => () => {},
+}));
+vi.mock('../offline/readerAccess', () => ({ saveDocumentForOfflineReading: vi.fn() }));
 
 beforeAll(async () => {
   await i18next.changeLanguage('en');
@@ -23,10 +30,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderMenu(overrides: Partial<PageActionsMenuProps> = {}) {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }) as unknown as Response));
+function renderMenu(overrides: Partial<PageActionsMenuProps> = {}, account?: string) {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ spaces: [], pages: [] }) }) as unknown as Response));
   const onOpen = vi.fn();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (account) queryClient.setQueryData(['auth', 'state'], { user: { id: account } });
   render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
@@ -61,6 +69,29 @@ describe('PageActionsMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Export…' }));
     expect(onOpen).toHaveBeenCalledWith('export');
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('saves only after confirming an offline copy on the device and lets the user remove it', async () => {
+    vi.stubGlobal('indexedDB', {});
+    vi.stubGlobal('navigator', { serviceWorker: {}, userAgent: navigator.userAgent });
+    vi.mocked(hasOfflineDocument).mockResolvedValue(false);
+    renderMenu({ canSaveOffline: true }, 'alice');
+    const save = screen.getByRole('menuitem', { name: 'Save for offline reading…' });
+    await waitFor(() => expect(save.getAttribute('aria-disabled')).toBeNull());
+    fireEvent.click(save);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(saveDocumentForOfflineReading).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog').textContent).toContain('trusted device');
+    fireEvent.click(screen.getByRole('button', { name: 'Save on this device' }));
+    await screen.findByText('Saved for offline reading.');
+    expect(saveDocumentForOfflineReading).toHaveBeenCalledWith('alice', 'p1', 'team');
+
+    vi.mocked(hasOfflineDocument).mockResolvedValue(true);
+    vi.mocked(removeOfflineDocument).mockResolvedValue(undefined);
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove offline copy' }));
+    await screen.findByText('Offline copy removed.');
+    expect(removeOfflineDocument).toHaveBeenCalledWith('alice', 'p1');
   });
 
   it('a table page offers «Create a form» to an editor only', () => {
