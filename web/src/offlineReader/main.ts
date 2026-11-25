@@ -21,12 +21,15 @@ if (location.search || !(location.pathname === '/' || /^\/s\/[^/]+\/p\/[^/]+$/.t
   root.append(home);
 } else {
   let generation = 0;
+  let readingOffline = false;
   function clear() {
     generation++;
+    readingOffline = false;
     root.replaceChildren();
   }
   async function refresh() {
     clear();
+    readingOffline = true;
     const current = generation;
     try {
       const address = parseDocumentPath(location.pathname);
@@ -43,16 +46,20 @@ if (location.search || !(location.pathname === '/' || /^\/s\/[^/]+\/p\/[^/]+$/.t
     location.reload();
   }
   let probe: Promise<boolean> | undefined;
-  async function checkConnection(): Promise<boolean> {
-    if (document.hidden || !navigator.onLine) return false;
+  function canReachServer(): Promise<boolean> {
+    if (document.hidden || !navigator.onLine) return Promise.resolve(false);
     // Any HTTP answer (including a gateway redirect or denial) hands control back to
     // normal navigation. A genuine network failure leaves the saved snapshot available.
     probe ??= fetch('/api/auth/state', { cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(5000) })
-      .then(() => { reconnect(); return true; }, () => false)
+      .then(() => true, () => false)
       .finally(() => { probe = undefined; });
     return probe;
   }
-  subscribeOfflineDocuments(() => { void refresh(); });
+  async function resume() {
+    if (await canReachServer()) reconnect();
+    else if (!document.hidden) await refresh();
+  }
+  subscribeOfflineDocuments(() => { if (readingOffline && !document.hidden) void refresh(); });
   window.addEventListener('online', reconnect);
   window.addEventListener('pagehide', clear);
   window.addEventListener('pageshow', (event) => {
@@ -60,8 +67,16 @@ if (location.search || !(location.pathname === '/' || /^\/s\/[^/]+\/p\/[^/]+$/.t
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) clear();
-    else void checkConnection().then((connected) => { if (!connected && !document.hidden) void refresh(); });
+    else void resume();
   });
-  window.setInterval(checkConnection, 30_000);
-  void refresh();
+  window.setInterval(() => { void canReachServer().then((reachable) => { if (reachable) reconnect(); }); }, 30_000);
+  // A single failed navigation can reach this reader on a live network. Offer a retry
+  // rather than displaying stored content or automatically repeating the same failing navigation.
+  void canReachServer().then((reachable) => {
+    if (!reachable) return refresh();
+    const retry = document.createElement('a');
+    retry.href = location.pathname;
+    retry.textContent = labels.retry;
+    root.replaceChildren(retry);
+  });
 }
