@@ -43,7 +43,7 @@ const CONCURRENCY = 4;
  */
 export function boardEditorFiles(manifest: BuildManifest): string[] {
   const keys = Object.keys(manifest);
-  const entry = keys.find((key) => manifest[key].isEntry);
+  const entry = 'index.html';
   const board = keys.find((key) => BOARD_ENTRY.test(key));
   if (!board) return [];
 
@@ -53,7 +53,7 @@ export function boardEditorFiles(manifest: BuildManifest): string[] {
     loadedWithApp.add(key);
     for (const next of manifest[key].imports ?? []) walkEntry(next);
   };
-  if (entry) walkEntry(entry);
+  walkEntry(entry);
 
   const files = new Set<string>();
   const seen = new Set<string>();

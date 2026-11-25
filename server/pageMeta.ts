@@ -178,6 +178,11 @@ function insertBeforeHeadClose(html: string, tag: string): string {
  * visitor is actually on, not PUBLIC_URL.
  */
 export function renderIndexHtml(html: string, requestOrigin: string, pathname: string, site?: PublicSiteMeta): string {
+  // Published sites and guest links have their own identity. Installing the wiki
+  // here would send a visitor to its signed-in home instead of the shared site.
+  if (site || /^\/(?:share|invite|public)(?:\/|$)/.test(pathname)) {
+    html = html.replace(/[ \t]*<link\s+rel="(?:manifest|apple-touch-icon)"[^>]*>\s*\n?/g, '');
+  }
   const origin = publicUrlOrOrigin(requestOrigin);
   if (!site) return applyPageMeta(html, resolvePageMeta(origin), `${origin}${pathname}`);
 
