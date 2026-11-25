@@ -7,6 +7,8 @@ export interface SavedDocument {
   savedAt: number;
 }
 
+export type SavedDocumentSummary = Pick<SavedDocument, 'id' | 'space' | 'title'>;
+
 const DATABASE = 'folio-offline-reader';
 const CHANNEL = 'folio-saved-documents-changed';
 const listeners = new Set<() => void>();
@@ -56,10 +58,14 @@ function changed(): void {
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore('account');
-      request.result.createObjectStore('documents', { keyPath: 'id' });
+    const request = indexedDB.open(DATABASE, 2);
+    request.onupgradeneeded = (event) => {
+      if (event.oldVersion < 1) {
+        request.result.createObjectStore('account');
+        request.result.createObjectStore('documents', { keyPath: 'id' });
+      }
+      // IndexedDB populates the index for existing snapshots during the upgrade.
+      request.transaction!.objectStore('documents').createIndex('library', ['id', 'space', 'title']);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -137,10 +143,28 @@ export async function removeOfflineDocument(accountId: string, id: string): Prom
   if (removed) changed();
 }
 
-/** The offline reader uses the active device account; signed-in callers pass their own. */
-export function listOfflineDocuments(accountId?: string): Promise<SavedDocument[]> {
-  return withAccount<SavedDocument[]>('readonly', (owner, _account, docs) =>
-    owner && (accountId === undefined || owner === accountId) ? docs.getAll() : []);
+/** The key cursor supplies the entire library listing without cloning any Markdown bodies. */
+export function listOfflineDocuments(accountId?: string): Promise<SavedDocumentSummary[]> {
+  return withAccount<SavedDocumentSummary[]>('readonly', (owner, _account, docs) => {
+    const entries: SavedDocumentSummary[] = [];
+    if (!owner || (accountId !== undefined && owner !== accountId)) return entries;
+    const request = docs.index('library').openKeyCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const [id, space, title] = cursor.key as [string, string, string];
+      entries.push({ id, space, title });
+      cursor.continue();
+    };
+    // withAccount resolves once the transaction (including all cursor reads) completes.
+    return entries;
+  });
+}
+
+export async function getOfflineDocument(space: string, id: string): Promise<SavedDocument | undefined> {
+  const doc = await withAccount<SavedDocument | undefined>('readonly', (owner, _account, docs) =>
+    owner ? docs.get(id) : undefined);
+  return doc?.space === space ? doc : undefined;
 }
 
 export async function hasOfflineDocument(accountId: string, id: string): Promise<boolean> {

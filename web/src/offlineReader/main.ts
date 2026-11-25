@@ -1,6 +1,6 @@
-import { listOfflineDocuments, subscribeOfflineDocuments } from '../app/offline/savedDocuments';
+import { getOfflineDocument, listOfflineDocuments, subscribeOfflineDocuments } from '../app/offline/savedDocuments';
 import { bundlesFrom } from '../i18n/bundles';
-import { renderReader, type Labels } from './view';
+import { parseDocumentPath, renderReader, type Labels } from './view';
 import './reader.css';
 
 const root = document.querySelector<HTMLElement>('#reader')!;
@@ -29,8 +29,11 @@ if (location.search || !(location.pathname === '/' || /^\/s\/[^/]+\/p\/[^/]+$/.t
     clear();
     const current = generation;
     try {
-      const docs = await listOfflineDocuments();
-      if (current === generation) renderReader(root, location.pathname, docs, labels, lang);
+      const address = parseDocumentPath(location.pathname);
+      let content;
+      if (location.pathname === '/') content = await listOfflineDocuments();
+      else if (address) content = await getOfflineDocument(address.space, address.id);
+      if (current === generation) renderReader(root, content, labels, lang);
     } catch {
       if (current === generation) root.textContent = labels.unavailable;
     }

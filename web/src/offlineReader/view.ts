@@ -5,7 +5,7 @@ import remarkRehype from 'remark-rehype';
 import rehypeSanitize from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
 import { stripFrontmatter } from '../markdown/frontmatter';
-import type { SavedDocument } from '../app/offline/savedDocuments';
+import type { SavedDocument, SavedDocumentSummary } from '../app/offline/savedDocuments';
 import type en from './i18n/en.json';
 
 export type Labels = typeof en;
@@ -32,22 +32,32 @@ function link(text: string, href: string): HTMLAnchorElement {
   return anchor;
 }
 
-function documentPath(doc: SavedDocument): string {
+function documentPath(doc: SavedDocumentSummary): string {
   return '/s/' + encodeURIComponent(doc.space) + '/p/' + encodeURIComponent(doc.id);
 }
 
-export function renderReader(root: HTMLElement, path: string, docs: SavedDocument[], labels: Labels, lang: string): void {
+export function parseDocumentPath(path: string): { space: string; id: string } | undefined {
+  const match = /^\/s\/([^/]+)\/p\/([^/]+)$/.exec(path);
+  if (!match) return undefined;
+  try {
+    return { space: decodeURIComponent(match[1]), id: decodeURIComponent(match[2]) };
+  } catch {
+    return undefined;
+  }
+}
+
+export function renderReader(root: HTMLElement, content: SavedDocumentSummary[] | SavedDocument | undefined, labels: Labels, lang: string): void {
   const header = element('header', labels.offline);
   const retry = element('button', labels.retry);
   retry.onclick = () => location.reload();
   header.append(retry);
   root.replaceChildren(header);
-  if (path === '/') {
+  if (Array.isArray(content)) {
     root.append(element('h1', labels.library));
-    if (!docs.length) root.append(element('p', labels.empty));
+    if (!content.length) root.append(element('p', labels.empty));
     else {
       const list = document.createElement('ul');
-      for (const doc of docs) {
+      for (const doc of content) {
         const row = document.createElement('li');
         row.append(link(doc.title, documentPath(doc)), element('small', doc.space));
         list.append(row);
@@ -58,7 +68,7 @@ export function renderReader(root: HTMLElement, path: string, docs: SavedDocumen
   }
 
   root.append(link(labels.library, '/'));
-  const doc = docs.find((item) => documentPath(item) === path);
+  const doc = content;
   if (!doc) {
     root.append(element('p', labels.missing));
     return;

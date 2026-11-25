@@ -49,6 +49,29 @@ describe('saved offline documents', () => {
     if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
+  it('upgrades previously saved snapshots into the library index and reads the requested document by its space and id', async (ctx) => {
+    if (!browser) return ctx.skip();
+    await first.evaluate(async (doc) => {
+      await new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('folio-offline-reader', 1);
+        open.onupgradeneeded = () => {
+          open.result.createObjectStore('account').put('alice', 'current');
+          const docs = open.result.createObjectStore('documents', { keyPath: 'id' });
+          docs.put(doc);
+          docs.put({ ...doc, id: 'other', title: 'Work', markdown: 'Another document' });
+        };
+        open.onsuccess = () => { open.result.close(); resolve(); };
+        open.onerror = () => reject(open.error);
+      });
+    }, document);
+    expect(await first.evaluate(() => window.readerStore.listOfflineDocuments())).toEqual([
+      { id: 'first', space: 'notes', title: 'Reading list' }, { id: 'other', space: 'notes', title: 'Work' },
+    ]);
+    expect(await first.evaluate(() => window.readerStore.getOfflineDocument('notes', 'first'))).toEqual(document);
+    expect(await first.evaluate(() => window.readerStore.getOfflineDocument('other', 'first'))).toBeUndefined();
+    await first.evaluate(() => window.readerStore.clearOfflineDocuments());
+  });
+
   it('keeps explicit pins across reloads and same-account checks; removing a pin drops it', async (ctx) => {
     if (!browser) return ctx.skip();
     await first.evaluate(async (doc) => {
@@ -57,7 +80,7 @@ describe('saved offline documents', () => {
     }, document);
     await first.reload();
     await first.evaluate(() => window.readerStore.setOfflineReaderAccount('alice'));
-    expect(await first.evaluate(() => window.readerStore.listOfflineDocuments())).toEqual([document]);
+    expect(await first.evaluate(() => window.readerStore.getOfflineDocument('notes', 'first'))).toEqual(document);
     expect(await first.evaluate(() => window.readerStore.listOfflineDocumentIds('alice'))).toEqual(['first']);
     expect(await first.evaluate(() => window.readerStore.hasOfflineDocument('bob', 'first'))).toBe(false);
     await first.evaluate(() => window.readerStore.removeOfflineDocument('alice', 'first'));
