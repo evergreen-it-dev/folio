@@ -1,5 +1,7 @@
 :root { color-scheme: light dark; font: 1rem/1.6 system-ui, sans-serif; }
-body { margin: 0; }
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
+body { margin: 0; background-color: light-dark(#fff, #0a0a0a); }
 main { max-width: 46rem; margin: auto; padding: 1.5rem clamp(1rem, 5vw, 3rem) 4rem; overflow-wrap: anywhere; }
 header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid GrayText; padding-bottom: .8rem; margin-bottom: 2rem; }
 h1, h2, h3 { line-height: 1.25; }

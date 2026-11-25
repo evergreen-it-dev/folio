@@ -382,6 +382,8 @@ the same files.
 
 ### Offline
 
+The app shell and cold-start reader use the same saved theme and title bar colors. In system mode the browser selects a theme color with its media query.
+
 A page created offline gets its final id on the client and keeps its Yjs
 document in IndexedDB. On reconnect the client sends the id and the document
 state; the server writes the file from that state, so the open editor simply

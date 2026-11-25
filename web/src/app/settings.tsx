@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useLocalStorage } from './hooks';
+import { applyTheme, THEME_KEY, type ThemeMode } from '../theme';
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+export type { ThemeMode } from '../theme';
 export type ContentWidth = 'narrow' | 'wide';
 
-const THEME_KEY = 'folio:theme';
 const WIDTH_KEY = 'folio:width';
 
 /** light -> dark -> system -> light. Pure, used by both the user menu and the quick-switcher "toggle theme" action. */
@@ -52,9 +52,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [width, setWidth] = useLocalStorage<ContentWidth>(WIDTH_KEY, 'narrow');
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', theme);
+    applyTheme(theme);
   }, [theme]);
 
   useEffect(() => {

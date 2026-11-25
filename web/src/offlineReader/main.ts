@@ -2,6 +2,9 @@ import { getOfflineDocument, listOfflineDocuments, subscribeOfflineDocuments } f
 import { bundlesFrom } from '../i18n/bundles';
 import { parseDocumentPath, renderReader, type Labels } from './view';
 import './reader.css';
+import { restoreTheme } from '../theme';
+
+restoreTheme();
 
 const root = document.querySelector<HTMLElement>('#reader')!;
 const bundles = bundlesFrom(import.meta.glob('./i18n/*.json', { eager: true, import: 'default' })) as Record<string, Labels>;
