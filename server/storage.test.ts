@@ -1095,10 +1095,10 @@ describe('explicit page order for boards and tables (files are the only truth)',
     const { vi } = await import('vitest');
     const spy = vi.spyOn(getPool(), 'query');
     try {
-      const page = await storage.createPage({ space: space.slug, parentPath: '', title: 'Heavy page' }, { docBody: `# Heavy page\n\n${'needle '.repeat(500)}\n` });
+      const page = await storage.createPage({ space: space.slug, parentPath: '', title: 'Heavy page', kind: 'doc' }, { docBody: `# Heavy page\n\n${'needle '.repeat(500)}\n` });
       const { query } = await import('./db/pool.js');
       await query(`UPDATE pages_index SET frontmatter = $2::jsonb WHERE id = $1`, [page.id, JSON.stringify({ owner: 'ann', verified: '2099-01-01', review_by: '2099-12-31', big: 'x'.repeat(2000) })]);
-      await storage.createPage({ space: space.slug, parentPath: '_templates', title: 'Tpl' });
+      await storage.createPage({ space: space.slug, parentPath: '_templates', title: 'Tpl', kind: 'doc' });
 
       spy.mockClear();
       const tree = await storage.getTree(space.slug);
