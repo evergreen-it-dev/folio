@@ -39,17 +39,15 @@ if (location.search || !(location.pathname === '/' || /^\/s\/[^/]+\/p\/[^/]+$/.t
     clear();
     location.reload();
   }
-  let probing = false;
-  async function checkConnection() {
-    if (probing || document.hidden || !navigator.onLine) return;
-    probing = true;
-    try {
-      // Any HTTP answer (including a gateway redirect or denial) hands control back to
-      // normal navigation. A real network failure leaves the saved snapshot available.
-      await fetch('/api/auth/state', { cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(5000) });
-      reconnect();
-    } catch { /* Still offline. */ }
-    finally { probing = false; }
+  let probe: Promise<boolean> | undefined;
+  async function checkConnection(): Promise<boolean> {
+    if (document.hidden || !navigator.onLine) return false;
+    // Any HTTP answer (including a gateway redirect or denial) hands control back to
+    // normal navigation. A genuine network failure leaves the saved snapshot available.
+    probe ??= fetch('/api/auth/state', { cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(5000) })
+      .then(() => { reconnect(); return true; }, () => false)
+      .finally(() => { probe = undefined; });
+    return probe;
   }
   subscribeOfflineDocuments(() => { void refresh(); });
   window.addEventListener('online', reconnect);
@@ -59,7 +57,7 @@ if (location.search || !(location.pathname === '/' || /^\/s\/[^/]+\/p\/[^/]+$/.t
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) clear();
-    else { void refresh(); void checkConnection(); }
+    else void checkConnection().then((connected) => { if (!connected && !document.hidden) void refresh(); });
   });
   window.setInterval(checkConnection, 30_000);
   void refresh();
