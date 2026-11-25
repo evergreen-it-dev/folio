@@ -4,6 +4,7 @@ import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AuthState } from '@shared/contracts';
 import { api, UNAUTHORIZED_EVENT } from '../api';
+import { reportRequest, resetConnectivityForTests } from './connectivity';
 import { clearOfflineReaderAccount, setOfflineReaderAccount } from './savedDocuments';
 import { verifyOfflineDocuments } from './readerAccess';
 import { useOfflineReaderSession } from './useOfflineReaderSession';
@@ -21,7 +22,7 @@ function auth(user: string | null, confirmed: boolean, success = true) {
   } as unknown as UseQueryResult<AuthState>;
 }
 
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => { vi.clearAllMocks(); resetConnectivityForTests(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it('changes the device account only after a confirmed auth read and revalidates its saved pages', async () => {
@@ -33,12 +34,22 @@ it('changes the device account only after a confirmed auth read and revalidates 
   expect(setOfflineReaderAccount).not.toHaveBeenCalledWith(null);
   rerender({ state: auth('bob', true) });
   await waitFor(() => expect(verifyOfflineDocuments).toHaveBeenCalledWith('bob', expect.any(AbortSignal)));
-  window.dispatchEvent(new Event('online'));
-  expect(refetch).toHaveBeenCalled();
   window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   expect(clearOfflineReaderAccount).toHaveBeenCalledWith('bob');
   rerender({ state: auth(null, true) });
   await waitFor(() => expect(setOfflineReaderAccount).toHaveBeenCalledWith(null));
+});
+
+it('rechecks the session once when the server returns with the network interface still online', async () => {
+  renderHook(() => useOfflineReaderSession(auth('alice', true)));
+  await waitFor(() => expect(verifyOfflineDocuments).toHaveBeenCalledTimes(1));
+  reportRequest(false); // degraded
+  reportRequest(false); // offline
+  expect(refetch).not.toHaveBeenCalled();
+  reportRequest(true);  // server reachable again
+  reportRequest(true);
+  window.dispatchEvent(new Event('online')); // React Query handles ordinary system reconnects itself.
+  expect(refetch.mock.calls).toEqual([[{ cancelRefetch: false }]]);
 });
 
 it('discards offline copies on explicit sign-out even when the server is unreachable', async () => {

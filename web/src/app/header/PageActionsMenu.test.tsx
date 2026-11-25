@@ -28,6 +28,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 function renderMenu(overrides: Partial<PageActionsMenuProps> = {}, account?: string) {
@@ -72,6 +73,8 @@ describe('PageActionsMenu', () => {
   });
 
   it('saves only after confirming an offline copy on the device and lets the user remove it', async () => {
+    vi.stubEnv('PROD', true);
+    vi.stubGlobal('isSecureContext', true);
     vi.stubGlobal('indexedDB', {});
     vi.stubGlobal('navigator', { serviceWorker: {}, userAgent: navigator.userAgent });
     vi.mocked(hasOfflineDocument).mockResolvedValue(false);
@@ -92,6 +95,25 @@ describe('PageActionsMenu', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove offline copy' }));
     await screen.findByText('Offline copy removed.');
     expect(removeOfflineDocument).toHaveBeenCalledWith('alice', 'p1');
+  });
+
+  it.each([
+    { production: false, secure: true, worker: true },
+    { production: true, secure: false, worker: true },
+    { production: true, secure: true, worker: false },
+  ])('only offers removal when registration is unavailable (production=$production, secure=$secure, worker=$worker)', async ({ production, secure, worker }) => {
+    vi.stubEnv('PROD', production);
+    vi.stubGlobal('isSecureContext', secure);
+    vi.stubGlobal('indexedDB', {});
+    vi.stubGlobal('navigator', worker ? { serviceWorker: {}, userAgent: navigator.userAgent } : { userAgent: navigator.userAgent });
+    vi.mocked(hasOfflineDocument).mockResolvedValue(false);
+    renderMenu({ canSaveOffline: true }, 'alice');
+    expect(screen.queryByRole('menuitem', { name: 'Save for offline reading…' })).toBeNull();
+    cleanup();
+    vi.mocked(hasOfflineDocument).mockResolvedValue(true);
+    renderMenu({ canSaveOffline: true }, 'alice');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove offline copy' }));
+    await screen.findByText('Offline copy removed.');
   });
 
   it('a table page offers «Create a form» to an editor only', () => {

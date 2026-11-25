@@ -1,6 +1,10 @@
+export function canRegisterOfflineReader(): boolean {
+  return import.meta.env.PROD && window.isSecureContext && 'serviceWorker' in navigator;
+}
+
 /** The worker only activates after an atomic install of the offline reader. */
 export async function offlineReaderReady(): Promise<boolean> {
-  if (!import.meta.env.PROD || !window.isSecureContext || !('serviceWorker' in navigator)) return false;
+  if (!canRegisterOfflineReader()) return false;
   try {
     const url = new URL('/sw.js', window.location.origin);
     const registration = await navigator.serviceWorker.register(url, { scope: '/', updateViaCache: 'none' });

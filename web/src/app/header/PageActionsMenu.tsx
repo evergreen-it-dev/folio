@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AuthState } from '@shared/contracts';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useToast } from '../ui/Toast';
+import { canRegisterOfflineReader } from '../offline/readerReady';
 import { saveDocumentForOfflineReading } from '../offline/readerAccess';
 import { hasOfflineDocument, removeOfflineDocument, subscribeOfflineDocuments } from '../offline/savedDocuments';
 import { api } from '../api';
@@ -75,7 +76,7 @@ export function PageActionsMenu(props: PageActionsMenuProps) {
   const account = queryClient.getQueryData<AuthState>(['auth', 'state'])?.user?.id;
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
-  const offlineAccount = props.canSaveOffline && 'serviceWorker' in navigator && typeof indexedDB !== 'undefined' ? account : undefined;
+  const offlineAccount = props.canSaveOffline && typeof indexedDB !== 'undefined' ? account : undefined;
   async function saveCopy() {
     if (!offlineAccount || !pageId || saving) return;
     setSaving(true);
@@ -285,6 +286,7 @@ function OfflineRow({ account, pageId, close, onSave }: { account: string; pageI
     networkMode: 'always', retry: false,
   });
   useEffect(() => subscribeOfflineDocuments(() => { void refetch(); }), [refetch]);
+  if (!saved && !canRegisterOfflineReader()) return null;
   return (
     <Row icon={<BookOpen size={15} />} label={t(saved ? 'offline.reader.removeAction' : 'offline.reader.saveMenu')}
       disabled={saved === undefined} onSelect={() => {

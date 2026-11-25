@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AuthState } from '@shared/contracts';
 import { UNAUTHORIZED_EVENT } from '../api';
+import { getConnectivity, subscribeConnectivity } from './connectivity';
 import { clearOfflineReaderAccount, setOfflineReaderAccount } from './savedDocuments';
 import { verifyOfflineDocuments } from './readerAccess';
 
@@ -25,12 +26,19 @@ export function useOfflineReaderSession(auth: UseQueryResult<AuthState>) {
       if (account) void clearOfflineReaderAccount(account).catch(() => {});
       void refetch();
     }
-    const online = () => { void refetch(); };
+    // React Query already handles browser reconnects. Folio can also detect a server
+    // returning while the interface stays up. Join an auth read already in flight.
+    let previous = getConnectivity();
+    const unsubscribe = subscribeConnectivity(() => {
+      const current = getConnectivity();
+      const restored = previous === 'offline' && current !== 'offline';
+      previous = current;
+      if (restored) void refetch({ cancelRefetch: false });
+    });
     window.addEventListener(UNAUTHORIZED_EVENT, unauthorized);
-    window.addEventListener('online', online);
     return () => {
       window.removeEventListener(UNAUTHORIZED_EVENT, unauthorized);
-      window.removeEventListener('online', online);
+      unsubscribe();
     };
   }, [account, refetch]);
 }
