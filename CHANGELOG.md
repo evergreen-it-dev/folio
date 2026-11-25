@@ -6,6 +6,7 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ### Added
 
+- Install Folio from a supported browser and save individual Markdown documents on a trusted device for read-only access after closing the app offline.
 - A stdio bridge for the MCP endpoint (`npm run mcp:stdio`, with `FOLIO_URL` and `FOLIO_TOKEN`) for clients that only speak stdio; without a reachable instance it still lists the tools.
 
 ### Fixed

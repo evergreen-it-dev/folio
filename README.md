@@ -270,6 +270,10 @@ On a train, on a plane, on bad hotel Wi-Fi — keep writing.
   connection returns — at the same address, with no duplicates.
 - Nothing is lost if you switch pages or close the tab.
 - An indicator in the header shows what is waiting to be sent.
+- On a trusted device, open a Markdown document’s menu and choose **Save for
+  offline reading**. You can close Folio and reopen its address or the document
+  link offline to read the saved copy. On supported browsers, install Folio
+  from the browser menu or add it to your home screen.
 
 ![Writing a new page without a connection](docs/images/offline.png)
 

@@ -428,10 +428,26 @@ Folio keeps working when the connection does not.
   Folio opens, so a board can be created offline even if none was opened
   before.
 
-Need a connection: data tables, forms, file uploads, templates, and a page
-that was never opened on this device. Folio itself is loaded from the server,
-so a browser closed without a connection cannot open it again until the
-connection is back.
+### Reopen a saved document offline
+
+While signed in on a trusted device, choose **Save for offline reading** from a
+Markdown document’s menu. Folio stores the current server copy in this browser
+profile. To read it later without a connection, open its regular document link
+or launch Folio at its root address to see the list. You can install Folio from
+a supporting browser’s install menu or add it to the home screen.
+
+The saved copy is read-only. Its timestamp tells you when it was saved.
+Attachments and embedded media need a connection. The normal online editor
+and its queue of pending edits continue to work independently.
+
+Anyone using the same browser profile or installed app while offline can read
+its saved copies. Remove a copy from the document menu or sign out to clear
+them all. Switching accounts clears the previous account’s copies. Permission
+changes on the server can reach the device when it reconnects. Each browser
+profile and any isolated home-screen app keep their own copies. Clearing site
+data or storage eviction can remove them.
+
+Data tables, forms, file uploads and templates need a connection.
 
 ## 5. Git
 
