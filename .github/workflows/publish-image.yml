@@ -18,6 +18,12 @@
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
 #     --certificate-identity-regexp '^https://github\.com/evergreen-it-dev/folio/\.github/workflows/publish-image\.yml@'
 #
+# Docker Hub copy (optional): set the repository variable DOCKERHUB_IMAGE
+# (e.g. foliowiki/folio) and the secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN
+# (a Docker Hub access token with Read & Write). The merge job then copies the
+# same signed index, with the same tags, to docker.io/<DOCKERHUB_IMAGE> and
+# signs that copy too. Without the variable this step is skipped.
+#
 # First time only: after the first push, open the package on GitHub
 # (Packages -> folio -> Package settings) and set its visibility to Public,
 # otherwise nobody can pull it without a login.
@@ -148,7 +154,8 @@ jobs:
           tags: ${{ env.TAG_RULES }}
 
       # Signed before the public tags move: a failed signature leaves them untouched.
-      - working-directory: ${{ runner.temp }}/digests
+      - id: publish
+        working-directory: ${{ runner.temp }}/digests
         env:
           ISSUER: https://token.actions.githubusercontent.com
           IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
@@ -169,3 +176,25 @@ jobs:
           args=()
           while read -r t; do args+=(-t "$t"); done <<< "$tags"
           docker buildx imagetools create "${args[@]}" "$IMAGE@$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      # Optional mirror to Docker Hub: same index, same tags, its own signature.
+      - if: vars.DOCKERHUB_IMAGE != ''
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - if: vars.DOCKERHUB_IMAGE != ''
+        env:
+          HUB: docker.io/${{ vars.DOCKERHUB_IMAGE }}
+          DIGEST: ${{ steps.publish.outputs.digest }}
+          ISSUER: https://token.actions.githubusercontent.com
+          IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+        run: |
+          HUB="${HUB,,}"
+          args=()
+          while read -r t; do args+=(-t "$HUB:${t##*:}"); done < <(jq -re '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
+          cosign sign --yes --recursive "$HUB@$DIGEST"
+          cosign verify --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER" "$HUB@$DIGEST" > /dev/null
