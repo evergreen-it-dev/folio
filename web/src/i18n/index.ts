@@ -87,13 +87,15 @@ export function initI18n(): Promise<unknown> {
  * user already sees and asked for — it just won't be remembered server-side
  * until a later successful call.
  */
-export async function setUiLanguage(lang: UiLanguage): Promise<void> {
+export async function setUiLanguage(lang: UiLanguage, options: { persist?: boolean } = {}): Promise<void> {
   try {
     localStorage.setItem(LANG_STORAGE_KEY, lang);
   } catch {
     // private mode etc. — the in-memory switch below still works this session
   }
   await i18next.changeLanguage(lang);
+  // Signed-out screens (login, first-run setup) have no profile to save to: skip the PATCH, which would only 401.
+  if (options.persist === false) return;
   try {
     await api.updateMyPreferences({ lang });
   } catch {

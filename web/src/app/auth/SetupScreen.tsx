@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { LabeledInput } from '../ui/LabeledInput';
+import { LoginLanguageSwitcher } from './LoginLanguageSwitcher';
 import '../i18n/register';
 
 export interface SetupScreenProps {
@@ -25,7 +26,8 @@ export function SetupScreen({ onDone }: SetupScreenProps) {
   });
 
   return (
-    <div className="flex h-full items-center justify-center bg-white p-4 dark:bg-neutral-950">
+    <div className="relative flex h-full items-center justify-center bg-white p-4 dark:bg-neutral-950">
+      <LoginLanguageSwitcher />
       <div className="w-full max-w-sm">
         <h1 className="mb-1 text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t('auth.setup.title')}</h1>
         <p className="mb-6 text-sm text-neutral-500 dark:text-neutral-400">{t('auth.setup.subtitle')}</p>

@@ -7,6 +7,7 @@ import { track } from '../../analytics';
 import { api, ApiError } from '../api';
 import { useApiErrorText } from '../errorText';
 import { LabeledInput } from '../ui/LabeledInput';
+import { LoginLanguageSwitcher } from './LoginLanguageSwitcher';
 import '../i18n/register';
 
 export interface LoginScreenProps {
@@ -192,7 +193,8 @@ export function LoginScreen({ onDone, google, ssoProviders, demo }: LoginScreenP
   const demoAccounts = demo?.accounts ?? [];
 
   return (
-    <div className="flex h-full overflow-y-auto bg-white p-4 dark:bg-neutral-950">
+    <div className="relative flex h-full overflow-y-auto bg-white p-4 dark:bg-neutral-950">
+      <LoginLanguageSwitcher />
       {/* m-auto (not items-center on the parent): centers a short screen, yet lets a tall one (demo cards on a phone) scroll from its top. */}
       <div className="m-auto w-full max-w-sm">
         <h1 className="mb-1 text-xl font-semibold text-neutral-900 dark:text-neutral-100">{t('auth.login.title')}</h1>

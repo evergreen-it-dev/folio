@@ -8,6 +8,7 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 - Pages restricted to named people have their own access flow. A member shut out by the restriction can request access to that page; the request goes to the owner of the restriction (the space admins only when no owner is active), who grants viewer or editor from the notification bell. A Folio admin can give themselves access from the share banner or the "no access" screen: a recorded grant (and a viewer membership if they have no role), shown as `access.self_grant` in the space access log.
 - Install kits for home servers: Unraid (container template), Umbrel (app folder) and CasaOS (Compose with app-store metadata), in `deploy/`.
+- A language switcher (English and Ukrainian) in the corner of the sign-in and first-run setup screens, so the interface language can be changed before signing in.
 
 ### Fixed
 
