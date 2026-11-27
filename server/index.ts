@@ -78,7 +78,7 @@ import { shouldServeSpaFallback, spaStaticOptions } from './spaFallback.js';
 import { registerPwaKillSwitch } from './pwa.js';
 import { matchShareRoute, renderShareIndexHtml } from './shareMeta.js';
 import { renderIndexHtml } from './pageMeta.js';
-import { publicUrlOrOrigin } from './publicUrl.js';
+import { publicUrlOrOrigin, requestOrigin as originOf } from './publicUrl.js';
 import { runBootScan } from './bootScan.js';
 import { demoMaxUploadBytes, isDemoMode } from './demo.js';
 import { parseTrustProxy } from './trustProxy.js';
@@ -140,7 +140,7 @@ app.setNotFoundHandler(async (request, reply) => {
   // needs a DB lookup (shareMeta.ts); matchShareRoute is a single regex test,
   // so a non-share route never pays for it.
   const pathname = request.url.split('?')[0];
-  const requestOrigin = `${request.protocol}://${request.hostname}`;
+  const requestOrigin = originOf(request);
   // A published space (public sites): its own host, or /public/<slug>, gets the
   // page's SEO head (publicSiteMeta.ts: title, description, canonical, lang,
   // favicon, noindex) and, on its own host, the folio-public-site marker. A page
@@ -370,7 +370,7 @@ async function main(): Promise<void> {
       if (request.method !== 'GET' && request.method !== 'HEAD') return;
       const pathname = request.url.split('?')[0];
       if (pathname !== '/' && pathname !== '/index.html') return;
-      const origin = `${request.protocol}://${request.hostname}`;
+      const origin = originOf(request);
       // On a site's own host '/' is the site's home page: its SEO head (publicSiteMeta.ts).
       const head = await resolvePublicSiteHead(request.hostname, '/', origin);
       const html = renderIndexHtml(

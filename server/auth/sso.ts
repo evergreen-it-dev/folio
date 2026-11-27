@@ -26,7 +26,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import type { SsoProviderPublic, SsoTestResult } from '../../shared/contracts.js';
 import { HttpError } from '../errors.js';
 import { recordAudit } from '../audit.js';
-import { publicUrlOrOrigin } from '../publicUrl.js';
+import { publicUrlOrOrigin, requestOrigin } from '../publicUrl.js';
 import { resolveTextLanguage, serverText } from '../serverText.js';
 import * as invites from '../invites.js';
 import * as storage from '../storage.js';
@@ -190,9 +190,7 @@ const AUDIT_ACTION: Record<'existing' | 'linked' | 'created' | 'invite', string>
 // Request helpers
 // ---------------------------------------------------------------------------
 
-export function requestOrigin(request: FastifyRequest): string {
-  return `${request.protocol}://${request.hostname}`;
-}
+export { requestOrigin };
 
 /** Back to the app with `authError=<code>`: to the page the person started from (`returnTo`, when the flow kept one) so a retry returns there too, else to `/`. */
 export function redirectToLoginError(reply: FastifyReply, request: FastifyRequest, code: SsoErrorCode, returnTo?: string | null): FastifyReply {

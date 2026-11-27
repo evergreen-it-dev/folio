@@ -43,8 +43,8 @@ caproverOneClickApp:
     variables:
         - id: $$cap_folio_version
           label: Folio version
-          defaultValue: latest
-          description: Image tag. Use a release such as v0.1.0 to update only when you choose. Tags https://github.com/evergreen-it-dev/folio/pkgs/container/folio
+          defaultValue: v0.4.6
+          description: Image tag. Pinned to a release so the app changes only when you choose. Tags https://github.com/evergreen-it-dev/folio/pkgs/container/folio
           validRegex: /^([^\s^\/])+$/
         - id: $$cap_db_password
           label: Database password
@@ -80,7 +80,7 @@ caproverOneClickApp:
             2. Open the app's page in CapRover and enable HTTPS, then change the PUBLIC_URL environment variable to the https:// address and save. Folio builds invitation links from it, and signing in over HTTPS needs it.
             3. Open the address; the first account you create is the administrator.
             4. Websocket support is switched on for the app (real-time editing needs it).
-    displayName: Folio
+    displayName: Folio Wiki
     isOfficial: false
-    description: Git-native collaborative wiki with real-time editing, access rights, history and an MCP server for AI agents.
+    description: Git-native collaborative wiki with a built-in AI assistant, real-time editing, access rights, history and an MCP server for AI agents.
     documentation: https://github.com/evergreen-it-dev/folio/blob/main/docs/INSTALL.md

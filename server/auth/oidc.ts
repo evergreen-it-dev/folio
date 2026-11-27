@@ -130,7 +130,7 @@ function setFlowCookie(reply: FastifyReply, flow: FlowState): void {
   reply.setCookie(FLOW_COOKIE, signFlow(flow), {
     httpOnly: true,
     sameSite: 'lax',
-    secure: session.cookiesSecure(),
+    secure: session.cookiesSecure(reply.request),
     maxAge: FLOW_TTL_SECONDS,
     path: FLOW_COOKIE_PATH,
   });

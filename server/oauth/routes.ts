@@ -19,7 +19,7 @@ import { captureServerEvent, clientNameProp } from '../analytics.js';
 import { recordAudit } from '../audit.js';
 import * as authStore from '../auth/store.js';
 import * as session from '../auth/session.js';
-import { publicUrlOrOrigin } from '../publicUrl.js';
+import { publicUrlOrOrigin, requestOrigin } from '../publicUrl.js';
 import { isDemoMode } from '../demo.js';
 import { DEMO_OAUTH_PER_MINUTE } from '../demoLimits.js';
 import { notFound } from '../errors.js';
@@ -52,7 +52,7 @@ export interface OAuthRouteOptions {
 
 /** PUBLIC_URL wins; the request's own Host (WITH port: Fastify's `hostname` drops it) is only the fallback for an instance that never set one. */
 export function issuerFor(request: FastifyRequest): string {
-  return publicUrlOrOrigin(`${request.protocol}://${request.host}`);
+  return publicUrlOrOrigin(requestOrigin(request));
 }
 export function mcpResourceFor(issuer: string): string {
   return `${issuer}/mcp`;

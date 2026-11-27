@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
-  folio:
-    image: ghcr.io/evergreen-it-dev/folio:latest
+  foliowiki:
+    image: ghcr.io/evergreen-it-dev/folio:v0.4.6
     restart: unless-stopped
     environment:
       NODE_ENV: production

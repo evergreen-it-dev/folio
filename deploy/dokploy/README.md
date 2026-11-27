@@ -1,4 +1,4 @@
-# Folio on Dokploy
+# Folio Wiki on Dokploy
 
 [Dokploy](https://dokploy.com/) is a self-hosted PaaS. Its templates are three
 files: a Compose file, a `template.toml` that says which service gets a domain
@@ -23,7 +23,7 @@ and which values to generate, and a `meta.json` for the catalog.
    tokens and AI keys and must never change afterwards. Google and Cursor
    settings are optional: add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
    `GOOGLE_ALLOWED_DOMAINS`, `CURSOR_API_KEY` if you use them.
-4. In **Domains** add `wiki.example.com`, service `folio`, port `4870`, HTTPS
+4. In **Domains** add `wiki.example.com`, service `foliowiki`, port `4870`, HTTPS
    on. Point the DNS record at the server.
 5. **Deploy**. Open the address; the first account is the administrator.
 
@@ -36,19 +36,30 @@ catalog, use Dokploy's **Import** with the base64 of the compose and toml (the
 templates repository's [CONTRIBUTING.md](https://github.com/Dokploy/templates/blob/main/CONTRIBUTING.md)
 explains the preview that every pull request gets).
 
+After importing, Dokploy creates the domain with HTTPS switched off. The
+template sets `PUBLIC_URL` to `https://<domain>`, and Folio then marks the
+session cookie `Secure`, so signing in works only once HTTPS is enabled for the
+domain (**Domains** > edit > HTTPS on, Let's Encrypt). If you serve the domain
+over plain http instead, change `PUBLIC_URL` in the **Environment** tab to the
+`http://...` address you open and redeploy.
+
 ### Submitting to the catalog
 
-Open a pull request to [Dokploy/templates](https://github.com/Dokploy/templates)
-with a folder `blueprints/folio/` containing `docker-compose.yml`,
-`template.toml`, `meta.json` and `folio.svg` from this directory. Run
-`node build-scripts/generate-meta.js --check` first, as their guide asks.
-Before submitting, replace `latest` in the compose file with the released
-version tag (they ask for pinned versions) and set the same in `meta.json`.
+Open a pull request to the `canary` branch of
+[Dokploy/templates](https://github.com/Dokploy/templates) with a folder
+`blueprints/foliowiki/` containing `docker-compose.yml`, `template.toml`,
+`meta.json` and `foliowiki.svg` from this directory. The folder name, the
+`id` in `meta.json` and the main service name must all be `foliowiki`. Each
+blueprint has its own `meta.json` (there is no shared one). Run
+`node build-scripts/generate-meta.js --check` first, as their guide asks. The
+image is pinned to a release (`v0.4.6`) and `meta.json` carries the same
+version; bump both on every release.
 
 ## Update
 
-In the service, change the image tag in the compose file (or keep `latest` and
-**Redeploy**), then deploy. The database migrates itself on start. Dokploy can
+In the service, change the image tag in the compose file (for example from
+`v0.4.6` to a newer release), then deploy. The database migrates itself on
+start. Dokploy can
 schedule backups for its own database services; for the database inside this
 Compose file, use the commands below.
 

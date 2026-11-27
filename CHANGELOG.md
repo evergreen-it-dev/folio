@@ -7,9 +7,11 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 ### Added
 
 - Pages restricted to named people have their own access flow. A member shut out by the restriction can request access to that page; the request goes to the owner of the restriction (the space admins only when no owner is active), who grants viewer or editor from the notification bell. A Folio admin can give themselves access from the share banner or the "no access" screen: a recorded grant (and a viewer membership if they have no role), shown as `access.self_grant` in the space access log.
+- Install kits for home servers: Unraid (container template), Umbrel (app folder) and CasaOS (Compose with app-store metadata), in `deploy/`.
 
 ### Fixed
 
+- Folio works on a home server opened over plain `http://` without `PUBLIC_URL`. When `PUBLIC_URL` is unset, the sign-in cookie is HTTPS-only only for requests that arrive over HTTPS (directly or via `X-Forwarded-Proto` from a proxy `TRUST_PROXY` trusts), and invitation, share, sign-in and integration links use the address the request came to, port included (before, the port was dropped and such links led nowhere). With `PUBLIC_URL` set, nothing changes. Instances reachable from the internet, and any with single sign-on, should still set `PUBLIC_URL`.
 - A share link to a page restricted to named people no longer offers a Folio admin "Add me to the space": a space role, an admin's included, does not open such a page, so the banner says only its owner can let them in.
 
 ## [0.4.6] - 2026-11-27

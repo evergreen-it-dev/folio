@@ -35,7 +35,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import * as session from './session.js';
-import { publicUrlOrOrigin } from '../publicUrl.js';
+import { publicUrlOrOrigin, requestOrigin } from '../publicUrl.js';
 import { decryptSecret, encryptSecret, hasSecretConfigured } from '../secretCrypto.js';
 import * as userGitCredentials from '../userGitCredentials.js';
 import { recordAudit } from '../audit.js';
@@ -129,7 +129,7 @@ function setStateCookie(reply: FastifyReply, payload: StatePayload): void {
   reply.setCookie(STATE_COOKIE_NAME, encryptSecret(JSON.stringify(payload)).toString('base64url'), {
     httpOnly: true,
     sameSite: 'lax',
-    secure: session.cookiesSecure(),
+    secure: session.cookiesSecure(reply.request),
     maxAge: STATE_COOKIE_TTL_SECONDS,
     path: GITHUB_CONNECT_CALLBACK_PATH,
   });
@@ -223,7 +223,7 @@ async function fetchLogin(token: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 function appBase(request: FastifyRequest): string {
-  return publicUrlOrOrigin(`${request.protocol}://${request.hostname}`);
+  return publicUrlOrOrigin(requestOrigin(request));
 }
 
 function redirectUriFor(request: FastifyRequest): string {

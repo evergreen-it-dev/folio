@@ -41,6 +41,7 @@ import { llmsDescription } from './llmsDescription.js';
 import { readSiteSettings } from './spaceAppearance.js';
 import * as storage from './storage.js';
 import { humanize, relPathStem, type PageIndexEntry } from './storage.js';
+import { requestOrigin } from './publicUrl.js';
 
 /** llms-full.txt stops here (bytes of Markdown) and says so; the page cap is the export's own. */
 export const LLMS_FULL_MAX_BYTES = 2 * 1024 * 1024;
@@ -257,10 +258,6 @@ export async function pageMarkdown(record: PublicSpace, pageId: string | null, o
   const entry = await storage.getEntry(id).catch(() => undefined);
   if (!entry || entry.space !== record.slug || !MARKDOWN_KINDS.has(entry.kind) || isAgentPath(entry.relPath)) return null;
   return markdownOf(ctx, entry);
-}
-
-function requestOrigin(request: FastifyRequest): string {
-  return `${request.protocol}://${request.hostname}`;
 }
 
 export function registerPublicLlmsRoutes(app: FastifyInstance): void {

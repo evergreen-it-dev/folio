@@ -7,7 +7,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { badRequest, notFound } from '../errors.js';
-import { publicUrlOrOrigin } from '../publicUrl.js';
+import { publicUrlOrOrigin, requestOrigin } from '../publicUrl.js';
 import * as session from '../auth/session.js';
 import * as storage from '../storage.js';
 import type { PageIndexEntry } from '../storage.js';
@@ -27,7 +27,7 @@ import { assembleYaml } from './yaml.js';
 
 /** Same origin computation server/routes.ts uses, so an export's links match a share link's. */
 function requestBaseUrl(request: FastifyRequest): string {
-  return publicUrlOrOrigin(`${request.protocol}://${request.hostname}`);
+  return publicUrlOrOrigin(requestOrigin(request));
 }
 
 /** `notes/plan.md` -> `plan`, `notes/board.excalidraw.svg` -> `board`, `notes/t.table.md` -> `t`. */

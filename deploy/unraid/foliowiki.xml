@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>foliowiki</Name>
+  <Repository>ghcr.io/evergreen-it-dev/folio:latest</Repository>
+  <Registry>https://github.com/evergreen-it-dev/folio/pkgs/container/folio</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/evergreen-it-dev/folio/issues</Support>
+  <Project>https://github.com/evergreen-it-dev/folio</Project>
+  <ReadMe>https://github.com/evergreen-it-dev/folio/blob/main/deploy/unraid/README.md</ReadMe>
+  <Overview>Folio (foliowiki) is a git-native collaborative wiki with a built-in AI assistant and an MCP server for AI agents. Pages are plain files in a Git repository, edited together in real time, with access rights and page history.[br][br][b]Before you install:[/b] Folio needs a PostgreSQL container and a Redis (or Valkey) container. Install both from the Apps tab first (for example "postgresql17" and "Redis"), set the PostgreSQL variables POSTGRES_USER=folio, POSTGRES_PASSWORD (your choice) and POSTGRES_DB=folio, then put their addresses into DATABASE_URL and REDIS_URL below.[br][br][b]PUBLIC_URL must be the exact address you open in the browser,[/b] for example http://192.168.1.10:4870. If it is empty or starts with https while you open Folio over plain http, sign-in silently fails because the session cookie is marked Secure. If you use a reverse proxy with HTTPS, set the https address instead.[br][br][b]FOLIO_SECRET[/b] encrypts saved Git tokens and AI keys. Generate it once with "openssl rand -hex 32" (Unraid terminal) and never change it afterwards.[br][br]The first account you create becomes the administrator. Allow about 2 GB of RAM for the whole stack.</Overview>
+  <Category>AI: Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:4870]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/evergreen-it-dev/folio/main/deploy/unraid/foliowiki.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/evergreen-it-dev/folio/main/deploy/unraid/foliowiki.png</Icon>
+  <ExtraSearchTerms>wiki knowledge base notes docs git markdown mcp llm assistant collaborative</ExtraSearchTerms>
+  <Requires>PostgreSQL 17 container (for example "postgresql17" from the Apps tab) and a Redis or Valkey container. Both must be running before Folio starts.</Requires>
+  <Changes>Initial template for Folio 0.4.6.</Changes>
+  <Date>2026-11-27</Date>
+  <License>MIT</License>
+  <Screenshot>https://raw.githubusercontent.com/evergreen-it-dev/folio/main/docs/images/document.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/evergreen-it-dev/folio/main/docs/images/collab.png</Screenshot>
+  <Config Name="WebUI Port" Target="4870" Default="4870" Mode="tcp" Description="Port of the Folio web interface. Must match the port in PUBLIC_URL." Type="Port" Display="always" Required="true" Mask="false">4870</Config>
+  <Config Name="Appdata" Target="/app/data" Default="/mnt/user/appdata/foliowiki" Mode="rw" Description="Git repositories of your spaces, uploaded files and assistant state. Back this folder up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/foliowiki</Config>
+  <Config Name="DATABASE_URL" Target="DATABASE_URL" Default="postgresql://folio:PASSWORD@[UNRAID-IP]:5432/folio" Mode="" Description="PostgreSQL connection string: postgresql://USER:PASSWORD@HOST:PORT/DATABASE. Replace PASSWORD and [UNRAID-IP]. Special characters in the password must be URL-encoded." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="REDIS_URL" Target="REDIS_URL" Default="redis://[UNRAID-IP]:6379" Mode="" Description="Redis or Valkey address, for example redis://192.168.1.10:6379. It holds only transient data (presence, rate limits)." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="PUBLIC_URL" Target="PUBLIC_URL" Default="http://[UNRAID-IP]:4870" Mode="" Description="The exact address you open Folio at, including the port, for example http://192.168.1.10:4870. Use https://... only behind a reverse proxy with TLS. Invite and share links are built from it." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="FOLIO_SECRET" Target="FOLIO_SECRET" Default="" Mode="" Description="Encrypts saved Git tokens and AI keys. Generate once: openssl rand -hex 32. Never change it afterwards, or saved tokens and keys become unreadable." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="CURSOR_API_KEY" Target="CURSOR_API_KEY" Default="" Mode="" Description="Optional. API key for the built-in AI assistant. Leave empty to turn the assistant off." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="GOOGLE_CLIENT_ID" Target="GOOGLE_CLIENT_ID" Default="" Mode="" Description="Optional. Google OAuth client ID for sign-in with Google." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="GOOGLE_CLIENT_SECRET" Target="GOOGLE_CLIENT_SECRET" Default="" Mode="" Description="Optional. Google OAuth client secret." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="GOOGLE_ALLOWED_DOMAINS" Target="GOOGLE_ALLOWED_DOMAINS" Default="" Mode="" Description="Optional. Comma-separated Google Workspace domains allowed to sign in." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="NODE_ENV" Target="NODE_ENV" Default="production" Mode="" Description="Leave as production." Type="Variable" Display="advanced-hide" Required="false" Mask="false">production</Config>
+  <Config Name="PORT" Target="PORT" Default="4870" Mode="" Description="Port inside the container. Leave as 4870 and change the host port above instead." Type="Variable" Display="advanced-hide" Required="false" Mask="false">4870</Config>
+  <Config Name="ASSET_BACKEND" Target="ASSET_BACKEND" Default="local" Mode="" Description="Where uploaded files are stored. Leave as local (inside Appdata)." Type="Variable" Display="advanced-hide" Required="false" Mask="false">local</Config>
+  <Config Name="CURSOR_AGENT_WORKSPACE_ROOT" Target="CURSOR_AGENT_WORKSPACE_ROOT" Default="/app/data/assistant/workspaces" Mode="" Description="Assistant workspaces, inside Appdata. Leave as is." Type="Variable" Display="advanced-hide" Required="false" Mask="false">/app/data/assistant/workspaces</Config>
+  <Config Name="CURSOR_AGENT_STATE_DIR" Target="CURSOR_AGENT_STATE_DIR" Default="/app/data/assistant/state" Mode="" Description="Assistant state, inside Appdata. Leave as is." Type="Variable" Display="advanced-hide" Required="false" Mask="false">/app/data/assistant/state</Config>
+</Container>

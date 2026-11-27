@@ -125,7 +125,7 @@ function teamsFinishPage(request: FastifyRequest, reply: FastifyReply, magicCode
 // ---------------------------------------------------------------------------
 
 function setConnectCookie(reply: FastifyReply, nonce: string): void {
-  reply.setCookie(CONNECT_COOKIE, nonce, { httpOnly: true, sameSite: 'lax', secure: cookiesSecure(), maxAge: PENDING_TTL_SECONDS, path: COOKIE_PATH });
+  reply.setCookie(CONNECT_COOKIE, nonce, { httpOnly: true, sameSite: 'lax', secure: cookiesSecure(reply.request), maxAge: PENDING_TTL_SECONDS, path: COOKIE_PATH });
 }
 function clearConnectCookie(reply: FastifyReply): void {
   reply.clearCookie(CONNECT_COOKIE, { path: COOKIE_PATH });

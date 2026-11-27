@@ -202,7 +202,7 @@ export function verifySamlFlow(raw: string | undefined): SamlFlowState | null {
 }
 
 function setFlowCookie(reply: FastifyReply, flow: SamlFlowState): void {
-  const secure = session.cookiesSecure();
+  const secure = session.cookiesSecure(reply.request);
   reply.setCookie(FLOW_COOKIE, signSamlFlow(flow), {
     httpOnly: true,
     sameSite: secure ? 'none' : 'lax',
@@ -213,7 +213,7 @@ function setFlowCookie(reply: FastifyReply, flow: SamlFlowState): void {
 }
 
 function clearFlowCookie(reply: FastifyReply): void {
-  const secure = session.cookiesSecure();
+  const secure = session.cookiesSecure(reply.request);
   reply.clearCookie(FLOW_COOKIE, { path: FLOW_COOKIE_PATH, sameSite: secure ? 'none' : 'lax', secure });
 }
 

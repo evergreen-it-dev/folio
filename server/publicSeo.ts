@@ -37,7 +37,7 @@ import {
   siteIndexable,
   type PublicSpace,
 } from './publicSites.js';
-import { publicUrlOrOrigin } from './publicUrl.js';
+import { publicUrlOrOrigin, requestOrigin } from './publicUrl.js';
 import * as storage from './storage.js';
 
 function xmlEscape(s: string): string {
@@ -126,10 +126,6 @@ export async function sitemapIndexXml(requestOrigin: string): Promise<string | n
     .map((space) => `  <sitemap>\n    <loc>${xmlEscape(`${main}${PUBLIC_SITE_PATH_PREFIX}/${space.slug}/sitemap.xml`)}</loc>\n  </sitemap>`);
   if (entries.length === 0) return null;
   return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join('\n')}\n</sitemapindex>\n`;
-}
-
-function requestOrigin(request: FastifyRequest): string {
-  return `${request.protocol}://${request.hostname}`;
 }
 
 export function registerPublicSeoRoutes(app: FastifyInstance): void {

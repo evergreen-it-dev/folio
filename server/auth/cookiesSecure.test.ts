@@ -23,10 +23,25 @@ describe('auth/session cookiesSecure (pure, env only)', () => {
     expect(withEnv('development', 'https://folio.example.com')).toBe(false);
   });
 
-  it('is on in production for an https or scheme-less PUBLIC_URL, and when PUBLIC_URL is unset', () => {
+  it('is on in production for an https or scheme-less PUBLIC_URL, and when PUBLIC_URL is unset with no request', () => {
     expect(withEnv('production', 'https://folio.example.com')).toBe(true);
     expect(withEnv('production', 'folio.example.com')).toBe(true);
     expect(withEnv('production', undefined)).toBe(true);
+  });
+
+  it('with PUBLIC_URL unset (or blank) follows the request scheme', () => {
+    withEnv('production', undefined);
+    expect(cookiesSecure({ protocol: 'http' })).toBe(false);
+    expect(cookiesSecure({ protocol: 'https' })).toBe(true);
+    process.env.PUBLIC_URL = '  ';
+    expect(cookiesSecure({ protocol: 'http' })).toBe(false);
+  });
+
+  it('an explicit PUBLIC_URL wins over the request scheme', () => {
+    withEnv('production', 'https://folio.example.com');
+    expect(cookiesSecure({ protocol: 'http' })).toBe(true);
+    process.env.PUBLIC_URL = 'http://192.168.1.20:4870';
+    expect(cookiesSecure({ protocol: 'https' })).toBe(false);
   });
 
   it('is off in production when the operator configured plain http', () => {

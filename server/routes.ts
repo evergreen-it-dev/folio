@@ -74,7 +74,7 @@ import * as tables from './tables/service.js';
 import * as forms from './forms/service.js';
 import { clampSearchLimit, clampSearchOffset, searchPages } from './search.js';
 import { buildPageDoc } from './pageDoc.js';
-import { publicUrlOrOrigin } from './publicUrl.js';
+import { publicUrlOrOrigin, requestOrigin } from './publicUrl.js';
 import { buildCanvasPayload } from './canvasView.js';
 import { canvasConversionReport, convertCanvasPage } from './canvasToBoard.js';
 import { buildEmbed, parseEmbedDepth } from './embed.js';
@@ -122,11 +122,6 @@ import { findTrashItemId, recordPageChange, snapshotPageChange } from './pageCha
 import * as bootScan from './bootScan.js';
 import { isGitHubConnectEnabled } from './auth/githubConnect.js';
 import { parseBaseConfig } from '../shared/bases/parse.js';
-
-/** PUBLIC_URL is normally set; this is only the fallback when it's not (round 8: "URL built from PUBLIC_URL, fallback request origin"). */
-function requestOrigin(request: FastifyRequest): string {
-  return `${request.protocol}://${request.hostname}`;
-}
 
 /**
  * Round 29: the shape every board write on this file funnels through — the

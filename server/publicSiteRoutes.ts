@@ -54,13 +54,10 @@ import { searchPublicSpace } from './search.js';
 import { readAsset, readSiteCss } from './spaceAppearance.js';
 import * as storage from './storage.js';
 import { parseBody, queryString } from './validate.js';
+import { requestOrigin } from './publicUrl.js';
 
 /** Longest search query a public visitor can send; longer input is cut, not rejected. */
 const MAX_PUBLIC_QUERY_LENGTH = 200;
-
-function requestOrigin(request: FastifyRequest): string {
-  return `${request.protocol}://${request.hostname}`;
-}
 
 /** The published space named by `:slug`, or 404 `space not found` (private, instance-wide and unknown spaces are indistinguishable). */
 async function requirePublicSpace(request: FastifyRequest): Promise<PublicSpace> {

@@ -21,10 +21,7 @@ import * as providers from './providers.js';
 import { redirectUriFor as oidcRedirectUri } from './oidc.js';
 import { samlSpFor } from './saml.js';
 import { isScimEnabled, scimEnabledProviderIds } from '../scim/tokens.js';
-
-function requestOrigin(request: FastifyRequest): string {
-  return `${request.protocol}://${request.hostname}`;
-}
+import { requestOrigin } from '../publicUrl.js';
 
 /** What the admin registers at the IdP: the OIDC redirect URL, or the SAML ACS URL plus the SP entity ID / metadata URL. */
 function infoFor(p: providers.AuthProvider, origin: string, identities: number): AuthProviderInfo {

@@ -1,0 +1,75 @@
+# Folio on Unraid with a Compose plugin (Compose Manager Plus).
+# Create a stack, paste this file, and put the values below into the stack's
+# .env file (or replace the ${...} placeholders). See README.md.
+#
+#   UNRAID_IP=192.168.1.10          # the address you open in the browser
+#   FOLIO_PORT=4870                 # host port for the web interface
+#   POSTGRES_PASSWORD=<openssl rand -hex 24>
+#   FOLIO_SECRET=<openssl rand -hex 32>
+services:
+  foliowiki:
+    image: ghcr.io/evergreen-it-dev/folio:latest
+    container_name: foliowiki
+    restart: unless-stopped
+    ports:
+      - '${FOLIO_PORT:-4870}:4870'
+    environment:
+      NODE_ENV: production
+      PORT: '4870'
+      DATABASE_URL: postgresql://folio:${POSTGRES_PASSWORD}@postgres:5432/folio
+      REDIS_URL: redis://redis:6379
+      # The exact address you open in the browser. Plain http is intended on a LAN.
+      PUBLIC_URL: http://${UNRAID_IP}:${FOLIO_PORT:-4870}
+      ASSET_BACKEND: local
+      FOLIO_SECRET: ${FOLIO_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_ALLOWED_DOMAINS: ${GOOGLE_ALLOWED_DOMAINS:-}
+      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+      CURSOR_AGENT_WORKSPACE_ROOT: /app/data/assistant/workspaces
+      CURSOR_AGENT_STATE_DIR: /app/data/assistant/state
+    volumes:
+      - /mnt/user/appdata/foliowiki/data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4870/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: foliowiki-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: folio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: folio
+    volumes:
+      - /mnt/user/appdata/foliowiki/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U folio -d folio']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Transient data only (presence, rate limits): persistence is off on purpose.
+  redis:
+    image: redis:7-alpine
+    container_name: foliowiki-redis
+    restart: unless-stopped
+    command: redis-server --save '' --appendonly no
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 20

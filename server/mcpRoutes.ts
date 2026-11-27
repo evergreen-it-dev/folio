@@ -24,6 +24,7 @@ import {
 import { MCP_WRITE_TOOL_NAMES, buildFolioMcpServer } from './mcp.js';
 import * as oauthStore from './oauth/store.js';
 import { issuerFor, mcpResourceFor, protectedResourceMetadataUrl } from './oauth/routes.js';
+import { requestOrigin } from './publicUrl.js';
 
 export interface McpAuth {
   user: User;
@@ -103,7 +104,7 @@ export function registerMcpRoutes(app: FastifyInstance): void {
       if (writes.limited) return sendLimited(reply, 429, rateMessage('writes per hour', writes), body.id, writes.retryAfterSeconds);
     }
     reply.hijack();
-    const server = buildFolioMcpServer({ user: auth.user, scopes: auth.scopes, tokenId: auth.tokenId }, { origin: `${request.protocol}://${request.hostname}` });
+    const server = buildFolioMcpServer({ user: auth.user, scopes: auth.scopes, tokenId: auth.tokenId }, { origin: requestOrigin(request) });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     try {
       await server.connect(transport);

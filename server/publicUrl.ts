@@ -31,11 +31,37 @@ export function normalizePublicUrl(url: string): string {
 }
 
 /**
+ * The request's own `scheme://host[:port]` — the fallback for every absolute
+ * link when PUBLIC_URL is unset (home-server catalogs open Folio at
+ * http://192.168.1.20:4870 with no address to configure). Built from
+ * `request.host`, NOT `request.hostname`: Fastify 5's `hostname` drops the
+ * port, which turned such a link into http://192.168.1.20/… — a dead address.
+ * WHATWG-normalized (lowercase host, default :80/:443 dropped), so the same
+ * place always yields the same string — OIDC compares redirect_uri verbatim.
+ *
+ * Scheme and host honour X-Forwarded-Proto / X-Forwarded-Host only from a
+ * proxy TRUST_PROXY trusts (Fastify's trustProxy); the plain Host header is
+ * whatever the client sent. A deployment that sends links to third parties
+ * (invite emails, IdP registration) should therefore set PUBLIC_URL.
+ */
+export function requestOrigin(request: { protocol: string; host: string }): string {
+  const raw = `${request.protocol}://${request.host}`;
+  try {
+    const origin = new URL(raw).origin;
+    return origin === 'null' ? raw : origin;
+  } catch {
+    return raw;
+  }
+}
+
+/**
  * PUBLIC_URL (scheme-normalized) if set to a non-empty value; otherwise
  * `originFallback` (already a full `scheme://host` computed from the
  * incoming request itself — e.g. routes.ts's requestOrigin() — so it never
  * needs normalizing). Trailing slash always stripped either way. Shared by
  * shares.ts and invites.ts for building an absolute share/invite URL.
+ *
+ * Build that fallback with requestOrigin() below.
  */
 export function publicUrlOrOrigin(originFallback: string): string {
   const raw = process.env.PUBLIC_URL;

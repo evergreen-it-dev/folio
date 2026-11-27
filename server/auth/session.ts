@@ -199,25 +199,34 @@ export function isProduction(): boolean {
 }
 
 /**
- * Whether auth cookies carry `Secure`. On in production, EXCEPT when the
- * operator explicitly configured a plain-http PUBLIC_URL (a self-hosted
- * instance on a LAN, or one not yet behind TLS): browsers drop `Secure`
- * cookies on any http origin other than localhost, so sign-in would fail
- * silently. An https or scheme-less PUBLIC_URL (normalized to https) keeps
- * the flag on. Exported for google.ts's own short-lived state/PKCE cookie,
- * which needs the same rule as the session cookie.
+ * Whether auth cookies carry `Secure`. Off outside production. In production:
+ *  - PUBLIC_URL set: on, EXCEPT when the operator configured plain http (a
+ *    self-hosted instance on a LAN, or one not yet behind TLS) — browsers drop
+ *    `Secure` cookies on any http origin other than localhost, so sign-in
+ *    would fail silently. An https or scheme-less PUBLIC_URL (normalized to
+ *    https) keeps the flag on.
+ *  - PUBLIC_URL unset (home-server catalogs — Unraid, Umbrel, CasaOS — open
+ *    Folio at http://IP:port with no address to configure): follows the
+ *    request's own scheme, so https (directly, or X-Forwarded-Proto from a
+ *    proxy TRUST_PROXY trusts) gets `Secure` and plain http does not. The
+ *    scheme cannot be forged by an untrusted client: Fastify reads
+ *    X-Forwarded-Proto only from a trusted proxy address. Without a request
+ *    (no caller today) it stays on.
+ * Exported for the short-lived flow cookies (OIDC, SAML, GitHub connect, chat
+ * connect), which need the same rule as the session cookie.
  */
-export function cookiesSecure(): boolean {
+export function cookiesSecure(request?: Pick<FastifyRequest, 'protocol'>): boolean {
   if (!isProduction()) return false;
-  const raw = process.env.PUBLIC_URL;
-  return !(raw && normalizePublicUrl(raw).toLowerCase().startsWith('http://'));
+  const raw = process.env.PUBLIC_URL?.trim();
+  if (raw) return !normalizePublicUrl(raw).toLowerCase().startsWith('http://');
+  return request ? request.protocol === 'https' : true;
 }
 
 export function setSessionCookie(reply: FastifyReply, token: string): void {
   reply.setCookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: cookiesSecure(),
+    secure: cookiesSecure(reply.request),
     maxAge: Math.floor(store.sessionTtlMs() / 1000),
     path: '/',
   });

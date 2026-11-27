@@ -6,3 +6,5 @@ data/
 !.env.example
 !.env.dev.example
 *.log
+# Umbrel expects these empty data folders in the app package
+!deploy/umbrel/foliowiki/data/

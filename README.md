@@ -923,7 +923,7 @@ is one link away on the same screen.
 |---|---|
 | Your computer | `docker compose up -d` |
 | A server or VPS | one command from the published image: [`deploy/vps`](deploy/vps/), or the compose file above plus `--profile https` for automatic HTTPS |
-| Coolify, Railway, Render, DigitalOcean, Dokploy, CapRover, Easypanel, Portainer, Fly.io | ready-made kits in [`deploy/`](deploy/), see [One-click and PaaS](docs/INSTALL.md#one-click-and-paas) |
+| Coolify, Railway, Render, DigitalOcean, Dokploy, CapRover, Easypanel, Portainer, Fly.io, Unraid, Umbrel, CasaOS | ready-made kits in [`deploy/`](deploy/), see [One-click and PaaS](docs/INSTALL.md#one-click-and-paas) |
 | Any other container platform | from the `Dockerfile`, with PostgreSQL, Redis and a persistent volume — see [requirements](docs/INSTALL.md#other-platforms) |
 | Vercel, Netlify and other serverless hosting | not supported — Folio is a long-running server that keeps Git repositories on disk and holds live connections |
 

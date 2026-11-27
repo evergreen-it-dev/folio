@@ -73,6 +73,12 @@ address people type, for example `PUBLIC_URL=http://192.168.1.20:4870`. With
 an `http://` address Folio does not mark its cookies as HTTPS-only, so signing
 in works. Do not expose such an instance to the internet.
 
+From the release after 0.4.6 you can also leave `PUBLIC_URL` empty on such a
+network: cookies are then HTTPS-only only for requests that came over HTTPS,
+and links use the address each person opened Folio at. Set it anyway when
+Folio is reachable from the internet or uses single sign-on, so links and
+sign-in callbacks never depend on the `Host` header a client sends.
+
 ## Settings
 
 All settings live in the `.env` file next to `docker-compose.yml`. Copy
@@ -81,7 +87,7 @@ All settings live in the `.env` file next to `docker-compose.yml`. Copy
 
 | Setting | Default | What it does |
 |---|---|---|
-| `PUBLIC_URL` | `http://localhost:4870` | The address people use to open Folio. Invitation and share links are built from it. |
+| `PUBLIC_URL` | `http://localhost:4870` | The address people use to open Folio. Invitation and share links are built from it. From the release after 0.4.6 it may be empty: links then follow the address of each request. |
 | `FOLIO_PORT` | `4870` | Port on the host machine. |
 | `FOLIO_BIND` | `0.0.0.0` | `127.0.0.1` makes Folio reachable from the same machine only. |
 | `FOLIO_DOMAIN` | — | Domain for the bundled HTTPS proxy. |
@@ -746,6 +752,9 @@ Prefer to look first? [Try the public demo](https://demo.foliowiki.online) — p
 | Easypanel | template files | [deploy/easypanel](../deploy/easypanel/) |
 | Portainer | stack | [deploy/portainer](../deploy/portainer/) |
 | Fly.io | manual recipe | [deploy/fly](../deploy/fly/) |
+| Unraid | container template, with PostgreSQL and Redis containers | [deploy/unraid](../deploy/unraid/) |
+| Umbrel | app folder for umbrelOS | [deploy/umbrel](../deploy/umbrel/) |
+| CasaOS | import a Compose file | [deploy/casaos](../deploy/casaos/) |
 
 Everywhere the sizing is the same: **2 GB of RAM, 1 vCPU and 10 GB of disk** at
 least. [`deploy/README.md`](../deploy/README.md) has the overview, and

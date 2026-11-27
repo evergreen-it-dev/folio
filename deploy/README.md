@@ -18,6 +18,15 @@ exactly that, from the published image `ghcr.io/evergreen-it-dev/folio`
 | **Easypanel** | Template files | [easypanel/](easypanel/) | yes |
 | **Portainer** | Paste a stack | [portainer/](portainer/) | yes |
 | **Fly.io** | Manual, from `fly.toml` | [fly/](fly/) | yes (volume) |
+| **Unraid** | Container template (plus PostgreSQL and Redis containers) | [unraid/](unraid/) | yes (appdata) |
+| **Umbrel** | App folder for umbrelOS | [umbrel/](umbrel/) | yes (app data) |
+| **CasaOS** | Import a Compose file | [casaos/](casaos/) | yes (`/DATA/AppData`) |
+
+On a home server opened over plain `http://` (Unraid, Umbrel, CasaOS),
+`PUBLIC_URL` must be that exact `http://` address with the 0.4.6 image these
+kits pin: when it is unset or `https`, the sign-in cookie is HTTPS-only and
+the browser drops it. From the next release `PUBLIC_URL` may be left empty
+there: the cookie follows the request's scheme and links follow its address.
 
 Serverless hosting (Vercel, Netlify, Cloudflare Pages, AWS Lambda) cannot run
 Folio: it needs a disk and a process that stays alive.

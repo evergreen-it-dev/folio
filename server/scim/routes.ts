@@ -17,7 +17,7 @@ import { recordAudit } from '../audit.js';
 import { queryOne } from '../db/pool.js';
 import { assertNotDemo } from '../demo.js';
 import { notFound } from '../errors.js';
-import { publicUrlOrOrigin } from '../publicUrl.js';
+import { publicUrlOrOrigin, requestOrigin } from '../publicUrl.js';
 import { rateLimited, retryAfterSeconds } from '../rateLimit.js';
 import * as providers from '../auth/providers.js';
 import type { AuthProvider } from '../auth/providers.js';
@@ -34,10 +34,6 @@ const AUTH_FAIL_PER_MINUTE = 30;
 function ratePerMinute(): number {
   const raw = Number(process.env.FOLIO_SCIM_RATE_PER_MINUTE);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1200;
-}
-
-function requestOrigin(request: FastifyRequest): string {
-  return `${request.protocol}://${request.hostname}`;
 }
 
 export function scimBaseUrl(request: FastifyRequest): string {
