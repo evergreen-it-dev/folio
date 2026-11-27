@@ -44,7 +44,7 @@ import { docIndexText, docIndexTextAsync } from './indexText.js';
 import { CANVAS_MAX_BYTES, canvasSearchText, parseJsonCanvas } from '../shared/canvas/index.js';
 import { inlineMarkdownToPlainText } from '../shared/inlineText.js';
 import { docExtOf, isMdxPath, isStrongIndexName, stripDocExt } from '../shared/mdx.js';
-import { computeVerification, hasVerificationProps, pickVerificationProps, type VerificationProps } from '../shared/verification.js';
+import { computeVerification, hasVerificationProps, pickVerificationProps, VERIFICATION_KEYS, type VerificationProps } from '../shared/verification.js';
 import { carryFrontmatterKeys, mergeFrontmatter, writeFrontmatterKeys, type FolioFrontmatter, type FrontmatterKeyEdit } from './frontmatter.js';
 import * as propsSidecar from './propsSidecar.js';
 import { ownProperties, reservedKeysOf } from './reservedPropertyKeys.js';
@@ -695,6 +695,14 @@ interface PagesIndexRow {
   is_index: boolean;
   frontmatter?: unknown;
 }
+
+const ENTRY_VERIFICATION_FRONTMATTER = VERIFICATION_KEYS.map((key) => `CASE
+  WHEN frontmatter->'${key}' IS NULL THEN '{}'::jsonb
+  ELSE jsonb_build_object('${key}', frontmatter->'${key}')
+END`).join(' || ');
+
+const ENTRY_METADATA_COLUMNS = `id, space_slug, path, kind, title, sort_order, status, icon, cover,
+  updated_at, is_index, (${ENTRY_VERIFICATION_FRONTMATTER}) AS frontmatter`;
 
 function rowToEntry(row: PagesIndexRow): PageIndexEntry {
   const relPath = row.path;
@@ -2368,6 +2376,14 @@ export async function getEntryIdByExactPath(space: string, relPath: string): Pro
   return row?.id;
 }
 
+export async function getEntryByExactPath(space: string, relPath: string): Promise<PageIndexEntry | undefined> {
+  const row = await queryOne<PagesIndexRow>(
+    `SELECT ${ENTRY_METADATA_COLUMNS}, plain_text FROM pages_index WHERE space_slug = $1 AND path = $2`,
+    [space, relPath],
+  );
+  return row ? rowToEntry(row) : undefined;
+}
+
 /**
  * Round FORMS bugfix (owner repro, 22.09.2026: "Edit form" permanently
  * refused to save with a "waiting for the table" banner). `form.table` is a
@@ -2408,46 +2424,44 @@ export async function resolvePairedTableEntry(formEntry: PageIndexEntry, tableRe
     if (entry && entry.kind === 'table') return entry;
   }
 
-  const entries = await listEntries(formEntry.space);
+  const entries = await listEntryMetadata(formEntry.space);
 
   // (a) the table nested as this form's own child directory.
   const formStem = relPathStem(formEntry.relPath, 'form');
   const childDir = formEntry.dirPath ? `${formEntry.dirPath}/${formStem}` : formStem;
   const childTable = entries.find((e) => e.kind === 'table' && e.dirPath === childDir);
-  if (childTable) return childTable;
+  if (childTable) return getEntry(childTable.id);
 
   // (b) this form nested as ITS OWN table's child directory (one level up).
   if (formEntry.dirPath) {
     const parentDir = posixParent(formEntry.dirPath);
     const parentStem = dirBasename(formEntry.dirPath);
     const parentTable = entries.find((e) => e.kind === 'table' && e.dirPath === parentDir && relPathStem(e.relPath, 'table') === parentStem);
-    if (parentTable) return parentTable;
+    if (parentTable) return getEntry(parentTable.id);
   }
 
   return undefined;
 }
 
 export async function listEntries(space?: string): Promise<PageIndexEntry[]> {
-  const rows = space
-    ? await query<PagesIndexRow>('SELECT * FROM pages_index WHERE space_slug = $1', [space])
-    : await query<PagesIndexRow>('SELECT * FROM pages_index');
-  return rows.map(rowToEntry);
+  return readEntries(space, `${ENTRY_METADATA_COLUMNS}, plain_text`);
 }
 
 /**
- * The structural list of a space's pages: everything the page tree, the template
- * list and the like need (ids, paths, titles, order, status, icon, cover, the three
+ * The structural list of pages: everything the page tree, the template list and
+ * structural operations need (ids, paths, titles, order, status, icon, cover, the three
  * verification keys) and NOT the indexed text, the search vector or the rest of the
  * front matter. On a space with tens of thousands of pages `listEntries` drags all of
  * that into the server's memory per request (#19). The entries come back with no `body`.
  */
-export async function listEntryMetadata(space: string): Promise<PageIndexEntry[]> {
-  const rows = await query<PagesIndexRow>(
-    `SELECT id, space_slug, path, kind, title, sort_order, status, icon, cover, updated_at, is_index,
-            jsonb_strip_nulls(jsonb_build_object('owner', frontmatter->'owner', 'verified', frontmatter->'verified', 'review_by', frontmatter->'review_by')) AS frontmatter
-       FROM pages_index WHERE space_slug = $1`,
-    [space],
-  );
+export async function listEntryMetadata(space?: string): Promise<PageIndexEntry[]> {
+  return readEntries(space, ENTRY_METADATA_COLUMNS);
+}
+
+async function readEntries(space: string | undefined, columns: string): Promise<PageIndexEntry[]> {
+  const rows = space
+    ? await query<PagesIndexRow>(`SELECT ${columns} FROM pages_index WHERE space_slug = $1`, [space])
+    : await query<PagesIndexRow>(`SELECT ${columns} FROM pages_index`);
   return rows.map(rowToEntry);
 }
 
@@ -2773,7 +2787,7 @@ export function relPathStem(relPath: string, kind: PageKind): string {
  * it, which is the exact failure this endpoint exists to fix.
  */
 export async function getSubtree(entry: PageIndexEntry, depth: number, allowedPageIds?: ReadonlySet<string>): Promise<SubtreeNode[]> {
-  const entries = (await listEntries(entry.space)).filter((e) => !isUnderTemplates(e.relPath) && (!allowedPageIds || allowedPageIds.has(e.id)));
+  const entries = (await listEntryMetadata(entry.space)).filter((e) => !isUnderTemplates(e.relPath) && (!allowedPageIds || allowedPageIds.has(e.id)));
 
   const selfForDir = new Map<string, PageIndexEntry>();
   for (const e of entries) if (e.isIndex) selfForDir.set(e.dirPath, e);
@@ -3005,7 +3019,7 @@ export async function createPage(body: CreatePageBody, initial?: CreatePageIniti
 
   return withSpaceLock(body.space, async () => {
     const parentPath = normalizePageParentDir(body.parentPath);
-    await fs.mkdir(path.join(spaceDir(body.space), parentPath), { recursive: true });
+    await mkdirParents(path.join(spaceDir(body.space), parentPath));
 
     // OFFLINE CREATION: the client minted the id (its URL and every link to the page
     // already use it). The route answers a replay of an id that is already taken
@@ -4114,10 +4128,25 @@ export async function writeBoardSvg(id: string, svg: string, force = false): Pro
   return toPageMeta(entry);
 }
 
+/** mkdir -p that answers 409 (not a 500) when a component of the path already exists as a FILE (Node: EEXIST/ENOTDIR). */
+async function mkdirParents(dirAbs: string): Promise<void> {
+  try {
+    await fs.mkdir(dirAbs, { recursive: true });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST' || code === 'ENOTDIR') throw conflict('a file already exists where this page folder would be created');
+    throw err;
+  }
+}
+
 export async function readFreshDocBody(id: string): Promise<string> {
   const entry = await requireEntry(id);
   if (entry.kind !== 'doc') throw badRequest('page is not a document');
-  const raw = await fs.readFile(entry.absPath, 'utf8');
+  // The index row can outlive the file for a moment (a concurrent move/delete): that is a missing page, not a server fault.
+  const raw = await fs.readFile(entry.absPath, 'utf8').catch((err: NodeJS.ErrnoException) => {
+    if (err.code === 'ENOENT') throw notFound('page');
+    throw err;
+  });
   return matter(raw).content;
 }
 
@@ -4452,7 +4481,7 @@ export async function movePageTracked(id: string, toParentPathRaw: string): Prom
     const toRel = (abs: string) => path.relative(spaceAbs, abs).split(path.sep).join('/');
     const movedDir = entry.isIndex ? { from: entry.dirPath, to: toRel(destAbs) } : childDirSrcAbs && childDirDestAbs ? { from: toRel(childDirSrcAbs), to: toRel(childDirDestAbs) } : undefined;
     const descendantsBefore = movedDir
-      ? (await listEntries(space)).filter((e) => e.id !== id && (e.dirPath === movedDir.from || e.dirPath.startsWith(`${movedDir.from}/`)))
+      ? (await listEntryMetadata(space)).filter((e) => e.id !== id && (e.dirPath === movedDir.from || e.dirPath.startsWith(`${movedDir.from}/`)))
       : [];
     const newPrimaryRelPath = toRel(entry.isIndex ? path.join(destAbs, path.basename(entry.absPath)) : destAbs);
     const moved: SlugRenameMove[] = [{ id, oldRelPath: entry.relPath, newRelPath: newPrimaryRelPath, backlinks: await links.getBacklinks(id) }];
@@ -4463,7 +4492,7 @@ export async function movePageTracked(id: string, toParentPathRaw: string): Prom
     }
     const assetLinkSources = movedDir ? await links.getAssetLinkSources(space, movedDir.from) : [];
 
-    await fs.mkdir(destDirAbs, { recursive: true });
+    await mkdirParents(destDirAbs);
     await claimIdsForMove(space, srcAbs, destAbs);
     if (childDirSrcAbs && childDirDestAbs) await claimIdsForMove(space, childDirSrcAbs, childDirDestAbs);
     await fs.rename(srcAbs, destAbs);
@@ -4846,7 +4875,7 @@ async function copyPageInternal(
   // The routes have refused a page the caller cannot open before they get here; this keeps the rule true for any other caller.
   if (scope?.hiddenPageIds.has(source.id)) throw forbidden('this page is not available to you');
   if (!(await spaceExists(toSpace))) throw notFound('space');
-  const sourceEntries = scope ? await listEntries(source.space) : [];
+  const sourceEntries = scope ? await listEntryMetadata(source.space) : [];
 
   return withSpaceLock(toSpace, async () => {
     const toParentPath = normalizePageParentDir(toParentPathRaw);
@@ -5235,7 +5264,7 @@ export async function renamePageSlug(id: string, rawSlug: string): Promise<SlugR
     // every id+oldRelPath that's about to move once fs.rename relocates the whole subtree.
     const descendantsBefore =
       oldDirForDescendants !== undefined
-        ? (await listEntries(space)).filter((e) => e.id !== id && (e.dirPath === oldDirForDescendants || e.dirPath.startsWith(`${oldDirForDescendants}/`)))
+        ? (await listEntryMetadata(space)).filter((e) => e.id !== id && (e.dirPath === oldDirForDescendants || e.dirPath.startsWith(`${oldDirForDescendants}/`)))
         : [];
 
     // Backlinks captured BEFORE fs.rename/scanSpace — see SlugRenameMove.backlinks's doc

@@ -2553,7 +2553,7 @@ export async function chooseRootBaseDir(
   if (base) {
     occupied = (await storage.getEntryIdByExactPath(spaceSlug, `${prefix}index.md`)) !== undefined;
   } else {
-    const entries = await storage.listEntries(spaceSlug);
+    const entries = await storage.listEntryMetadata(spaceSlug);
     occupied = entries.some((e) => e.relPath !== 'index.md' && !isAgentPath(e.relPath) && !e.relPath.startsWith('_templates/'));
   }
   if (!occupied) return base;
@@ -2846,7 +2846,7 @@ async function runWhiteboardImportJob(
   // (not relative): an excalidraw element's `link` opens as a plain href from
   // whatever page URL the viewer is on, so only `/s/<space>/p/<id>` is stable.
   const priorMap = await readConfluenceMap(spaceSlug);
-  const entryByPath = new Map((await storage.listEntries(spaceSlug)).map((e) => [e.relPath, e]));
+  const entryByPath = new Map((await storage.listEntryMetadata(spaceSlug)).map((e) => [e.relPath, e]));
   const resolveTarget = (rawUrl: string) => {
     const ref = extractConfluenceContentId(rawUrl);
     if (!ref || ref.kind === 'database') return undefined;

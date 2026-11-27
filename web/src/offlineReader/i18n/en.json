@@ -1,0 +1,12 @@
+{
+  "offline": "Folio is offline",
+  "library": "Saved documents",
+  "empty": "To read a document here, open it online and choose Save for offline reading from its menu.",
+  "missing": "This document has not been saved on this device.",
+  "saved": "Read-only copy saved",
+  "retry": "Try online again",
+  "unavailable": "Saved documents could not be opened on this device.",
+  "open": "Open Folio",
+  "pill": "Offline",
+  "hint": "Read-only copies saved on this device."
+}

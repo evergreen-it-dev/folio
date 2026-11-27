@@ -42,6 +42,7 @@ export interface HeaderProps {
    * the old `pdf` prop — same two actions, one more page kind.
    */
   fileActions?: boolean;
+  canSaveOffline?: boolean;
   /** Round (page presence): everyone with this page open right now, published by the routed content (PageEditor/BoardCanvas/TablePageView) via Shell's usePublishPagePresence. Empty outside a collab session. */
   presence: PagePresencePerson[];
   collapsed: boolean;
@@ -78,7 +79,7 @@ function isProsePage(pagePath: string | undefined, table: unknown, fileActions: 
   return pagePath !== undefined && !table && !fileActions && /\.md$/i.test(pagePath) && !/\.(table|form)\.md$/i.test(pagePath);
 }
 
-export function Header({ space, pageId, pagePath, title, icon, table, fileActions, presence, collapsed, onToggleCollapse, onOpenSwitcher, propertiesSlotRef }: HeaderProps) {
+export function Header({ space, pageId, pagePath, title, icon, table, fileActions, canSaveOffline, presence, collapsed, onToggleCollapse, onOpenSwitcher, propertiesSlotRef }: HeaderProps) {
   const { t } = useTranslation('app');
   const role = useSpaceRole(space);
   const canEdit = canEditContent(role);
@@ -218,6 +219,7 @@ export function Header({ space, pageId, pagePath, title, icon, table, fileAction
           title={title}
           isTable={Boolean(table)}
           fileActions={Boolean(fileActions)}
+          canSaveOffline={canSaveOffline}
           isProse={isProsePage(pagePath, table, fileActions)}
           canEdit={canEdit}
           canStartTimer={canStartTimer}

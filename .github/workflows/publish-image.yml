@@ -1,5 +1,9 @@
 # Builds the Folio image for amd64 and arm64 and publishes it to
-# ghcr.io/evergreen-it-dev/folio. Every one-click kit in deploy/ pulls this image.
+# ghcr.io/<this repository> (ghcr.io/evergreen-it-dev/folio here, a fork
+# publishes to its own). Every one-click kit in deploy/ pulls this image.
+#
+# Each platform builds on a native runner: arm64 under QEMU dies with SIGILL
+# in `npm ci` (#24).
 #
 # Runs when a release tag (vX.Y.Z) is pushed, and by hand from the Actions tab
 # ("Run workflow"; pick a tag or a branch).
@@ -8,6 +12,11 @@
 #   a release tag   v0.2.0, 0.2.0, latest, sha-<short>
 #   a branch        sha-<short>, and edge when run on the default branch
 #   by hand         the same rules; "latest" only moves when you tick the box
+#
+# Verify an image (cosign v3):
+#   cosign verify ghcr.io/evergreen-it-dev/folio:<tag> \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --certificate-identity-regexp '^https://github\.com/evergreen-it-dev/folio/\.github/workflows/publish-image\.yml@'
 #
 # First time only: after the first push, open the package on GitHub
 # (Packages -> folio -> Package settings) and set its visibility to Public,
@@ -24,25 +33,46 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: read
-  packages: write
+permissions: {}
 
 concurrency:
   group: publish-image-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/evergreen-it-dev/folio
+  IMAGE: ghcr.io/${{ github.repository }}
+  # Shared by both jobs: the build job derives the version label from them.
+  TAG_RULES: |
+    type=ref,event=tag
+    type=semver,pattern={{version}}
+    type=sha
+    type=edge
+    type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || inputs.latest == true }}
 
 jobs:
-  image:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v4
+      # Registry references must be lowercase; a fork's owner may not be.
+      - run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -55,24 +85,87 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=sha
-            type=edge
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || inputs.latest == true }}
+          tags: ${{ env.TAG_RULES }}
           labels: |
             org.opencontainers.image.title=Folio
             org.opencontainers.image.description=Git-native collaborative wiki
             org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
 
-      - uses: docker/build-push-action@v6
+      # Pushed by digest only: the merge job tags the joined index.
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+
+      - env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: mkdir -p "$RUNNER_TEMP/digests" && touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          overwrite: true
+
+  merge:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless signing
+    # Actions pinned by SHA: every step of this job can request the signing OIDC token.
+    steps:
+      - run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: digests-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/digests
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: ${{ env.TAG_RULES }}
+
+      # Signed before the public tags move: a failed signature leaves them untouched.
+      - working-directory: ${{ runner.temp }}/digests
+        env:
+          ISSUER: https://token.actions.githubusercontent.com
+          IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+        run: |
+          shopt -s nullglob
+          sources=()
+          for d in *; do sources+=("$IMAGE@sha256:$d"); done
+          # One digest per matrix platform: a partial re-run must not publish a single-arch image.
+          (( ${#sources[@]} == 2 )) || { echo "expected 2 platform digests, got ${#sources[@]}"; exit 1; }
+          tags=$(jq -re '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          # imagetools needs a tag to push. A public scratch tag, moved every run: never deploy it.
+          docker buildx imagetools create --metadata-file "$RUNNER_TEMP/index.json" -t "$IMAGE:unsigned-staging" "${sources[@]}"
+          digest=$(jq -re '."containerimage.descriptor".digest' "$RUNNER_TEMP/index.json")
+          # --recursive: the index a tag pull resolves to, and each platform image under it.
+          cosign sign --yes --recursive "$IMAGE@$digest"
+          cosign verify --certificate-identity "$IDENTITY" --certificate-oidc-issuer "$ISSUER" "$IMAGE@$digest" > /dev/null
+          # A single source index is copied as is, so every tag points at the signed digest.
+          args=()
+          while read -r t; do args+=(-t "$t"); done <<< "$tags"
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$digest"

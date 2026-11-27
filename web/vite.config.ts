@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
+import { offlineReaderWorker } from './pwa/buildWorker';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 // Source maps for Sentry (docs/DEPLOYMENT-PAAS.md "Sentry"). They are produced and uploaded ONLY when the build is
@@ -23,6 +24,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    offlineReaderWorker(),
     ...(uploadSourceMaps
       ? [
           sentryVitePlugin({
@@ -67,5 +69,11 @@ export default defineConfig({
   // load a missing chunk from. Served from /assets/ like the chunks themselves,
   // but it is NOT content-hashed, so the server must not cache it as immutable
   // (server/index.ts).
-  build: { outDir: 'dist', emptyOutDir: true, manifest: 'assets/manifest.json', sourcemap: uploadSourceMaps ? 'hidden' : false },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    manifest: 'assets/manifest.json',
+    sourcemap: uploadSourceMaps ? 'hidden' : false,
+    rolldownOptions: { input: ['index.html', 'offline.html'].map((file) => path.resolve(import.meta.dirname, file)) },
+  },
 });

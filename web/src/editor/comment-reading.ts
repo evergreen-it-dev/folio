@@ -59,7 +59,17 @@ export function nthMatch(hay: string, needle: string, n: number): number {
 }
 
 /** What markdown writes that the rendered page does not show: link destinations, reference definitions, fence info lines. */
-const UNRENDERED = [/\]\([^)\n]*\)/g, /<(?:https?:\/\/|mailto:)[^>\n]*>/g, /^ {0,3}\[[^\]\n]+\]:[^\n]*/gm, /^ {0,3}(?:`{3,}|~{3,})[^\n]*/gm];
+const UNRENDERED = [
+  /\]\([^)\n]*\)/g,
+  // Inline HTML tags and character references (`&nbsp;`): their letters are not on the page as such.
+  /<\/?[A-Za-z][^>\n]*>/g,
+  /&(?:[A-Za-z][A-Za-z0-9]*|#\d+|#[xX][0-9a-fA-F]+);/g,
+  // The target of an aliased wikilink: only the alias is shown.
+  /\[\[[^\]|\n]*\|/g,
+  /<(?:https?:\/\/|mailto:)[^>\n]*>/g,
+  /^ {0,3}\[[^\]\n]+\]:[^\n]*/gm,
+  /^ {0,3}(?:`{3,}|~{3,})[^\n]*/gm,
+];
 
 /** The source's skeleton, without the parts the page never shows. Indices still point into `text`. */
 function sourceSkeleton(text: string): Skeleton {
@@ -67,6 +77,56 @@ function sourceSkeleton(text: string): Skeleton {
   for (const pattern of UNRENDERED) masked = masked.replace(pattern, (m) => ' '.repeat(m.length));
   return skeleton(masked);
 }
+
+/**
+ * Where the skeleton run `other[from..to]` sits in `hay` (inclusive indices), the n-th occurrence being the one the
+ * range came from. Exact first. When the two sides differ inside the run (the page shows a letter the source does
+ * not hold, or the other way round: an alias, an entity, a widget, an include) the run's head and tail are looked
+ * up on their own and the span between them is taken. A run is refused only when neither end can be found.
+ */
+export function alignRun(hay: string, other: string, from: number, to: number): { start: number; end: number } | null {
+  const needle = other.slice(from, to + 1);
+  if (!needle) return null;
+  const exact = nthMatch(hay, needle, countBefore(other, needle, from));
+  if (exact >= 0) return { start: exact, end: exact + needle.length - 1 };
+  const len = needle.length;
+  const K = Math.min(24, len >> 1);
+  if (K < 4) return null;
+  // Slide inward from each end: stray letters at an edge must not hide the rest.
+  let head: { start: number } | null = null;
+  for (let i = 0; i <= Math.min(80, len - K); i++) {
+    const h = needle.slice(i, i + K);
+    const at = nthMatch(hay, h, countBefore(other, h, from + i));
+    if (at >= 0) {
+      head = { start: Math.max(0, at - i) };
+      break;
+    }
+  }
+  let tail: { end: number } | null = null;
+  for (let j = 0; j <= Math.min(80, len - K); j++) {
+    const t = needle.slice(len - K - j, len - j);
+    const at = nthMatch(hay, t, countBefore(other, t, from + len - K - j));
+    if (at >= 0) {
+      tail = { end: Math.min(hay.length - 1, at + K - 1 + j) };
+      break;
+    }
+  }
+  if (head && tail) {
+    if (tail.end < head.start || tail.end - head.start > len + (len >> 1) + 40) return null;
+    return { start: head.start, end: tail.end };
+  }
+  if (head) return { start: head.start, end: Math.min(hay.length - 1, head.start + len - 1) };
+  if (tail) return { start: Math.max(0, tail.end - len + 1), end: tail.end };
+  return null;
+}
+
+/**
+ * Reading-mode UI that sits inside the prose but is not the document: its text is never in the source. Currently
+ * the collapsible sections' toggle and "N hidden blocks" stub, the table pin/toggle buttons (icon-only today) and
+ * the lightbox toolbar. Anything else that injects text into the prose should carry `data-reading-chrome`.
+ */
+export const READING_CHROME =
+  'script,style,[hidden],[aria-hidden="true"],.folio-title-slot,[data-reading-chrome],.folio-collapsible-stub,.folio-collapse-toggle,.folio-table-pin,[data-table-pin],[data-table-toggle],.folio-lightbox__toolbar';
 
 interface DomSkeleton {
   s: string;
@@ -78,7 +138,7 @@ function domSkeleton(root: Node): DomSkeleton {
   let s = '';
   const points: DomSkeleton['points'] = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => (node.parentElement?.closest('script,style,[hidden],[aria-hidden="true"],.folio-title-slot') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    acceptNode: (node) => (node.parentElement?.closest(READING_CHROME) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
     const sk = skeleton(node.data);
@@ -88,8 +148,23 @@ function domSkeleton(root: Node): DomSkeleton {
   return { s, points };
 }
 
+const MARKUP = '*_~`';
+const PUNCT = /[^\p{L}\p{N}\s]/u;
+
+/** The punctuation written right after `end` in `text`, markup characters between its marks skipped. */
+function punctuationAfter(text: string, end: number, limit: number): string {
+  let out = '';
+  for (let p = end; p < limit; p++) {
+    const ch = text[p];
+    if (MARKUP.includes(ch)) continue;
+    if (!PUNCT.test(ch)) break;
+    out += ch;
+  }
+  return out;
+}
+
 /** A range in the source (editor coordinates) as the same run of letters in the rendered page. */
-function domRangeFor(dom: DomSkeleton, src: Skeleton, shift: number, from: number, to: number): Range | null {
+function domRangeFor(dom: DomSkeleton, src: Skeleton, markdown: string, shift: number, from: number, to: number): Range | null {
   const lo = src.at.findIndex((index) => index + shift >= from);
   let hi = -1;
   for (let k = src.at.length - 1; k >= 0; k--) {
@@ -99,14 +174,23 @@ function domRangeFor(dom: DomSkeleton, src: Skeleton, shift: number, from: numbe
     }
   }
   if (lo < 0 || hi < lo) return null;
-  const needle = src.s.slice(lo, hi + 1);
-  const start = nthMatch(dom.s, needle, countBefore(src.s, needle, lo));
-  if (start < 0) return null;
-  const first = dom.points[start];
-  const last = dom.points[start + needle.length - 1];
+  const found = alignRun(dom.s, src.s, lo, hi);
+  if (!found) return null;
+  const first = dom.points[found.start];
+  const last = dom.points[found.end];
+  // Punctuation the source range covers after its last letter is part of the selection.
+  const lastAt = src.at[found.end] + shift;
+  let end = last.offset + 1;
+  if (to > lastAt + 1) {
+    const want = punctuationAfter(markdown, lastAt + 1, to);
+    for (const ch of want) {
+      if (last.node.data[end] === ch) end++;
+      else break;
+    }
+  }
   const range = document.createRange();
   range.setStart(first.node, first.offset);
-  range.setEnd(last.node, last.offset + 1);
+  range.setEnd(last.node, end);
   return range;
 }
 
@@ -123,7 +207,7 @@ export function rangesInRendered(
   const src = sourceSkeleton(markdown.slice(shift));
   const dom = domSkeleton(root);
   for (const item of items) {
-    const range = domRangeFor(dom, src, shift, item.from, item.to);
+    const range = domRangeFor(dom, src, markdown, shift, item.from, item.to);
     if (range) out.set(item.id, range);
   }
   return out;
@@ -145,12 +229,26 @@ export function sourceRangeOfSelection(root: Node, markdown: string, selected: R
     last = k;
   }
   if (first < 0) return null;
-  const needle = dom.s.slice(first, last + 1);
   const shift = markdown.length - stripFrontmatter(markdown).length;
   const src = sourceSkeleton(markdown.slice(shift));
-  const start = nthMatch(src.s, needle, countBefore(dom.s, needle, first));
-  if (start < 0) return null;
-  return { from: shift + src.at[start], to: shift + src.at[start + needle.length - 1] + 1 };
+  const found = alignRun(src.s, dom.s, first, last);
+  if (!found) return null;
+  // A drag that ends after the line's "?" selected it: include the trailing punctuation (and only what was selected).
+  const lastPoint = dom.points[last];
+  let trail = '';
+  for (let j = lastPoint.offset + 1; j < lastPoint.node.length; j++) {
+    const ch = lastPoint.node.data[j];
+    if (!PUNCT.test(ch) || selected.comparePoint(lastPoint.node, j + 1) !== 0) break;
+    trail += ch;
+  }
+  let to = shift + src.at[found.end] + 1;
+  for (const ch of trail) {
+    let at = to;
+    while (MARKUP.includes(markdown[at] ?? '')) at++;
+    if (markdown[at] !== ch) break;
+    to = at + 1;
+  }
+  return { from: shift + src.at[found.start], to };
 }
 
 /* ---------------------------------------------------------------- painting -- */

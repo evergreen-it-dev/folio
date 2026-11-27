@@ -41,6 +41,7 @@ import { pinToolbar } from './pin-toolbar';
 import { t as translate } from './i18n';
 import { mentionCompletions } from './mentions';
 import { pasteLinkOverSelection } from './paste-link';
+import { pastePageLink } from './paste-page-link';
 import { wikilinkCompletions } from './wikilink';
 
 /**
@@ -214,6 +215,8 @@ export function markdownEditorExtensions(): Extension {
     // Before the page-level paste handlers (they come after this list), and it
     // claims nothing but "selection + one URL".
     pasteLinkOverSelection,
+    // The app's own page URL (sidebar "Copy link") pasted at a caret becomes a titled link.
+    pastePageLink,
     // Round 25: the pinned command strip above the document, and its hotkey.
     pinToolbar,
     // Tab/Shift+Tab nest and un-nest a list item. Prec.high so it beats

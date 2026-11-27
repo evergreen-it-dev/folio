@@ -86,6 +86,9 @@ import {
 import { bgClass } from '../markdown/tableSyntax';
 import { emojiFavouritesFacet } from './emoji-complete';
 import { linkOverSelectionEdit, pastedUrl } from './format';
+import { pageContextFacet } from './live-preview';
+import { openFieldLinkPopover } from './link-popover';
+import { knownPageLink, pageRefOf, resolvePageLink } from './paste-page-link';
 import { attachFieldFormatting, formatForEvent } from './format-toolbar';
 import { t } from './i18n';
 import { attachEmojiInput, openEmojiPicker } from './emoji-popover';
@@ -93,6 +96,7 @@ import { isBgToken } from '../markdown/tableSyntax';
 import { serializeStatus, statusClassNames } from '@shared/status';
 import { createIcon, type IconName } from './icons';
 import { tableRangeAt } from './live-decorations';
+import { isTablePinned, toggleTablePinned } from '../markdown/tablePin';
 import { openMenu, type MenuEntry, type MenuHandle } from './popup-menu';
 import { horizontalMove, verticalMove, type CellMove, type CellRef } from './table-nav';
 import { showToast } from './toast';
@@ -572,6 +576,7 @@ function render(wrap: HTMLElement, view: EditorView, source: string): void {
   scroll.appendChild(frame);
   wrap.appendChild(scroll);
   wrap.appendChild(buildBar(view, wrap, table));
+  syncPinned(view, wrap);
 
   mountControls(view, wrap, frame, overlay, table);
   rendering = true;
@@ -631,10 +636,72 @@ function buildBar(view: EditorView, wrap: HTMLElement, table: GfmTable): HTMLEle
   }
   bar.appendChild(widthGroup);
 
+  bar.appendChild(pinButton(view, wrap));
   bar.appendChild(
     barButton('code', t('table.source'), t('table.sourceTitle'), () => revealSource(view, wrap)),
   );
   return bar;
+}
+
+/* ------------------------------------------------------------- pin/scroll -- */
+
+/** 0-based index of this table among the page's tables, or null while the
+ * widget is not in the document yet (`toDOM` runs detached). */
+function tableOrdinal(view: EditorView, wrap: HTMLElement): number | null {
+  if (!wrap.isConnected) return null;
+  try {
+    const at = view.posAtDOM(wrap);
+    let index = 0;
+    syntaxTree(view.state).iterate({
+      enter: (node) => {
+        if (node.name === 'Table' && node.from < at) index++;
+      },
+    });
+    return index;
+  } catch {
+    return null;
+  }
+}
+
+function pinKey(view: EditorView, wrap: HTMLElement): { pageId: string; index: number } | null {
+  const pageId = view.state.facet(pageContextFacet).pageId;
+  const index = tableOrdinal(view, wrap);
+  return pageId && index !== null ? { pageId, index } : null;
+}
+
+/** Stamps `data-pinned` (CSS turns it into the capped inner scroller with a
+ * sticky header) and mirrors it on the bar button. Pinned is the default. */
+function syncPinned(view: EditorView, wrap: HTMLElement): void {
+  const apply = () => {
+    const key = pinKey(view, wrap);
+    const pinned = key ? isTablePinned(key.pageId, key.index) : true;
+    setPinned(wrap, pinned);
+  };
+  apply();
+  // First render is detached: resolve the stored choice once it is in the doc.
+  if (!wrap.isConnected) requestAnimationFrame(apply);
+}
+
+function setPinned(wrap: HTMLElement, pinned: boolean): void {
+  wrap.dataset.pinned = String(pinned);
+  const button = wrap.querySelector<HTMLButtonElement>('.cm-md-table-pinbtn');
+  if (!button) return;
+  const label = pinned ? t('table.unpinScroll') : t('table.pinScroll');
+  button.setAttribute('aria-pressed', String(pinned));
+  button.setAttribute('aria-label', label);
+  button.title = label;
+}
+
+function pinButton(view: EditorView, wrap: HTMLElement): HTMLButtonElement {
+  const button = barButton('pin', t('table.pinScroll'), t('table.pinScroll'), () => {
+    const key = pinKey(view, wrap);
+    const pinned = key ? toggleTablePinned(key.pageId, key.index) : wrap.dataset.pinned !== 'true';
+    setPinned(wrap, pinned);
+  });
+  button.classList.add('cm-md-table-pinbtn');
+  // Icon-only: the bar is already busy and the label lives in title/aria-label.
+  button.querySelector('span')?.remove();
+  return button;
 }
 
 function barButton(
@@ -2519,7 +2586,7 @@ function beginEdit(
   // Attached before the grid's own key handling: while the emoji dropdown is
   // open it swallows Enter/Tab/arrows so they never reach cell navigation.
   const emoji = attachEmojiInput(field, view.state.facet(emojiFavouritesFacet));
-  const formatting = attachFieldFormatting(field, autosize);
+  const formatting = attachFieldFormatting(field, autosize, () => view.state.facet(pageContextFacet));
   let slash: MenuHandle | null = null;
 
   field.focus();
@@ -2709,12 +2776,10 @@ function beginEdit(
     // has no shape for, so it is deliberately left out rather than writing
     // markdown a table cell cannot hold.
     const pickLink = () => {
+      // The popover asks for an address or a page; Esc leaves the `/` as typed.
       const line = lineAround(field.value, at);
-      const label = t('cellSlash.linkPlaceholder');
-      field.setRangeText(`[${label}](url)`, line.from, at + 1, 'end');
-      field.focus();
-      field.setSelectionRange(line.from + 1, line.from + 1 + label.length);
-      autosize();
+      const ctx = view.state.facet(pageContextFacet);
+      openFieldLinkPopover(field, { from: line.from, to: at + 1 }, ctx, { label: '', onDone: autosize });
     };
     slash = openMenu({
       x: rect.left,
@@ -2915,6 +2980,35 @@ function beginEdit(
       autosize();
       return;
     }
+    // The app's own page URL ("Copy link" in the sidebar) at a bare caret
+    // becomes a link titled with the page (paste-page-link.ts) — the cell holds
+    // the raw markdown, `|` is escaped later when the row is written.
+    const pageUrl = start === end ? pastedUrl(text) : null;
+    const pageRef = pageUrl ? pageRefOf(pageUrl) : null;
+    if (pageUrl && pageRef) {
+      const ctx = view.state.facet(pageContextFacet);
+      const known = knownPageLink(pageRef, pageUrl, ctx, false);
+      if (known) {
+        field.setRangeText(known, start, end, 'end');
+        autosize();
+        return;
+      }
+      // Never held: the bare URL goes in now; the title upgrades it later if
+      // the cell still shows the URL (near where it went in) and is still open.
+      field.setRangeText(pageUrl, start, end, 'end');
+      autosize();
+      void resolvePageLink(pageUrl, ctx, false).then((markdown) => {
+        if (!markdown || !field.isConnected) return;
+        const value = field.value;
+        const at = value.startsWith(pageUrl, start) ? start : value.indexOf(pageUrl, Math.max(0, start - 32));
+        if (at < 0) return;
+        const caret = field.selectionStart ?? value.length;
+        const atEnd = caret === at + pageUrl.length;
+        field.setRangeText(markdown, at, at + pageUrl.length, atEnd ? 'end' : 'preserve');
+        autosize();
+      });
+      return;
+    }
     field.setRangeText(sanitizeCellPaste(text), start, end, 'end');
     autosize();
   });
@@ -2925,6 +3019,9 @@ function beginEdit(
   // the cheap half of that and never was enough on its own: Blink drops focus
   // from `WillRemoveChild`, while the node is still in the document.
   field.addEventListener('blur', () => {
+    // The link popover has the focus for a moment; committing now would rebuild
+    // the cell under it (`openFieldLinkPopover` re-sends the blur if needed).
+    if (field.dataset.linkPopover === 'open') return;
     if (field.isConnected) commit(null);
   });
 }

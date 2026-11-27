@@ -8,7 +8,7 @@ import { api } from '../api';
 import { useApiErrorText } from '../errorText';
 import { Modal } from '../ui/Modal';
 import { LabeledInput } from '../ui/LabeledInput';
-import { childDirOf, excludeAgentFolder, excludeTemplatesFolder, getTopLevelNodes, treeNodeDisplayTitle } from '../sidebar/treeUtils';
+import { childDirOf, excludeAgentFolder, excludeTemplatesFolder, getTopLevelNodes, treeNodeDisplayTitles } from '../sidebar/treeUtils';
 import { confluenceHostFromUrl } from './confluenceHost';
 import '../i18n/register';
 
@@ -41,8 +41,9 @@ interface PickableTarget {
 /** Flattens a tree into an indented, pickable list — every page AND folder is a valid import target, not just directories already in use (MoveDialog's narrower `collectDirectories` doesn't fit here: a leaf page with no children yet is still a perfectly good place to import "under"). */
 function flattenPickableTargets(nodes: TreeNode[], depth = 0): PickableTarget[] {
   const out: PickableTarget[] = [];
+  const labels = treeNodeDisplayTitles(nodes);
   for (const node of nodes) {
-    out.push({ key: node.path, depth, label: treeNodeDisplayTitle(node, nodes), dir: childDirOf(node), isFolder: node.kind === 'folder' });
+    out.push({ key: node.path, depth, label: labels.get(node.id) ?? node.title, dir: childDirOf(node), isFolder: node.kind === 'folder' });
     out.push(...flattenPickableTargets(node.children, depth + 1));
   }
   return out;

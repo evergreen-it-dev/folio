@@ -303,7 +303,7 @@ export async function shareMayReadFile(scope: ShareScope, space: string, relPath
   if (scope.collected.ids.size > scope.collected.pages.length) {
     batches.push(async () => {
       const listed = new Set(scope.collected.pages.map((p) => p.entry.id));
-      return (await storage.listEntries(space)).filter((e) => scope.collected.ids.has(e.id) && !listed.has(e.id));
+      return (await storage.listEntryMetadata(space)).filter((e) => scope.collected.ids.has(e.id) && !listed.has(e.id));
     });
   }
   return mayReadFromPageSet(space, relPath, scope.collected.ids, batches);
@@ -346,7 +346,7 @@ export async function requireSessionFileAccess(request: FastifyRequest, space: s
 
   // Also shown on a page this user CAN open? Then it is theirs as well.
   const hiddenIds = new Set(hidden.map((page) => page.id));
-  const readable = (await storage.listEntries(space)).filter((e) => !hiddenIds.has(e.id));
+  const readable = (await storage.listEntryMetadata(space)).filter((e) => !hiddenIds.has(e.id));
   if (await anyReferences(readable, relPath)) return;
   throw forbidden('this file belongs to a page you cannot open');
 }
@@ -370,7 +370,7 @@ export async function filesOfHiddenPagesOnly(space: string, hidden: ReadonlyArra
   if (only.size === 0) return only;
 
   const hiddenIds = new Set(hidden.map((page) => page.id));
-  for (const entry of await storage.listEntries(space)) {
+  for (const entry of await storage.listEntryMetadata(space)) {
     if (hiddenIds.has(entry.id)) continue;
     for (const ref of await pageReferences(entry)) only.delete(ref);
     if (only.size === 0) break;

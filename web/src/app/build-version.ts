@@ -9,7 +9,7 @@
  * now tells a tab it is stale BEFORE that happens, so it can offer a reload
  * instead of failing later (app/ui/NewVersionNotice.tsx).
  *
- * No service worker is involved: the app has none. index.html and the
+ * The offline reader does not cache the app shell. index.html and the
  * manifest go out `no-cache` (server/spaFallback.ts spaCacheControl) and only
  * content-hashed files are immutable, so a reload always gets a consistent
  * set — an index.html that names chunks the server lacks cannot be cached.
@@ -37,7 +37,7 @@ export async function fetchLatestBundleId(): Promise<string | null> {
     const res = await fetch('/assets/manifest.json', { cache: 'no-cache', credentials: 'same-origin' });
     if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return null;
     const manifest = (await res.json()) as Record<string, { file?: string; isEntry?: boolean }>;
-    const entry = Object.values(manifest).find((chunk) => chunk.isEntry && typeof chunk.file === 'string');
+    const entry = manifest['index.html'];
     return entry?.file ? entryNameOf(entry.file) : null;
   } catch {
     return null;

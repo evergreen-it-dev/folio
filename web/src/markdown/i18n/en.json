@@ -32,7 +32,9 @@
   },
   "table": {
     "switchToScroll": "Show original column widths (scroll)",
-    "switchToFit": "Fit table to container width"
+    "switchToFit": "Fit table to container width",
+    "pinScroll": "Pin table (inner scroll, sticky header)",
+    "unpinScroll": "Unpin table (page scroll only)"
   },
   "backlinks": {
     "title": "Backlinks"

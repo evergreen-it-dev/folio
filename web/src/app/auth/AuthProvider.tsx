@@ -4,7 +4,8 @@ import { useLocation, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { SpaceRole, User } from '@shared/contracts';
-import { api, UNAUTHORIZED_EVENT } from '../api';
+import { api } from '../api';
+import { useOfflineReaderSession } from '../offline/useOfflineReaderSession';
 import { initAnalytics } from '../../analytics';
 import { reconcileLanguageFromProfile } from '../../i18n';
 import { resolveSpaceRole } from './roles';
@@ -83,10 +84,12 @@ export interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const { t } = useTranslation('app');
   const queryClient = useQueryClient();
-  const { data, isLoading, isError, refetch } = useQuery({
+  const auth = useQuery({
     queryKey: ['auth', 'state'],
     queryFn: api.getAuthState,
   });
+  useOfflineReaderSession(auth);
+  const { data, isLoading, isError, refetch } = auth;
 
   // Round 10: brings a device that's never set localStorage in line with the
   // user's saved profile preference the first time it's seen — see
@@ -103,14 +106,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     reconcileLanguageFromProfile(profileLang);
   }, [profileLang]);
 
-  useEffect(() => {
-    function handleUnauthorized() {
-      void refetch();
-    }
-    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
-  }, [refetch]);
-
   // "GET /api/me/stars on boot (after auth)" — fire this once a session is
   // confirmed, in parallel with whatever the first routed screen needs,
   // rather than waiting for the first component that happens to render a
@@ -124,6 +119,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const logoutMutation = useMutation({
     mutationFn: api.logout,
+    networkMode: 'always',
     onSettled: () => {
       // Wipe every cached page/tree/stars/etc so a different user logging
       // in on the same browser never sees a flash of the previous session's

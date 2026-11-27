@@ -302,7 +302,30 @@ html[data-theme='dark'] .folio-markdown .md-alert-caution { --alert-accent: #ff7
    to maintain. */
 .folio-markdown .folio-table-wrap {
   overflow-x: auto;
+  /* overflow-x: auto alone computes overflow-y to auto as well; make it
+     explicit so a short table never becomes a second vertical scroller that
+     steals the wheel from the page. Overscroll stays `auto` so a tall pinned
+     table hands the gesture to the page once it hits its end. */
+  overflow-y: hidden;
   margin: 1.25em 0;
+}
+
+/* Pinned tall table (the default; tableFit.ts adds --tall, the reader's
+   unpin adds --unpinned): one inner scroller on both axes, sticky header. */
+.folio-markdown .folio-table-wrap--tall:not(.folio-table-wrap--unpinned) {
+  overflow-y: auto;
+  max-height: 70vh;
+}
+.folio-markdown .folio-table-wrap--tall:not(.folio-table-wrap--unpinned) > table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 var(--md-border), 0 2px 4px -2px rgb(0 0 0 / 0.25);
+}
+@media print {
+  .folio-markdown .folio-table-wrap { overflow: visible; max-height: none !important; }
+  .folio-markdown .folio-table-wrap > table thead th { position: static !important; box-shadow: none !important; }
+  .folio-markdown .folio-table-pin { display: none !important; }
 }
 
 /* Per-table width modes. `100cqw` resolves to the reading pane when Markdown
@@ -357,7 +380,8 @@ html[data-theme='dark'] .folio-markdown .md-alert-caution { --alert-accent: #ff7
   overflow-wrap: anywhere;
 }
 .folio-markdown .folio-table-wrap:has(> table.folio-layout-columns) {
-  overflow-x: visible;
+  overflow: visible;
+  max-height: none;
 }
 .folio-markdown .folio-table-wrap:has(> table.folio-layout-columns) .folio-table-toggle { display: none; }
 
@@ -444,6 +468,38 @@ html[data-theme='dark'] .folio-markdown .md-alert-caution { --alert-accent: #ff7
 .folio-markdown .folio-table-wrap--wide:not(.folio-table-wrap--fit) .folio-table-toggle::before {
   content: '\21f2'; /* ⇲ scroll (reader's override): invites "fit to the container" */
 }
+
+/* Pin button (injected by tableFit.ts for tall tables only), left of the
+   fit/scroll toggle. */
+.folio-markdown .folio-table-pin {
+  all: unset;
+  box-sizing: border-box;
+  display: none;
+  position: absolute;
+  top: 0.4em;
+  right: 2.4em;
+  align-items: center;
+  justify-content: center;
+  width: 1.7em;
+  height: 1.7em;
+  cursor: pointer;
+  border: 1px solid var(--md-border);
+  border-radius: 4px;
+  background: var(--md-bg-subtle);
+  color: var(--md-fg-muted);
+  font-size: 0.8em;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  z-index: 3;
+}
+.folio-markdown .folio-table-wrap--tall .folio-table-pin { display: inline-flex; }
+.folio-markdown .folio-table-wrap--tall:hover .folio-table-pin,
+.folio-markdown .folio-table-pin:focus-visible,
+.folio-markdown .folio-table-wrap--tall.folio-table-wrap--unpinned .folio-table-pin { opacity: 1; }
+.folio-markdown .folio-table-pin:focus-visible { outline: 2px solid var(--md-link); outline-offset: 1px; }
+.folio-markdown .folio-table-pin::before { content: '\1F4CC'; font-size: 0.9em; }
+.folio-markdown .folio-table-wrap--unpinned .folio-table-pin::before { opacity: 0.45; }
 
 /* Round 17: cell backgrounds. A fixed palette of tokens rendered as classes
    (`folio-bg-<token>`), never inline styles — the sanitizer does not pass

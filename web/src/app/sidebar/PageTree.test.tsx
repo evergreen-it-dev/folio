@@ -155,6 +155,156 @@ const TOP = 10;
 const MIDDLE = 50;
 const BOTTOM = 90;
 
+describe('PageTree in a wide folder', () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(300);
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(14_000);
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it('keeps mounted rows bounded and can reveal the last page without mounting its siblings', async () => {
+    let titleReads = 0;
+    const children = Array.from({ length: 500 }, (_, index) => ({
+      ...node({ id: `wide-${index}`, path: `manual/page-${index}.md` }),
+      get title() { titleReads++; return `Page ${index}`; },
+    }));
+    const wideTree = { tree: [node({ id: 'manual', path: 'manual', kind: 'folder', title: 'Manual', children })] };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => wideTree })));
+    window.localStorage.setItem('folio:expanded:sp', JSON.stringify(['manual']));
+    const { container, rerender } = render(
+      <Wrapper>
+        <nav style={{ height: 300, overflowY: 'auto' }}>
+          <PageTree space="sp" activeId={undefined} activeFolderPath={undefined} canEdit />
+        </nav>
+      </Wrapper>,
+    );
+    await screen.findByText('Manual');
+    expect(container.querySelectorAll('[data-tree-page-id]').length).toBeLessThan(100);
+    expect(titleReads).toBeLessThan(500 * 30);
+    rerender(
+      <Wrapper>
+        <nav style={{ height: 300, overflowY: 'auto' }}>
+          <PageTree space="sp" activeId="wide-499" activeFolderPath={undefined} canEdit />
+        </nav>
+      </Wrapper>,
+    );
+    expect(await screen.findByText('Page 499')).toBeTruthy();
+    expect(container.querySelectorAll('[data-tree-page-id]').length).toBeLessThan(100);
+  }, 20_000);
+
+  function mountWide() {
+    const children = Array.from({ length: 500 }, (_, index) => node({ id: `wide-${index}`, path: `manual/page-${index}.md`, title: `Page ${index}` }));
+    const tree = { tree: [node({ id: 'manual', path: 'manual', kind: 'folder', title: 'Manual', children })] };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => tree })));
+    window.localStorage.setItem('folio:expanded:sp', JSON.stringify(['manual']));
+    const view = render(<Wrapper><nav style={{ height: 300, overflowY: 'auto' }}><PageTree space="sp" activeId={undefined} activeFolderPath={undefined} canEdit /></nav></Wrapper>);
+    return { ...view, nav: view.container.querySelector('nav')! };
+  }
+
+  it('keeps an in-progress rename when its row scrolls offscreen', async () => {
+    const { container, nav } = mountWide();
+    const page = (await screen.findByText('Page 0')).closest('[data-tree-page-id]')!;
+    fireEvent.click(page.querySelector('[aria-label="More actions"]')!);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const input = await screen.findByRole('textbox');
+    fireEvent.change(input, { target: { value: 'Draft title' } });
+    fireEvent.scroll(nav, { target: { scrollTop: 13_700 } });
+    await screen.findByText('Page 499');
+    expect(container.querySelector('[data-tree-page-id="wide-0"] input')?.getAttribute('value')).toBe('Draft title');
+    expect(container.querySelectorAll('[data-tree-page-id]').length).toBeLessThan(100);
+  });
+
+  it('keeps a row-owned confirmation dialog open while scrolling away', async () => {
+    const { container, nav } = mountWide();
+    const page = (await screen.findByText('Page 0')).closest('[data-tree-page-id]')!;
+    fireEvent.click(page.querySelector('[aria-label="More actions"]')!);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.scroll(nav, { target: { scrollTop: 13_700 } });
+    await screen.findByText('Page 499');
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(container.querySelector('[data-tree-page-id="wide-0"]')).toBeTruthy();
+    expect(container.querySelectorAll('[data-tree-page-id]').length).toBeLessThan(100);
+  });
+
+  it('keeps the native drag source mounted until dragend after scrolling to another target', async () => {
+    const { container, nav } = mountWide();
+    const source = (await screen.findByText('Page 0')).closest('[data-tree-page-id]') as HTMLElement;
+    fireDrag(source, 'dragstart');
+    fireEvent.scroll(nav, { target: { scrollTop: 13_700 } });
+    await screen.findByText('Page 499');
+    expect(source.isConnected).toBe(true);
+    fireDrag(source, 'dragend');
+    await waitFor(() => expect(container.querySelector('[data-tree-page-id="wide-0"]')).toBeNull());
+    expect(container.querySelectorAll('[data-tree-page-id]').length).toBeLessThan(100);
+  });
+
+  it('reaches offscreen rows with the keyboard and keeps full sibling position information', async () => {
+    const { container } = mountWide();
+    const row = (await screen.findByText('Page 0')).closest('[data-tree-page-id]') as HTMLElement;
+    row.focus();
+    fireEvent.keyDown(row, { key: 'End' });
+    const last = (await screen.findByText('Page 499')).closest('[data-tree-page-id]') as HTMLElement;
+    await waitFor(() => expect(document.activeElement).toBe(last));
+    expect(last.closest('[role="treeitem"]')?.getAttribute('aria-setsize')).toBe('500');
+    expect(last.closest('[role="treeitem"]')?.getAttribute('aria-posinset')).toBe('500');
+    fireEvent.keyDown(last, { key: 'Home' });
+    await waitFor(() => expect(document.activeElement?.getAttribute('data-tree-page-id')).toBe('manual'));
+    const parent = document.activeElement as HTMLElement;
+    fireEvent.keyDown(parent, { key: 'ArrowLeft' });
+    await waitFor(() => expect(screen.queryByText('Page 0')).toBeNull());
+    fireEvent.keyDown(parent, { key: 'ArrowRight' });
+    const child = (await screen.findByText('Page 0')).closest('[data-tree-page-id]')!;
+    fireEvent.keyDown(parent, { key: 'ArrowRight' });
+    await waitFor(() => expect(document.activeElement).toBe(child));
+    fireEvent.keyDown(child, { key: 'ArrowLeft' });
+    await waitFor(() => expect(document.activeElement).toBe(parent));
+    expect(container.querySelectorAll('[data-tree-page-id]').length).toBeLessThan(100);
+  });
+
+  it('leaves modified navigation keys available to the browser', async () => {
+    mountWide();
+    const parent = (await screen.findByText('Manual')).closest('[data-tree-page-id]')!;
+    for (const modifier of ['altKey', 'ctrlKey', 'metaKey']) {
+      const event = new KeyboardEvent('keydown', { key: 'ArrowLeft', [modifier]: true, bubbles: true, cancelable: true });
+      fireEvent(parent, event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(screen.getByText('Page 0')).toBeTruthy();
+    }
+  });
+
+  it('Tab from the last mounted page controls reaches the next offscreen page', async () => {
+    const { container } = mountWide();
+    await screen.findByText('Page 0');
+    const last = [...container.querySelectorAll<HTMLElement>('[data-tree-row-index]')].at(-1)!;
+    const index = Number(last.dataset.treeRowIndex);
+    const button = [...last.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')].at(-1)!;
+    button.focus();
+    fireEvent.keyDown(button, { key: 'Tab' });
+    await waitFor(() => expect(document.activeElement?.closest<HTMLElement>('[data-tree-row-index]')?.dataset.treeRowIndex).toBe(String(index + 1)));
+    expect(document.activeElement?.hasAttribute('data-tree-page-id')).toBe(true);
+  });
+
+  it('Shift+Tab from the first mounted row reaches the previous offscreen page controls', async () => {
+    const { container, nav } = mountWide();
+    await screen.findByText('Page 0');
+    fireEvent.scroll(nav, { target: { scrollTop: 13_700 } });
+    await screen.findByText('Page 499');
+    const first = container.querySelector<HTMLElement>('[data-tree-page-id]')!;
+    const index = Number(first.closest<HTMLElement>('[data-tree-row-index]')!.dataset.treeRowIndex);
+    expect(index).toBeGreaterThan(1);
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+    await waitFor(() => expect(document.activeElement?.closest<HTMLElement>('[data-tree-row-index]')?.dataset.treeRowIndex).toBe(String(index - 1)));
+    expect((document.activeElement as HTMLElement).tagName).toBe('BUTTON');
+  });
+});
+
 describe('PageTree drag and drop', () => {
   beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({

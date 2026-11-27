@@ -171,7 +171,9 @@ what is not there.
 
 14. **Offline mode covers documents and whiteboards** that were opened on the
     device before. Data tables, forms, file uploads and templates need a
-    connection, and so does opening Folio itself in a fresh browser session.
+    connection. A fresh offline launch supports read-only copies of Markdown
+    documents explicitly saved on this device. Editing in a fresh session,
+    attachments and navigation through the full space tree require the server.
 
 ## Public sites
 

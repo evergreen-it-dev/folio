@@ -40,7 +40,7 @@ describe('fetchLatestBundleId', () => {
     } as Response);
 
   it('returns the entry the manifest names', async () => {
-    respond({ 'index.html': { file: 'assets/index-BBBB2222.js', isEntry: true }, 'x.ts': { file: 'assets/x-abc12345.js' } });
+    respond({ 'offline.html': { file: 'assets/offline-ABCD1234.js', isEntry: true }, 'index.html': { file: 'assets/index-BBBB2222.js', isEntry: true }, 'x.ts': { file: 'assets/x-abc12345.js' } });
     expect(await fetchLatestBundleId()).toBe('index-BBBB2222.js');
   });
   it('is null for html (the SPA answering), an error status or a failed request', async () => {

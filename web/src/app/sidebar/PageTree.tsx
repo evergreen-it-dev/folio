@@ -5,7 +5,7 @@ import { api } from '../api';
 import { useLocalStorage } from '../hooks';
 import { useLocalPages } from '../offline/localPages';
 import { mergeLocalPages } from '../offline/treeMerge';
-import { TreeRow } from './TreeRow';
+import { VirtualTreeRows } from './VirtualTreeRows';
 import { ancestorIds, clearTreeReveal, useTreeRevealRequest } from './treeReveal';
 import type { DraggedNode } from './TreeRow';
 import { collectDirectories, excludeAgentFolder, excludeTemplatesFolder, getTopLevelNodes } from './treeUtils';
@@ -120,6 +120,8 @@ export function PageTree({ space, activeId, activeFolderPath, canEdit }: PageTre
   // indicator is local state in TreeRow, so a dragover does not re-render
   // the tree.
   const [dragged, setDragged] = useState<DraggedNode | null>(null);
+  const nodes = useMemo(() => data ? excludeAgentFolder(excludeTemplatesFolder(getTopLevelNodes(data))) : [], [data]);
+  const directories = useMemo(() => data ? collectDirectories(data.tree) : [], [data]);
 
   if (isLoading) {
     return <div className="px-3 py-2 text-sm text-neutral-400">{t('sidebar.tree.loading')}</div>;
@@ -140,34 +142,24 @@ export function PageTree({ space, activeId, activeFolderPath, canEdit }: PageTre
     );
   }
 
-  const nodes = excludeAgentFolder(excludeTemplatesFolder(getTopLevelNodes(data)));
-  const directories = collectDirectories(data.tree);
-
   if (nodes.length === 0) {
     return <div className="px-3 py-2 text-sm text-neutral-400">{t('sidebar.tree.empty')}</div>;
   }
 
   return (
-    <div className="flex flex-col gap-px">
-      {nodes.map((node) => (
-        <TreeRow
-          key={node.id}
-          node={node}
-          space={space}
-          depth={0}
-          activeId={activeId}
-          activeFolderPath={activeFolderPath}
-          expanded={expanded}
-          setExpanded={setExpanded}
-          directories={directories}
-          siblings={nodes}
-          parentPath=""
-          dragged={dragged}
-          setDragged={setDragged}
-          canEdit={canEdit}
-          conflictedIds={conflictedIds}
-        />
-      ))}
-    </div>
+    <VirtualTreeRows
+      nodes={nodes}
+      scrollTo={scrollTo}
+      space={space}
+      activeId={activeId}
+      activeFolderPath={activeFolderPath}
+      expanded={expanded}
+      setExpanded={setExpanded}
+      directories={directories}
+      dragged={dragged}
+      setDragged={setDragged}
+      canEdit={canEdit}
+      conflictedIds={conflictedIds}
+    />
   );
 }

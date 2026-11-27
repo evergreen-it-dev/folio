@@ -2,12 +2,14 @@ import { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { AGENT_FOLDER, officeFormat, type PageDoc } from '@shared/contracts';
+import { AGENT_FOLDER, officeFormat, type AuthState, type PageDoc } from '@shared/contracts';
 import { PageEditor } from '../../editor';
 import { BoardEditor } from '../../diagrams';
 import { api, ApiError } from '../api';
 import { useApiErrorText } from '../errorText';
 import { getLocalPage, localPageDoc, localPagesReady, onLocalPageSynced, useIsLocalPage } from '../offline';
+import { forgetDeniedDocument } from '../offline/readerAccess';
+import { removeOfflineDocument } from '../offline/savedDocuments';
 import { useConnectivity } from '../offline/connectivity';
 import { useDocumentTitle } from '../hooks';
 import { useSetHeaderInfo } from '../Shell';
@@ -206,6 +208,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
           title: data.title,
           icon: data.icon,
           table: data.kind === 'table' && tableViewState ? tableViewState : undefined,
+          canSaveOffline: data.kind === 'doc' && !isLocalPage,
           fileActions: data.kind === 'pdf' || data.kind === 'office',
         }
       : null,
@@ -238,6 +241,15 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
     refetchOnWindowFocus: true,
     retry: false,
   });
+  const account = queryClient.getQueryData<AuthState>(['auth', 'state'])?.user?.id;
+  useEffect(() => {
+    if (!account || isLocalPage) return;
+    if (aliveQuery.data?.role === null) {
+      void removeOfflineDocument(account, id).catch(() => {});
+    } else {
+      void forgetDeniedDocument(account, id, aliveQuery.error ?? error).catch(() => {});
+    }
+  }, [account, id, isLocalPage, aliveQuery.data?.role, aliveQuery.error, error]);
   const vanished = aliveQuery.error instanceof ApiError && aliveQuery.error.status === 404;
   useEffect(() => {
     if (vanished) void queryClient.invalidateQueries({ queryKey: ['page', id] });

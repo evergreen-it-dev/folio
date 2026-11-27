@@ -27,6 +27,10 @@ import {
 
 /** Views are destroyed in `afterEach`: a live one keeps CodeMirror's measuring
     loop running, and jsdom has nothing for it to measure. */
+// jsdom has no layout; CodeMirror's measure pass (it runs while a test awaits) asks for rects.
+Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+
 const views: EditorView[] = [];
 
 function mount(doc = '', at = doc.length): EditorView {
@@ -77,7 +81,7 @@ describe('the strip', () => {
     for (const id of TOOLBAR_PRIMARY) expect(commandButton(id), id).toBeTruthy();
   });
 
-  it('makes a link from the strip, over a selection made in the document', () => {
+  it('makes a link from the strip, over a selection made in the document', async () => {
     const view = mount('word', 0);
     view.dispatch({ selection: EditorSelection.single(0, 4) });
     const link = [...toolbar()!.querySelectorAll('.cm-folio-format__btn')].find(
@@ -85,7 +89,13 @@ describe('the strip', () => {
     );
     expect(link, 'no link button in the pinned toolbar').toBeTruthy();
     click(link!);
-    expect(view.state.doc.toString()).toBe('[word](url)');
+    expect(view.state.doc.toString()).toBe('word'); // the popover asks first; nothing is written yet
+    const input = document.querySelector<HTMLInputElement>('.folio-link-pop__input')!;
+    input.value = 'https://example.com';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(view.state.doc.toString()).toBe('[word](https://example.com)');
   });
 
   it('keeps the link out of the block list — it has its own button', () => {

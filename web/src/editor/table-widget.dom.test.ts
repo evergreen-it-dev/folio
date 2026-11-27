@@ -237,6 +237,16 @@ afterEach(() => {
  * Chrome removes the `.cm-md-cell-text` span once its last character is
  * backspaced away; what is typed next lands directly in the line element.
  */
+/** Drive the link popover that is open: type an address, press Enter. */
+async function submitLinkPopover(address: string): Promise<void> {
+  const input = document.querySelector<HTMLInputElement>('.folio-link-pop__input')!;
+  expect(input, 'the link popover is not open').toBeTruthy();
+  input.value = address;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+
 describe('text the browser put outside the cell-text span', () => {
   /** What Chrome leaves behind: the span gone, a bare text node in the line, caret at its end. */
   function typeBare(field: HTMLTextAreaElement, text: string, line = 0): Text {
@@ -700,7 +710,7 @@ describe('cell mini-slash', () => {
     }
   });
 
-  it('inserts an inline link placeholder with the label selected, not a block item', () => {
+  it('opens the link popover from the slash (an inline entry, not a block item) and writes the link', async () => {
     const h = mount();
     const menu = openSlash(h);
     const items = menu.querySelectorAll('.folio-tablemenu__item');
@@ -711,12 +721,11 @@ describe('cell mini-slash', () => {
     mouse(items[items.length - 1], 'click');
 
     const field = h.field();
-    expect(field.value).toMatch(/^\[.+\]\(url\)$/);
-    expect(field.selectionStart).toBe(1);
-    expect(field.selectionEnd).toBe(field.value.indexOf(']'));
-    type(field, 'docs');
+    expect(field.value).toBe('/'); // nothing written until a target is chosen
+    await submitLinkPopover('https://example.com/docs');
+    expect(field.value).toBe('[https://example.com/docs](https://example.com/docs)');
     commit(field);
-    expect(h.text()).toContain('[docs](url)');
+    expect(h.text()).toContain('[https://example.com/docs](https://example.com/docs)');
   });
 
   it('Enter on an empty item ends the list instead of growing it', () => {
@@ -745,7 +754,7 @@ describe('formatting inside a cell', () => {
     // Six formats plus the link. No block quote inside a cell — a pipe row
     // cannot hold one.
     // …plus the highlight colour chevron (24.09.2026).
-    expect(bar.querySelectorAll('.cm-folio-format__btn')).toHaveLength(8);
+    expect(bar.querySelectorAll('.cm-folio-format__btn')).toHaveLength(9);
 
     mouse(bar.querySelectorAll('.cm-folio-format__btn')[0], 'click');
     expect(field.value).toBe('**word**');
@@ -753,7 +762,7 @@ describe('formatting inside a cell', () => {
     expect(h.text()).toContain('**word**');
   });
 
-  it('makes a link out of the selected text, and the cell renders it', () => {
+  it('makes a link out of the selected text, and the cell renders it', async () => {
     const h = mount();
     const field = openCell(h, 0, 0);
     field.value = 'word';
@@ -765,12 +774,31 @@ describe('formatting inside a cell', () => {
       (button) => button.getAttribute('aria-label') === 'Link',
     )!;
     mouse(link, 'click');
-    expect(field.value).toBe('[word](url)');
+    expect(field.value).toBe('word');
+    await submitLinkPopover('https://example.com');
+    expect(field.value).toBe('[word](https://example.com)');
     commit(field);
-    expect(h.text()).toContain('[word](url)');
+    expect(h.text()).toContain('[word](https://example.com)');
     // The grid shows the label, styled as a link (it does not navigate — see
     // INLINE_TAGS/INLINE_CLASSES), so the pipes never leak into the cell.
     expect(h.cell(0, 0).querySelector('.cm-md-link')?.textContent).toBe('word');
+  });
+
+  it('tags the selection as a status with a picked colour, and the cell renders it', () => {
+    const h = mount();
+    const field = openCell(h, 0, 0);
+    field.value = 'Live';
+    field.setSelectionRange(0, 4);
+    document.dispatchEvent(new Event('selectionchange'));
+
+    const bar = document.querySelector<HTMLElement>('.cm-folio-format')!;
+    mouse(bar.querySelector('[aria-label="Status"]')!, 'click');
+    const green = document.querySelector<HTMLElement>('.folio-status--green')!;
+    expect(green).toBeTruthy();
+    mouse(green, 'click');
+    expect(field.value).toBe(':status[Live]{color=green}');
+    commit(field);
+    expect(h.cell(0, 0).querySelector('.folio-status--green')?.textContent).toBe('Live');
   });
 
   it('renders the underline as a format once the cell is committed', () => {
@@ -847,6 +875,7 @@ describe('rendering', () => {
       'Narrow table',
       'Medium table',
       'Full-width table',
+      'Unpin table (page scroll only)',
       'Source',
     ]);
   });
@@ -1878,5 +1907,27 @@ describe('cell paste: a URL over selected text', () => {
     pasteIn(field, URL);
 
     expect(field.value).toBe(`run \`${URL} test\` now`);
+  });
+});
+
+describe('table pin (inner scroll + sticky header)', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('starts pinned, with an icon-only pin button in the bar', () => {
+    const { dom } = mount();
+    expect(dom.dataset.pinned).toBe('true');
+    const button = dom.querySelector<HTMLButtonElement>('.cm-md-table-pinbtn')!;
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.querySelector('span')).toBeNull();
+  });
+
+  it('clicking the pin button unpins and a second click pins again', () => {
+    const { dom } = mount();
+    const button = dom.querySelector<HTMLButtonElement>('.cm-md-table-pinbtn')!;
+    button.click();
+    expect(dom.dataset.pinned).toBe('false');
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    button.click();
+    expect(dom.dataset.pinned).toBe('true');
   });
 });

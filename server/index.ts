@@ -75,6 +75,7 @@ import { ensureAskpassScript } from './gitCredentials.js';
 import { startPeriodicFetchForAllSpaces, stopAllPeriodicFetch, flushAllPendingSyncs } from './gitSync.js';
 import { stopGitTreeCache } from './gitTree.js';
 import { shouldServeSpaFallback, spaStaticOptions } from './spaFallback.js';
+import { registerPwaKillSwitch } from './pwa.js';
 import { matchShareRoute, renderShareIndexHtml } from './shareMeta.js';
 import { renderIndexHtml } from './pageMeta.js';
 import { publicUrlOrOrigin } from './publicUrl.js';
@@ -358,6 +359,8 @@ async function main(): Promise<void> {
   // separate web server). Static assets under /assets/* plus an index.html fallback
   // for client-side routes; API/collab/files/asset routes above always win because
   // the fallback only runs from the not-found handler.
+  // FOLIO_PWA=off: /sw.js becomes the worker that removes the offline reader (pwa.ts). Before static serving.
+  registerPwaKillSwitch(app);
   if (process.env.NODE_ENV === 'production') {
     const distRoot = path.resolve(import.meta.dirname, '../web/dist');
     // `/` and `/index.html` are the one static file that must be rewritten per

@@ -32,6 +32,10 @@ describe('shouldServeSpaFallback', () => {
     expect(shouldServeSpaFallback('GET', '/collab')).toBe(false);
   });
 
+  it('never answers a missing PWA file with index.html: a service worker that is HTML can never be replaced', () => {
+    for (const url of ['/sw.js', '/sw.js?v=1', '/manifest.webmanifest', '/offline.html']) expect(shouldServeSpaFallback('GET', url), url).toBe(false);
+  });
+
   it('never falls back for a non-GET method, even on an SPA-looking path', () => {
     expect(shouldServeSpaFallback('POST', '/s/sk-space/p/01M8Z9')).toBe(false);
   });

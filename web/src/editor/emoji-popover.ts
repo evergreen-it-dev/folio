@@ -12,7 +12,7 @@ import { t } from './i18n';
 
 const MAX_ROWS = 8;
 
-function panel(className: string): HTMLElement {
+export function panel(className: string): HTMLElement {
   const dom = document.createElement('div');
   dom.className = className;
   dom.style.position = 'fixed';
@@ -21,7 +21,7 @@ function panel(className: string): HTMLElement {
 }
 
 /** Keep a fixed-position panel inside the viewport. */
-function place(dom: HTMLElement, x: number, y: number): void {
+export function place(dom: HTMLElement, x: number, y: number): void {
   dom.style.left = '0px';
   dom.style.top = '0px';
   const rect = dom.getBoundingClientRect();

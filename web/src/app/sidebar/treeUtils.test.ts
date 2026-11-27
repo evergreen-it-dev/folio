@@ -13,7 +13,8 @@ import {
   plusTargetDirFor,
   resolvePlusTargetDir,
   siblingsAtDir,
-  treeNodeDisplayTitle,
+  treeNodeDisplayTitles,
+  visibleTreeRows,
 } from './treeUtils';
 
 function node(id: string, path: string, children: TreeNode[] = [], kind: PageKind = 'doc'): TreeNode {
@@ -27,20 +28,59 @@ describe('dirname', () => {
   });
 });
 
-describe('treeNodeDisplayTitle', () => {
+describe('treeNodeDisplayTitles', () => {
   it('uses distinct filenames when sibling files have the same internal H1', () => {
     const first = { ...node('one', 'approvepartners/first.md'), title: 'Client Health Check — ApprovePartners' };
     const second = { ...node('two', 'approvepartners/second.md'), title: 'Client Health Check — ApprovePartners' };
-    expect(treeNodeDisplayTitle(first, [first, second])).toBe('first');
-    expect(treeNodeDisplayTitle(second, [first, second])).toBe('second');
+    expect(treeNodeDisplayTitles([first, second]).get(first.id)).toBe('first');
+    expect(treeNodeDisplayTitles([first, second]).get(second.id)).toBe('second');
   });
 
   it('keeps unique titles and directory index titles unchanged', () => {
     const unique = { ...node('one', 'approvepartners/first.md'), title: 'Unique' };
-    expect(treeNodeDisplayTitle(unique, [unique])).toBe('Unique');
+    expect(treeNodeDisplayTitles([unique]).get(unique.id)).toBe('Unique');
     const index = { ...node('index', 'approvepartners/index.md'), title: 'Same' };
     const other = { ...node('other', 'approvepartners/other.md'), title: 'Same' };
-    expect(treeNodeDisplayTitle(index, [index, other])).toBe('Same');
+    expect(treeNodeDisplayTitles([index, other]).get(index.id)).toBe('Same');
+  });
+
+  it('reads titles a bounded number of times for a large sibling group', () => {
+    let reads = 0;
+    const nodes = Array.from({ length: 1000 }, (_, index) => ({
+      ...node(`${index}`, `pages/${index}.md`),
+      get title() { reads++; return `Page ${index}`; },
+    }));
+    expect(treeNodeDisplayTitles(nodes).size).toBe(1000);
+    expect(reads).toBeLessThan(5000);
+  });
+
+  it('stays linear for the 8,000-page folder from issue #20 (reads scale with n, not n squared)', () => {
+    const count = (n: number) => {
+      let reads = 0;
+      const nodes = Array.from({ length: n }, (_, index) => ({
+        ...node(`${index}`, `big/${index}.md`),
+        get title() { reads++; return index % 2 ? 'Same' : `Page ${index}`; },
+      }));
+      treeNodeDisplayTitles(nodes);
+      return reads;
+    };
+    const small = count(1000);
+    const large = count(8000);
+    expect(large).toBeLessThan(small * 8 * 1.5);
+    expect(large).toBeLessThan(8000 * 10);
+  });
+});
+
+describe('visibleTreeRows', () => {
+  it('flattens expanded branches without changing their sibling groups or parent directories', () => {
+    const child = node('child', 'parent/child.md');
+    const parent = node('parent', 'parent/index.md', [child]);
+    const hidden = node('closed', 'closed/index.md', [node('hidden', 'closed/hidden.md')]);
+    const rows = visibleTreeRows([parent, hidden], new Set(['parent']));
+    expect(rows.map((row) => row.node.id)).toEqual(['parent', 'child', 'closed']);
+    expect(rows[1]).toMatchObject({ depth: 1, parentPath: 'parent', siblingIndex: 0 });
+    expect(rows[1].siblings).toBe(parent.children);
+    expect(hidden.children).toHaveLength(1);
   });
 });
 

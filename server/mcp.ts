@@ -1568,13 +1568,13 @@ export function buildFolioMcpServer(actor: McpActor, options: { origin?: string 
         const err = await checkSpaceRole(actor, space, 'viewer');
         if (err) return errorResult(err);
         const allowed = await listablePageIds(actor, space);
-        const entries = (await storage.listEntries(space)).filter((e) => e.kind === 'table' && allowed.has(e.id));
+        const entries = (await storage.listEntryMetadata(space)).filter((e) => e.kind === 'table' && allowed.has(e.id));
         return structuredResult(entries.map(storage.toPageMeta), { tables: entries.map(storage.toPageMeta) });
       }
       const memberships = await session.membershipsFor(actor.user);
       const allowedBySpace = new Map<string, Set<string>>();
       for (const visibleSpace of Object.keys(memberships)) allowedBySpace.set(visibleSpace, await session.readablePageIds(actor.user, visibleSpace));
-      const entries = (await storage.listEntries()).filter((e) => e.kind === 'table' && allowedBySpace.get(e.space)?.has(e.id));
+      const entries = (await storage.listEntryMetadata()).filter((e) => e.kind === 'table' && allowedBySpace.get(e.space)?.has(e.id));
       return structuredResult(entries.map(storage.toPageMeta), { tables: entries.map(storage.toPageMeta) });
     },
   );

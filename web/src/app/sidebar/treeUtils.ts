@@ -29,13 +29,42 @@ function filenameStem(node: TreeNode): string {
   return stripDocExt(base);
 }
 
-/** Uses filenames only when sibling files would otherwise have identical visible H1 titles. */
-export function treeNodeDisplayTitle(node: TreeNode, siblings: TreeNode[]): string {
-  const normalized = node.title.trim().toLocaleLowerCase();
-  const duplicate = siblings.some((other) => other.id !== node.id && other.title.trim().toLocaleLowerCase() === normalized);
-  if (!duplicate) return node.title;
-  const stem = filenameStem(node);
-  return stem && stem.toLocaleLowerCase() !== 'index' && stem.toLocaleLowerCase() !== 'readme' ? stem : node.title;
+/** Resolve sibling labels together: scanning the folder separately for every row is quadratic. */
+export function treeNodeDisplayTitles(siblings: TreeNode[]): ReadonlyMap<string, string> {
+  const titles = new Map<string, number>();
+  for (const node of siblings) {
+    const key = node.title.trim().toLocaleLowerCase();
+    titles.set(key, (titles.get(key) ?? 0) + 1);
+  }
+  return new Map(siblings.map((node) => {
+    const duplicate = (titles.get(node.title.trim().toLocaleLowerCase()) ?? 0) > 1;
+    const stem = duplicate ? filenameStem(node) : '';
+    const label = stem && !['index', 'readme'].includes(stem.toLocaleLowerCase()) ? stem : node.title;
+    return [node.id, label];
+  }));
+}
+
+interface VisibleTreeRow {
+  node: TreeNode;
+  depth: number;
+  siblings: TreeNode[];
+  parentPath: string;
+  displayTitle: string;
+  siblingIndex: number;
+}
+
+/** The complete expanded tree, in scroll order. Closed branches remain in the original model. */
+export function visibleTreeRows(nodes: TreeNode[], expanded: ReadonlySet<string>): VisibleTreeRow[] {
+  const rows: VisibleTreeRow[] = [];
+  function visit(siblings: TreeNode[], depth: number, parentPath: string) {
+    const labels = treeNodeDisplayTitles(siblings);
+    for (const [siblingIndex, node] of siblings.entries()) {
+      rows.push({ node, depth, parentPath, siblings, siblingIndex, displayTitle: labels.get(node.id) ?? node.title });
+      if (expanded.has(node.id) && node.children.length) visit(node.children, depth + 1, childDirOf(node));
+    }
+  }
+  visit(nodes, 0, '');
+  return rows;
 }
 
 /**

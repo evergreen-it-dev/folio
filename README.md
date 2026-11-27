@@ -270,6 +270,10 @@ On a train, on a plane, on bad hotel Wi-Fi — keep writing.
   connection returns — at the same address, with no duplicates.
 - Nothing is lost if you switch pages or close the tab.
 - An indicator in the header shows what is waiting to be sent.
+- On a trusted device, open a Markdown document’s menu and choose **Save for
+  offline reading**. You can close Folio and reopen its address or the document
+  link offline to read the saved copy. On supported browsers, install Folio
+  from the browser menu or add it to your home screen (thanks @HarryJhin, #27).
 
 ![Writing a new page without a connection](docs/images/offline.png)
 
@@ -650,7 +654,7 @@ Without a key everything else in Folio works as usual.
 
 ## Built for agents
 
-**MCP server.** 51 tools over `/mcp`: list and search spaces, read and write
+**MCP server.** 52 tools over `/mcp`: list and search spaces, read, write and move
 pages, build forms, edit data table columns and views, convert a canvas to a board, read a page's outline, tags, properties and links, list a space's tags and
 property keys, rename a tag, set page properties, find unresolved links
 and orphan pages, read the link graph, query, create and edit Obsidian bases, create and edit whiteboards, publish interactive artifacts, list templates and create pages from them, query and update data tables,
@@ -696,6 +700,7 @@ For claude.ai or ChatGPT, add `https://wiki.example.com/mcp` as a custom
 connector, sign in to Folio and allow `read` or `read` + `write` on the consent
 screen. The connector acts with your rights and its writes are saved in Git
 under your name. Steps: [docs/MCP.md](docs/MCP.md#oauth-connect-from-claudeai--chatgpt).
+Guides on the website: [Folio with Claude](https://foliowiki.online/integrations/claude/?utm_source=github&utm_medium=readme&utm_campaign=repo) and [Folio with Claude Code](https://foliowiki.online/integrations/claude-code/?utm_source=github&utm_medium=readme&utm_campaign=repo).
 
 **Safe by design.** A token or an OAuth grant never has more rights than its
 owner, a `read` token cannot write, and administrative actions are not
@@ -712,6 +717,9 @@ installations; whiteboards from Confluence Cloud become Excalidraw boards.
 
 Run a test import first: not every macro has an equivalent.
 [What is not there yet](docs/LIMITATIONS.md) is written down honestly.
+
+Need only the Markdown? Try the [Confluence to Markdown converter](https://foliowiki.online/tools/confluence-to-markdown/?utm_source=github&utm_medium=readme&utm_campaign=repo). Comparing the two:
+[Folio vs Confluence](https://foliowiki.online/compare/confluence/?utm_source=github&utm_medium=readme&utm_campaign=repo) and [Confluence alternatives](https://foliowiki.online/alternatives/confluence/?utm_source=github&utm_medium=readme&utm_campaign=repo).
 
 ---
 
@@ -920,6 +928,7 @@ is one link away on the same screen.
 One click on Railway: [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/folio)
 
 Domains, HTTPS, updates and backups: [docs/INSTALL.md](docs/INSTALL.md).
+All install options: [foliowiki.online/install](https://foliowiki.online/install/?utm_source=github&utm_medium=readme&utm_campaign=repo).
 
 **No telemetry.** A Folio you run sends nothing about its use to anyone: no
 analytics library is loaded and no connection is opened to the Folio authors or

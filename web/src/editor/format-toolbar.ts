@@ -9,6 +9,9 @@
  * format.ts, which also explains why underline is `++text++` (it used to be an
  * `<ins>` tag pair that could cross a `**` pair) and highlight is `==text==`.
  */
+import { looksLikeAddress, openFieldLinkPopover, openLinkPopover } from './link-popover';
+import { linkAround } from './link-span';
+import { pageContextFacet } from './live-preview';
 import { EditorSelection, Prec, StateField, type EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, showTooltip, type Command, type KeyBinding, type Tooltip } from '@codemirror/view';
 import { BG_TOKENS, bgClass, type BgToken } from '../markdown/tableSyntax';
@@ -31,6 +34,7 @@ import { t } from './i18n';
 import { languageChangedEffect } from './i18n-reload';
 import { openMenu, type MenuEntry } from './popup-menu';
 import { insertStatus } from './status-widget';
+import { STATUS_COLORS, cleanStatusLabel, parseStatusAt, serializeStatus, type StatusColor } from '@shared/status';
 
 /** Everything the bar can offer: the toggles, plus the two block-ish commands. */
 type BarCommand = InlineFormat | 'quote' | 'link' | 'status' | 'comment';
@@ -91,9 +95,9 @@ export interface FormatBarOptions {
   /** Round 28: wrap the selection in a markdown link. Both hosts get it. */
   onLink?(): void;
   /**
-   * Wrap the selection in a status tag (or insert one). Offered by the
-   * CodeMirror hosts only: a table cell keeps its own inline grammar and does
-   * not render a tag, so its bar leaves this out.
+   * Wrap the selection in a status tag (or insert one). The CodeMirror hosts
+   * insert a grey tag and open the editing popover; a table cell (which renders
+   * tags too) opens a colour menu and writes the picked tag.
    */
   onStatus?(): void;
   /** Start an inline comment on the selection (comment-highlights.ts); CodeMirror hosts only, and only where the user may comment. */
@@ -252,14 +256,85 @@ export function formatCommand(kind: InlineFormat): Command {
   };
 }
 
-/**
- * Wrap the selection in a link (or drop an empty one at the caret) and put the
- * selection on the part that still has to be typed — `linkEdit` decides which.
- */
-export const linkCommand: Command = (view) => {
+/** The old behaviour, kept for the cases the popover cannot serve (a selection over several lines). */
+function placeholderLink(view: EditorView): boolean {
   const range = view.state.selection.main;
   const { start, text } = sliceAround(view.state, range.from, range.to);
   return dispatchEdit(view, start, linkEdit(text, range.from - start, range.to - start));
+}
+
+/**
+ * "Make this a link": opens the link popover at the selection (link-popover.ts)
+ * — an address or a page to pick — and writes `[selection](target)` only when
+ * one is chosen. Esc leaves the document exactly as it was. A selection over
+ * several lines cannot be one link and keeps the placeholder behaviour.
+ */
+export const linkCommand: Command = (view) => {
+  if (view.state.readOnly) return false;
+  const range = view.state.selection.main;
+  const doc = view.state.doc;
+  if (range.to > doc.lineAt(range.from).to) return placeholderLink(view);
+
+  // Over (or inside) an existing link the popover retargets that link; across
+  // the edge of one, any new link would nest or break, so nothing happens.
+  const line = doc.lineAt(range.from);
+  const lineFrom = line.from;
+  const around = linkAround(line.text, range.from - lineFrom, range.to - lineFrom);
+  if (around?.kind === 'partial') return false;
+  const existing = around?.kind === 'inside' ? around.span : null;
+
+  const raw = doc.sliceString(range.from, range.to);
+  if (!existing && range.from !== range.to && !/\S/.test(raw)) return placeholderLink(view);
+  const lead = range.empty ? 0 : /^\s*/.exec(raw)![0].length;
+  const trail = range.empty ? 0 : /\s*$/.exec(raw)![0].length;
+  const from = existing ? lineFrom + existing.from : range.from + lead;
+  const to = existing ? lineFrom + existing.to : range.to - trail;
+  const selected = doc.sliceString(from, to);
+
+  let x = 0;
+  let y = 0;
+  try {
+    const coords = view.coordsAtPos(from);
+    if (coords) {
+      x = coords.left;
+      y = coords.bottom + 4;
+    }
+  } catch {
+    // no layout (tests, hidden editor): the editor's own corner will do
+  }
+  if (!x && !y) {
+    const rect = view.dom.getBoundingClientRect();
+    x = rect.left;
+    y = rect.top + 24;
+  }
+
+  const context = view.state.facet(pageContextFacet);
+  const asAddress = !existing && selected !== '' && looksLikeAddress(selected);
+  openLinkPopover({
+    x,
+    y,
+    space: context.space,
+    pagePath: context.pagePath,
+    label: existing ? existing.label : asAddress ? '' : selected,
+    initial: existing ? existing.target : asAddress ? selected : undefined,
+    onApply: (markdown) => {
+      let at = from;
+      if (doc !== view.state.doc && selected !== '' && view.state.sliceDoc(from, to) !== selected) {
+        // The text moved (or went) while the popover was open: find it again.
+        at = view.state.doc.toString().indexOf(selected);
+        if (at < 0) return;
+      }
+      at = Math.min(at, view.state.doc.length);
+      view.dispatch({
+        changes: { from: at, to: Math.min(at + selected.length, view.state.doc.length), insert: markdown },
+        selection: EditorSelection.cursor(at + markdown.length),
+        scrollIntoView: true,
+        userEvent: 'input.format',
+      });
+    },
+    onClose: () => view.focus(),
+  });
+  return true;
 };
 
 export const quoteCommand: Command = (view) => {
@@ -401,6 +476,25 @@ export function formatForEvent(event: KeyboardEvent): InlineFormat | null {
   return null;
 }
 
+/**
+ * The edit behind a cell's status button: the selection (padding stays
+ * outside) becomes a tag of `color`; a selection that is already exactly one
+ * tag is recoloured, an empty or blank one gets nothing.
+ */
+export function statusEdit(text: string, from: number, to: number, color: StatusColor): FormatEdit {
+  const start = Math.max(0, Math.min(from, text.length));
+  const end = Math.max(start, Math.min(to, text.length));
+  const picked = text.slice(start, end);
+  const lead = picked.length - picked.trimStart().length;
+  const inner = picked.trim();
+  const existing = inner ? parseStatusAt(inner) : null;
+  const label = existing && existing.length === inner.length ? existing.label : cleanStatusLabel(inner);
+  if (!label) return { changes: [], selection: { from: start, to: end } };
+  const insert = serializeStatus(label, color);
+  const at = start + lead;
+  return { changes: [{ from: at, to: at + inner.length, insert }], selection: { from: at, to: at + insert.length } };
+}
+
 export interface FieldFormatHandle {
   /** Re-check the selection and show or hide the bar. */
   refresh(): void;
@@ -414,6 +508,7 @@ export interface FieldFormatHandle {
 export function attachFieldFormatting(
   field: HTMLTextAreaElement,
   onChange?: () => void,
+  pageContext?: () => { space: string; pagePath: string },
 ): FieldFormatHandle {
   let bar: HTMLElement | null = null;
 
@@ -441,7 +536,57 @@ export function attachFieldFormatting(
   // own keydown handler routes only what `formatForEvent` knows.
   const applyLink = () => {
     const { from, to } = selection();
-    run(linkEdit(field.value, from, to));
+    const raw = field.value.slice(from, to);
+    const around = !raw.includes('\n') ? linkAround(field.value, from, to) : null;
+    if (around?.kind === 'partial') return;
+    const existing = around?.kind === 'inside' ? around.span : null;
+    // Several lines cannot be one link: keep the placeholder form for those.
+    if (!pageContext || raw.includes('\n') || (!existing && !/\S/.test(raw))) return run(linkEdit(field.value, from, to));
+    const lead = /^\s*/.exec(raw)![0].length;
+    const trail = /\s*$/.exec(raw)![0].length;
+    const selected = raw.trim();
+    const asAddress = !existing && looksLikeAddress(selected);
+    hide();
+    openFieldLinkPopover(
+      field,
+      existing ? { from: existing.from, to: existing.to } : { from: from + lead, to: to - trail },
+      pageContext(),
+      {
+        label: existing ? existing.label : asAddress ? '' : selected,
+        initial: existing ? existing.target : asAddress ? selected : undefined,
+        onDone: () => onChange?.(),
+      },
+    );
+  };
+
+  // A cell has no popover to edit a tag in, so the button opens the colour
+  // swatches instead and the pick writes `:status[label]{color=…}`. A selection
+  // that already is one tag only changes its colour.
+  const openStatusColors = () => {
+    const anchor = bar?.querySelector<HTMLElement>('[aria-label="' + t('format.status') + '"]') ?? field;
+    const rect = anchor.getBoundingClientRect();
+    const at = selection();
+    openMenu({
+      x: rect.left,
+      y: rect.bottom + 4,
+      ariaLabel: t('statusTag.color'),
+      takeFocus: false,
+      items: [
+        {
+          kind: 'swatches',
+          label: t('statusTag.color'),
+          items: STATUS_COLORS.map((name) => ({
+            label: t(`statusTag.colors.${name}`),
+            className: `folio-status-pop__swatch folio-status--${name}`,
+            selected: false,
+            onSelect: () => {
+              field.setSelectionRange(at.from, at.to);
+              run(statusEdit(field.value, at.from, at.to, name));
+            },
+          })),
+        },
+      ],
+    });
   };
 
   const hide = () => {
@@ -459,6 +604,7 @@ export function attachFieldFormatting(
       isActive: (kind) => formatActiveIn(field.value, from, to, kind),
       onFormat: apply,
       onLink: applyLink,
+      onStatus: openStatusColors,
       onHighlightColor: (pick) => {
         const at = selection();
         if (pick === 'none') {

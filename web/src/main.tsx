@@ -4,6 +4,9 @@ import { App } from './app/App';
 import { captureHandoff } from './analytics';
 import { installStaleChunkListener } from './app/stale-chunk';
 import './styles.css';
+import { restoreTheme } from './theme';
+
+restoreTheme();
 
 // A stale tab (open across a deploy) failing to load a hashed chunk is a
 // site-wide possibility, not just a mermaid/table/board thing — install this

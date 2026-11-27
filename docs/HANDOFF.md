@@ -382,12 +382,19 @@ the same files.
 
 ### Offline
 
+The app shell and cold-start reader use the same saved theme and title bar colors. In system mode the browser selects a theme color with its media query.
+
 A page created offline gets its final id on the client and keeps its Yjs
 document in IndexedDB. On reconnect the client sends the id and the document
 state; the server writes the file from that state, so the open editor simply
 reconnects to the same document. Repeating the request is safe.
 
-There is no service worker: Folio itself is loaded from the server.
+Offline cold starts use the production service worker and a separate read-only
+viewer. Only the viewer’s build assets are precached. A failed root or document
+navigation can serve the viewer. Online navigation, authentication and API
+responses still go to the server. Explicitly saved Markdown snapshots live in
+a separate, account-scoped IndexedDB store. Logging out or switching accounts
+clears saved copies without touching Yjs edits waiting to sync.
 
 ### Access
 

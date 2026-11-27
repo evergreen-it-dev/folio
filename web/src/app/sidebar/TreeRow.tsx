@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -26,7 +26,7 @@ import { FILE_PAGE_ACCEPT, useReplaceFilePage } from '../files/useReplaceFilePag
 import { isFreeNameKind, newPageTitleKey } from './slugUtils';
 import { canContain, canReorder, computeDropPlan, computeReorder, dropZoneFor } from './reorderPages';
 import type { DropPlan, DropZone, ReorderDirection } from './reorderPages';
-import { childDirOf, dirname, findNodeByPath, treeNodeDisplayTitle } from './treeUtils';
+import { childDirOf, dirname, findNodeByPath, treeNodeDisplayTitles } from './treeUtils';
 import '../i18n/register';
 
 // Obsidian Bases: the "New base" dialog (lazy: its YAML writer stays out of the main chunk).
@@ -48,6 +48,11 @@ const SPRING_OPEN_MS = 600;
 const rowIndentPx = (depth: number) => depth * 16 + 4;
 /** Indent guide x: the horizontal center of this row's icon box, so the line drops from the parent's icon through its children. */
 const guideLeftPx = (depth: number) => rowIndentPx(depth) + 9;
+
+/** A parent branch's indent guide, shared by recursive and viewport rows. */
+export function TreeIndentGuide({ depth }: { depth: number }) {
+  return <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-neutral-200 dark:bg-neutral-700/70" style={{ left: `${guideLeftPx(depth)}px` }} />;
+}
 
 export interface TreeRowProps {
   node: TreeNode;
@@ -89,6 +94,11 @@ export interface TreeRowProps {
   templateMode?: boolean;
   /** Template descriptions by page id (the Templates section): a row's tooltip. */
   descriptions?: ReadonlyMap<string, string>;
+  /** The viewport tree renders children as separate rows, with labels resolved once per folder. */
+  flat?: boolean;
+  displayTitle: string;
+  /** Preserve local inputs, dialogs and pending actions when a row scrolls outside the viewport. */
+  onKeepMountedChange?: (id: string, keep: boolean) => void;
 }
 
 /** One page-tree row, recursively rendering its children when expanded. */
@@ -109,6 +119,9 @@ export function TreeRow({
   conflictedIds,
   templateMode = false,
   descriptions,
+  flat = false,
+  displayTitle,
+  onKeepMountedChange,
 }: TreeRowProps) {
   const { t } = useTranslation('app');
   const errorText = useApiErrorText();
@@ -138,7 +151,7 @@ export function TreeRow({
   // and every content-mutating affordance below all branch on this.
   const isFolder = node.kind === 'folder';
   const isActive = isFolder ? activeFolderPath === node.path : activeId === node.id;
-  const displayTitle = treeNodeDisplayTitle(node, siblings);
+  const childLabels = useMemo(() => !flat && isOpen ? treeNodeDisplayTitles(node.children) : undefined, [flat, isOpen, node.children]);
   const description = descriptions?.get(node.id);
   const baseTitleHint = displayTitle === node.title ? node.title : `${node.title} · ${node.path}`;
   const rowTitleHint = description ? `${baseTitleHint}\n${description}` : baseTitleHint;
@@ -482,6 +495,18 @@ export function TreeRow({
     if (zone === 'into') expand(); // so the page is visible where it was just dropped
     applyDrop.mutate(plan);
   }
+
+  const keepMounted = [
+    editing, confirmingDelete, moving, creatingBase, creatingArtifact, copying,
+    pickingTemplate, makingTemplate, changingSlug, confirmingDiscard,
+    createChild.isPending, discard.isPending, uploadFile.isPending, replaceFile.isPending,
+    rename.isPending, del.isPending, reorder.isPending, applyDrop.isPending, duplicate.isPending,
+  ].some(Boolean);
+  useEffect(() => {
+    if (!onKeepMountedChange || !keepMounted) return;
+    onKeepMountedChange(node.id, true);
+    return () => onKeepMountedChange(node.id, false);
+  }, [node.id, keepMounted, onKeepMountedChange]);
 
   return (
     <div>
@@ -956,14 +981,10 @@ export function TreeRow({
         )}
       </div>
 
-      {hasChildren && isOpen && (
+      {!flat && hasChildren && isOpen && (
         <div className="relative">
           {/* Indent guide: makes nesting depth unambiguous. Never takes pointer events, so drop zones are untouched. */}
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 w-px bg-neutral-200 dark:bg-neutral-700/70"
-            style={{ left: `${guideLeftPx(depth)}px` }}
-          />
+          <TreeIndentGuide depth={depth} />
           {node.children.map((child) => (
             <TreeRow
               key={child.id}
@@ -986,6 +1007,7 @@ export function TreeRow({
               conflictedIds={conflictedIds}
               templateMode={templateMode}
               descriptions={descriptions}
+              displayTitle={childLabels?.get(child.id) ?? child.title}
             />
           ))}
         </div>

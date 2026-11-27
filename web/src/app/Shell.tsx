@@ -38,6 +38,7 @@ interface HeaderInfo {
   };
   /** A pdf/office page is routed: the header swaps the export menu for «open in a new tab» / «download» of the file itself. */
   fileActions?: boolean;
+  canSaveOffline?: boolean;
 }
 
 // The header (breadcrumbs) is owned by this layout route, but the data it
@@ -59,7 +60,7 @@ export function useSetHeaderInfo(info: HeaderInfo | null) {
     setInfo(info);
     return () => setInfo(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info?.pageId, info?.pagePath, info?.title, info?.icon, info?.fileActions, tableKey, setInfo]);
+  }, [info?.pageId, info?.pagePath, info?.title, info?.icon, info?.fileActions, info?.canSaveOffline, tableKey, setInfo]);
 }
 
 /** App layout: collapsible sidebar + header, with the routed page in the main area. */
@@ -109,7 +110,8 @@ export function Shell() {
   // Ctrl+K "focus the address bar" default in Chrome, hence preventDefault).
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      // Shift/Alt stay free: ⇧⌘K is the editor's "make a link" (format-toolbar.ts LINK_KEY).
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         openSwitcher();
         return;
@@ -174,6 +176,7 @@ export function Shell() {
           icon={headerInfo?.icon}
           table={headerInfo?.table}
           fileActions={headerInfo?.fileActions}
+          canSaveOffline={headerInfo?.canSaveOffline}
           presence={pagePresence ?? EMPTY_PRESENCE}
           collapsed={collapsed}
           onToggleCollapse={() => {

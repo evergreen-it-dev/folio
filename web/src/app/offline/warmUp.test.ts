@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { boardEditorFiles, type BuildManifest } from './warmUp';
 
 const manifest: BuildManifest = {
+  'offline.html': { file: 'assets/offline-AAAAAAAA.js', isEntry: true },
   'index.html': { file: 'assets/index-AAAAAAAA.js', isEntry: true, imports: ['_shared.js'], dynamicImports: ['src/diagrams/BoardCanvas.tsx', 'src/tables/TableGrid.tsx'], css: ['assets/index-BBBBBBBB.css'] },
   '_shared.js': { file: 'assets/shared-CCCCCCCC.js' },
   'src/tables/TableGrid.tsx': { file: 'assets/TableGrid-DDDDDDDD.js', imports: ['index.html'] },

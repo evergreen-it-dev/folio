@@ -8,7 +8,7 @@ import { useLocalStorage } from '../hooks';
 import { useConnectivity } from '../offline/connectivity';
 import { TreeRow } from '../sidebar/TreeRow';
 import type { DraggedNode } from '../sidebar/TreeRow';
-import { TEMPLATES_FOLDER, collectDirectories } from '../sidebar/treeUtils';
+import { TEMPLATES_FOLDER, collectDirectories, treeNodeDisplayTitles } from '../sidebar/treeUtils';
 import { MakeTemplateDialog } from './MakeTemplateDialog';
 import { OPEN_TEMPLATES_SECTION_EVENT, templatesSectionOpenKey } from './templatesSectionState';
 import { useTemplates, useTemplatesTree } from './useTemplates';
@@ -61,6 +61,7 @@ export function TemplatesSection({ space, activeId, activeFolderPath }: Template
     return treeData;
   }, [treeData]);
   const directories = useMemo(() => collectDirectories(nodes), [nodes]);
+  const siblingLabels = useMemo(() => treeNodeDisplayTitles(nodes), [nodes]);
 
   // Descriptions of the top-level templates, shown as the rows' tooltips.
   const descriptions = useMemo(() => new Map(templates.filter((tpl) => tpl.description).map((tpl) => [tpl.id, tpl.description as string])), [templates]);
@@ -128,6 +129,7 @@ export function TemplatesSection({ space, activeId, activeFolderPath }: Template
                 setExpanded={setExpanded}
                 directories={directories}
                 siblings={nodes}
+                displayTitle={siblingLabels.get(node.id) ?? node.title}
                 parentPath={TEMPLATES_FOLDER}
                 dragged={dragged}
                 setDragged={setDragged}

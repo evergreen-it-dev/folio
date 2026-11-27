@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +14,7 @@ import { useToast } from '../ui/Toast';
 import { Menu, MenuItem } from '../ui/Menu';
 import { TreeRow } from './TreeRow';
 import type { DraggedNode } from './TreeRow';
-import { collectDirectories, findAgentFolderNode } from './treeUtils';
+import { collectDirectories, findAgentFolderNode, treeNodeDisplayTitles } from './treeUtils';
 import { newPageTitleKey } from './slugUtils';
 import '../i18n/register';
 
@@ -63,6 +63,7 @@ export function AgentSection({ space, activeId, activeFolderPath }: AgentSection
 
   const agentNode = data ? findAgentFolderNode(data.tree) : undefined;
   const children = agentNode?.children ?? [];
+  const siblingLabels = useMemo(() => treeNodeDisplayTitles(children), [children]);
   const directories = data ? collectDirectories(data.tree) : [AGENT_FOLDER];
 
   const createChild = useMutation({
@@ -182,6 +183,7 @@ export function AgentSection({ space, activeId, activeFolderPath }: AgentSection
                 setExpanded={setExpanded}
                 directories={directories}
                 siblings={children}
+                displayTitle={siblingLabels.get(node.id) ?? node.title}
                 parentPath={AGENT_FOLDER}
                 dragged={dragged}
                 setDragged={setDragged}

@@ -177,6 +177,9 @@ export interface TreeNode extends PageMeta {
   access?: 'restricted' | 'inherited';
 }
 
+/** Optional precondition and response acknowledgement for an account-bound offline document read. */
+export const OFFLINE_READER_ACCOUNT_HEADER = 'x-folio-offline-account';
+
 /** Full page payload: markdown body (frontmatter stripped) for docs, svg source for boards. */
 export const pageDocSchema = pageMetaSchema.extend({
   markdown: z.string().optional(),

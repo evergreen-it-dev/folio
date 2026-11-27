@@ -18,6 +18,8 @@
 import { isDemoMode } from './demo.js';
 import { publicUrlOrOrigin } from './publicUrl.js';
 import { escapeHtmlAttr } from './shareMeta.js';
+import { pwaEnabled } from './pwa.js';
+import { sessionTtlMs } from './auth/sessionTtl.js';
 
 export const DEFAULT_OG_TITLE = 'Folio — team wiki in Git';
 export const DEFAULT_OG_DESCRIPTION =
@@ -178,6 +180,16 @@ function insertBeforeHeadClose(html: string, tag: string): string {
  * visitor is actually on, not PUBLIC_URL.
  */
 export function renderIndexHtml(html: string, requestOrigin: string, pathname: string, site?: PublicSiteMeta): string {
+  // Published sites and guest links have their own identity. Installing the wiki
+  // here would send a visitor to its signed-in home instead of the shared site.
+  const pwa = pwaEnabled();
+  if (!pwa || site || /^\/(?:share|invite|public)(?:\/|$)/.test(pathname)) {
+    html = html.replace(/[ \t]*<link\s+rel="(?:manifest|apple-touch-icon)"[^>]*>\s*\n?/g, '');
+  }
+  // The client reads these (web/src/app/offline/sessionLifetime.ts): FOLIO_PWA=off unregisters the
+  // worker; the session lifetime decides when a saved copy stops being readable offline.
+  html = insertBeforeHeadClose(html, `<meta name="folio-session-ttl-days" content="${sessionTtlMs() / 86_400_000}" />`);
+  if (!pwa) html = insertBeforeHeadClose(html, '<meta name="folio-pwa" content="off" />');
   const origin = publicUrlOrOrigin(requestOrigin);
   if (!site) return applyPageMeta(html, resolvePageMeta(origin), `${origin}${pathname}`);
 

@@ -10,7 +10,7 @@ import * as storage from '../storage.js';
  * preserved with their relative paths.
  */
 export async function buildSpaceZip(space: string): Promise<Buffer> {
-  const entries = await storage.listEntries(space);
+  const entries = await storage.listEntryMetadata(space);
   await Promise.all(entries.map((entry) => collab.flushDoc(entry.id)));
 
   const root = storage.getSpaceDir(space);

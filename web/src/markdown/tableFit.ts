@@ -37,6 +37,8 @@
  * never shows a control for it — see that file's own comment.
  */
 
+import { TABLE_MAX_HEIGHT_VH } from './tablePin';
+
 const SCROLL_KEY_PREFIX = 'folio:tableScroll:';
 
 /** Marks each toggleable `.folio-table-wrap` inside `container` as wide
@@ -106,5 +108,52 @@ export function writeTableScrollOverrides(pageId: string, indices: ReadonlySet<n
     localStorage.setItem(SCROLL_KEY_PREFIX + pageId, JSON.stringify(Array.from(indices)));
   } catch {
     // Storage full/unavailable — the toggle just won't persist across reloads.
+  }
+}
+
+/** Labels for the pin button, resolved by the caller (see TableToggleLabels). */
+export interface TablePinLabels {
+  /** Shown while pinned — the click unpins. */
+  unpin: string;
+  /** Shown while unpinned — the click pins. */
+  pin: string;
+}
+
+/**
+ * Marks each table taller than the inner-scroll cap as `--tall`, adds the pin
+ * button to it (created here, not baked into the HTML, so the pipeline's
+ * output stays as it was) and applies the reader's choice: `--unpinned` for
+ * indices in `unpinned`. Pinned + tall = CSS gives the wrapper its own
+ * vertical scroller with a sticky header; anything else scrolls with the page.
+ *
+ * Tallness is judged from the table element's own height, not the wrapper's,
+ * because a pinned wrapper is already capped.
+ */
+export function applyTablePinState(
+  container: HTMLElement,
+  unpinned: ReadonlySet<number>,
+  labels: TablePinLabels,
+): void {
+  const cap = (window.innerHeight * TABLE_MAX_HEIGHT_VH) / 100;
+  for (const wrap of Array.from(container.querySelectorAll<HTMLElement>('.folio-table-wrap'))) {
+    const table = wrap.querySelector<HTMLElement>(':scope > table');
+    const index = Number(wrap.querySelector<HTMLElement>('[data-table-toggle]')?.dataset.tableToggle);
+    if (!table || !Number.isInteger(index)) continue;
+    const tall = table.offsetHeight > cap;
+    wrap.classList.toggle('folio-table-wrap--tall', tall);
+    const isUnpinned = unpinned.has(index);
+    wrap.classList.toggle('folio-table-wrap--unpinned', isUnpinned);
+    let button = wrap.querySelector<HTMLButtonElement>('[data-table-pin]');
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'folio-table-pin';
+      button.dataset.tablePin = String(index);
+      wrap.appendChild(button);
+    }
+    const label = isUnpinned ? labels.pin : labels.unpin;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(!isUnpinned));
+    button.title = label;
   }
 }

@@ -46,7 +46,7 @@ interface Surroundings {
   cell: string | null;
 }
 
-function surroundings(state: EditorState, pos: number, side: -1 | 1): Surroundings {
+export function surroundings(state: EditorState, pos: number, side: -1 | 1): Surroundings {
   const tree = ensureSyntaxTree(state, Math.min(state.doc.length, pos + 1), 50) ?? syntaxTree(state);
   const found: Surroundings = { plain: false, inTable: false, cell: null };
   for (let node: SyntaxNode | null = tree.resolve(pos, side); node; node = node.parent) {

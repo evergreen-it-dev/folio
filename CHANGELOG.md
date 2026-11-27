@@ -4,14 +4,29 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-27
+
 ### Added
 
+- Install Folio from a supported browser and save individual Markdown documents on a trusted device for read-only access after closing the app offline (thanks @HarryJhin, #27).
+- A link popover: the link button and ⇧⌘K add a link or change an existing one, in documents and in table cells, with the address prefilled when the selection already is a link.
+- Tall tables scroll inside their own frame with a sticky header; a pin button switches a table back to plain page scrolling, and the choice is remembered for each reader.
+- A status tag button in a table cell's format bar turns the selected text into a coloured status tag.
+- Pasting the address of a Folio page writes a link titled with that page instead of the bare URL.
+- `move_page` MCP tool: moves a page with its subpages to another folder of the same space, rewriting the links to and from it, in one Git commit (not available while the space is in review mode).
 - A stdio bridge for the MCP endpoint (`npm run mcp:stdio`, with `FOLIO_URL` and `FOLIO_TOKEN`) for clients that only speak stdio; without a reachable instance it still lists the tools.
+- Published images carry an SBOM and build provenance, and are signed with cosign keyless; the verify command is in `.github/workflows/publish-image.yml` (thanks @babs, #25).
 
 ### Fixed
 
+- Comments anchor to any selection in reading mode, formatted or not; a selection that ends at a block boundary stops at that line, and the collapse toggles and hidden-block notes are no longer counted as page text.
+- ⇧⌘K in the editor reaches the link command instead of opening the quick switcher.
+- The installed app's title bar follows the selected Folio theme, including system appearance changes and offline reading (thanks @HarryJhin, #27).
 - The page tree, the template picker and the template list of a large space no longer load every page's indexed text and search vector into server memory, so a space with tens of thousands of pages stays responsive instead of exhausting the Node heap (reported in #19).
 - Browser Undo keeps working after an agent edits several separate passages of a page through REST/MCP (reported in #18).
+- The image is published again: each platform builds on a native runner, since the arm64 build under emulation crashed and no 0.4.5 image was published (reported in #24, fixed by @babs in #25).
+- Expanding a folder with thousands of pages no longer freezes navigation: the sidebar renders only the rows in view, and keyboard navigation, drag and drop and revealing the current page still work (reported in #20).
+- Creating or moving a page where a file already occupies the folder path answers 409 instead of a server error, and saving a page whose file was just moved or deleted answers 404.
 
 ### Changed
 
@@ -19,6 +34,10 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
   sooner. Opening the panel or switching conversation prepares the agent
   in the background without sending anything to the model, so it costs no
   tokens; unused, it is released after five minutes.
+
+### Security
+
+- Dependencies: hono 4.13.16, @hono/node-server 2.1.6 and glob 14, which clear the open GitHub security advisories. None of the affected code paths is used by Folio itself: hono comes in through the MCP SDK, and glob only through static-file and build tooling.
 
 ## [0.4.5] - 2026-11-09
 

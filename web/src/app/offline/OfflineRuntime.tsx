@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '../ui/Toast';
 import { startConnectivity, useConnectivity, type Connectivity } from './connectivity';
 import { startSyncEngine, useSyncStatus } from './syncEngine';
+import { maintainOfflineReader } from './readerReady';
 import { warmUpBoardEditor } from './warmUp';
 import '../i18n/register';
 
@@ -29,6 +30,7 @@ export function OfflineRuntime() {
   const warmedUp = useRef(false);
 
   useEffect(() => {
+    void maintainOfflineReader();
     const stopConnectivity = startConnectivity();
     const stopEngine = startSyncEngine(queryClient);
     return () => {

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_OG_DESCRIPTION,
@@ -82,5 +83,23 @@ describe('pageMeta.ts — link-preview meta in index.html', () => {
 
   it('HTML without a </head> is returned unchanged', () => {
     expect(renderIndexHtml('<p>hi</p>', 'https://x.test', '/')).toBe('<p>hi</p>');
+  });
+});
+
+describe('app installation metadata', () => {
+  const template = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
+  it('links the credentialed app manifest and device icon on the wiki', () => {
+    const html = renderIndexHtml(template, 'https://wiki.example', '/s/notes/p/123');
+    expect(html).toMatch(/<link rel="manifest"[^>]*crossorigin="use-credentials"/);
+    expect(html).toContain('rel="apple-touch-icon"');
+  });
+  it('leaves published sites and guest links with their own identity', () => {
+    for (const result of [
+      renderIndexHtml(template, 'https://site.example', '/', { slug: 'notes', name: 'Notes', hostMode: true }),
+      ...['/share/token', '/invite/token', '/public/missing'].map((path) => renderIndexHtml(template, 'https://wiki.example', path)),
+    ]) {
+      expect(result).not.toContain('rel="manifest"');
+      expect(result).not.toContain('rel="apple-touch-icon"');
+    }
   });
 });

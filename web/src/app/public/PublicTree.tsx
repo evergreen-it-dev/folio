@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, ClipboardList, Folder, LayoutDashboard, Presentation, Sheet, Table2, FileText, FileType2, Waypoints, Database, AppWindow } from 'lucide-react';
 import { officeFormat, type TreeNode } from '@shared/contracts';
-import { treeNodeDisplayTitle } from '../sidebar/treeUtils';
+import { treeNodeDisplayTitles } from '../sidebar/treeUtils';
 import { publicPageUrl, type PublicSiteRef } from './publicSite';
 import { expandableIds, pathToNode } from './treePaths';
 import '../i18n/register';
@@ -69,12 +69,13 @@ export function PublicTree({ site, nodes, currentId, defaultOpen = 'ancestors', 
   }
 
   function renderNodes(list: TreeNode[], depth: number): ReactNode {
+    const labels = treeNodeDisplayTitles(list);
     return list.map((node) => {
       const hasChildren = node.children.length > 0;
       const open = hasChildren && isOpen(node.id);
       const isFolder = node.kind === 'folder';
       const active = !isFolder && node.id === currentId;
-      const title = treeNodeDisplayTitle(node, list);
+      const title = labels.get(node.id) ?? node.title;
       const labelClass = `flex min-w-0 flex-1 items-center gap-1.5 truncate rounded-md px-1.5 py-1 text-left text-sm ${
         active
           ? 'bg-neutral-200/70 font-medium text-neutral-900 dark:bg-neutral-700/60 dark:text-neutral-50'

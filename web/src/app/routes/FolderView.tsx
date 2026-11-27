@@ -7,7 +7,7 @@ import { officeFormat, type TreeNode } from '@shared/contracts';
 import { api, ApiError } from '../api';
 import { useDocumentTitle } from '../hooks';
 import { useSetHeaderInfo } from '../Shell';
-import { findNodeByPath, treeNodeDisplayTitle } from '../sidebar/treeUtils';
+import { findNodeByPath, treeNodeDisplayTitles } from '../sidebar/treeUtils';
 import { NotFound } from './NotFound';
 import { NoAccess } from './NoAccess';
 import '../i18n/register';
@@ -25,6 +25,7 @@ function humanize(segment: string): string {
 export function FolderListing({ space, title, entries }: { space: string; title: string; entries: TreeNode[] }) {
   const { t } = useTranslation('app');
   const navigate = useNavigate();
+  const labels = useMemo(() => treeNodeDisplayTitles(entries), [entries]);
 
   return (
     <div className="mx-auto max-w-2xl p-8">
@@ -41,7 +42,7 @@ export function FolderListing({ space, title, entries }: { space: string; title:
       ) : (
         <ul className="flex flex-col gap-1">
           {entries.map((child) => {
-            const displayTitle = treeNodeDisplayTitle(child, entries);
+            const displayTitle = labels.get(child.id) ?? child.title;
             // Round 26: a data table is a page kind of its own, so it gets
             // its own glyph here — the href is the ordinary page route (a
             // table has a real page id, unlike a synthetic folder node).

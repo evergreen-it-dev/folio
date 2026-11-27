@@ -492,7 +492,7 @@ export interface AssembleLookups {
 }
 
 export async function loadAssembleLookups(space: string): Promise<AssembleLookups> {
-  const idByPath = new Map((await storage.listEntries(space)).map((e) => [e.relPath, e.id]));
+  const idByPath = new Map((await storage.listEntryMetadata(space)).map((e) => [e.relPath, e.id]));
   const files = await loadSpaceFiles(space).catch(() => undefined);
   return { idByPath, pagePaths: buildPagePathIndex(idByPath.keys()), files };
 }

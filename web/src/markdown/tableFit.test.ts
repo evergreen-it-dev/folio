@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyTableFitState,
+  applyTablePinState,
   measureWideTables,
   readTableScrollOverrides,
   writeTableScrollOverrides,
 } from './tableFit';
+import { isTablePinned, readUnpinnedTables, toggleTablePinned } from './tablePin';
 
 const LABELS = { switchToScroll: 'switch to scroll', switchToFit: 'switch to fit' };
 
@@ -126,5 +128,67 @@ describe('readTableScrollOverrides / writeTableScrollOverrides', () => {
     writeTableScrollOverrides('page-b', new Set([2]));
     expect(readTableScrollOverrides('page-a')).toEqual(new Set([1]));
     expect(readTableScrollOverrides('page-b')).toEqual(new Set([2]));
+  });
+});
+
+describe('applyTablePinState', () => {
+  const PINS = { unpin: 'unpin', pin: 'pin' };
+
+  function tallTable(height: number) {
+    const built = buildWrap(0);
+    const table = built.wrap.querySelector('table')!;
+    Object.defineProperty(table, 'offsetHeight', { configurable: true, get: () => height });
+    return built;
+  }
+
+  it('marks a table taller than 70vh as --tall and adds a pinned pin button', () => {
+    const { container, wrap } = tallTable(window.innerHeight);
+    applyTablePinState(container, new Set(), PINS);
+    expect(wrap.classList.contains('folio-table-wrap--tall')).toBe(true);
+    expect(wrap.classList.contains('folio-table-wrap--unpinned')).toBe(false);
+    const pin = wrap.querySelector<HTMLButtonElement>('[data-table-pin="0"]')!;
+    expect(pin.getAttribute('aria-pressed')).toBe('true');
+    expect(pin.getAttribute('aria-label')).toBe('unpin');
+  });
+
+  it('leaves a short table without --tall', () => {
+    const { container, wrap } = tallTable(50);
+    applyTablePinState(container, new Set(), PINS);
+    expect(wrap.classList.contains('folio-table-wrap--tall')).toBe(false);
+  });
+
+  it('applies --unpinned for a listed index, reuses the button and flips the label', () => {
+    const { container, wrap } = tallTable(window.innerHeight);
+    applyTablePinState(container, new Set(), PINS);
+    applyTablePinState(container, new Set([0]), PINS);
+    expect(wrap.classList.contains('folio-table-wrap--unpinned')).toBe(true);
+    expect(wrap.querySelectorAll('[data-table-pin]').length).toBe(1);
+    expect(wrap.querySelector('[data-table-pin]')!.getAttribute('aria-label')).toBe('pin');
+  });
+});
+
+describe('tablePin storage', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('is pinned by default and toggles per page and index', () => {
+    expect(isTablePinned('p', 2)).toBe(true);
+    expect(toggleTablePinned('p', 2)).toBe(false);
+    expect(readUnpinnedTables('p')).toEqual(new Set([2]));
+    expect(isTablePinned('p', 1)).toBe(true);
+    expect(isTablePinned('other', 2)).toBe(true);
+    expect(toggleTablePinned('p', 2)).toBe(true);
+    expect(readUnpinnedTables('p')).toEqual(new Set());
+  });
+
+  it('survives storage that throws', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    expect(isTablePinned('p', 0)).toBe(true);
+    expect(() => toggleTablePinned('p', 0)).not.toThrow();
   });
 });

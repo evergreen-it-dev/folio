@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronRight, House, LogIn, Menu as MenuIcon, X } from 'lucide-react';
 import type { PublicSiteInfo } from '@shared/contracts';
 import { api, ApiError } from '../api';
-import { getTopLevelNodes, treeNodeDisplayTitle } from '../sidebar/treeUtils';
+import { getTopLevelNodes, treeNodeDisplayTitles } from '../sidebar/treeUtils';
 import { PublicAssistantSlot } from './PublicAssistantSlot';
 import { PublicDownloadMenu } from './PublicDownloadMenu';
 import { PublicPageBody } from './PublicPageBody';
@@ -119,7 +119,7 @@ export function PublicSiteView({ site, pageId }: PublicSiteViewProps) {
     if (!chain) return [{ key: page.id, title: page.title, to: undefined as string | undefined, current: true }];
     return chain.map((node, index) => ({
       key: node.id,
-      title: treeNodeDisplayTitle(node, index === 0 ? nodes : chain[index - 1].children),
+      title: treeNodeDisplayTitles(index === 0 ? nodes : chain[index - 1].children).get(node.id) ?? node.title,
       to: node.kind === 'folder' || node.id === page.id ? undefined : publicPageUrl(site, node.id),
       current: node.id === page.id,
     }));

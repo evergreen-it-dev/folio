@@ -1,7 +1,15 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import { Check, ClipboardList, Columns2, Download, ExternalLink, History, Lock, LockOpen, MoreHorizontal, RefreshCw, Share2, SpellCheck, Star, Timer } from 'lucide-react';
+import { BookOpen, Check, ClipboardList, Columns2, Download, ExternalLink, History, Lock, LockOpen, MoreHorizontal, RefreshCw, Share2, SpellCheck, Star, Timer } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { AuthState } from '@shared/contracts';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { useToast } from '../ui/Toast';
+import { canRegisterOfflineReader } from '../offline/readerReady';
+import { pwaSwitchedOff } from '../offline/sessionLifetime';
+import { saveDocumentForOfflineReading } from '../offline/readerAccess';
+import { hasOfflineDocument, removeOfflineDocument, subscribeOfflineDocuments } from '../offline/savedDocuments';
 import { api } from '../api';
 import { Menu } from '../ui/Menu';
 import { useCompare } from '../compare/compareContext';
@@ -33,6 +41,7 @@ export interface PageActionsMenuProps {
   /** A pdf/office page: its file actions replace Export. */
   fileActions: boolean;
   isProse: boolean;
+  canSaveOffline?: boolean;
   canEdit: boolean;
   /** No timer runs and this person may start one. */
   canStartTimer: boolean;
@@ -63,6 +72,25 @@ export function PageActionsMenu(props: PageActionsMenuProps) {
   const { t } = useTranslation('app');
   const { pageId, anchorRef } = props;
   const inputRef = useRef<HTMLInputElement>(null);
+  const showToast = useToast();
+  const queryClient = useQueryClient();
+  const account = queryClient.getQueryData<AuthState>(['auth', 'state'])?.user?.id;
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const offlineAccount = props.canSaveOffline && typeof indexedDB !== 'undefined' ? account : undefined;
+  async function saveCopy() {
+    if (!offlineAccount || !pageId || saving) return;
+    setSaving(true);
+    try {
+      await saveDocumentForOfflineReading(offlineAccount, pageId, props.space);
+      showToast(t('offline.reader.saved'), 'info');
+    } catch {
+      showToast(t('offline.reader.saveFailed'));
+    } finally {
+      setSaving(false);
+      setConfirming(false);
+    }
+  }
   // Here, not in its row: the row unmounts when the menu closes, and the
   // navigation to the new form happens after the request settles.
   const createForm = useCreateFormFromTable(pageId ?? '', props.space);
@@ -76,10 +104,16 @@ export function PageActionsMenu(props: PageActionsMenuProps) {
       >
         {(close) => (
           <div className="min-w-[220px]">
-            <Rows {...props} close={close} onReplaceFile={() => inputRef.current?.click()} onCreateForm={() => createForm.mutate()} creatingForm={createForm.isPending} />
+            <Rows {...props} offlineAccount={offlineAccount} onSaveOffline={() => setConfirming(true)} close={close} onReplaceFile={() => inputRef.current?.click()} onCreateForm={() => createForm.mutate()} creatingForm={createForm.isPending} />
           </div>
         )}
       </Menu>
+      {confirming && offlineAccount && (
+        <ConfirmDialog title={t('offline.reader.saveTitle')} confirmLabel={t('offline.reader.saveAction')} busy={saving}
+          onConfirm={() => void saveCopy()} onCancel={() => setConfirming(false)}>
+          {t('offline.reader.trustedDevice')}
+        </ConfirmDialog>
+      )}
       {pageId && props.fileActions && props.canEdit && <ReplaceFileInput space={props.space} pageId={pageId} inputRef={inputRef} />}
     </div>
   );
@@ -103,7 +137,7 @@ function ReplaceFileInput({ space, pageId, inputRef }: { space: string; pageId: 
   );
 }
 
-function Rows({ space, pageId, pagePath, title, isTable, fileActions, isProse, canEdit, canStartTimer, onOpen, close, onReplaceFile, onCreateForm, creatingForm }: PageActionsMenuProps & { close: () => void; onReplaceFile: () => void; onCreateForm: () => void; creatingForm: boolean }) {
+function Rows({ space, pageId, pagePath, title, isTable, fileActions, isProse, canEdit, canStartTimer, onOpen, close, onReplaceFile, onCreateForm, creatingForm, offlineAccount, onSaveOffline }: PageActionsMenuProps & { offlineAccount?: string; onSaveOffline: () => void; close: () => void; onReplaceFile: () => void; onCreateForm: () => void; creatingForm: boolean }) {
   const { t } = useTranslation('app');
   const open = (surface: HeaderSurface) => () => {
     close();
@@ -118,6 +152,7 @@ function Rows({ space, pageId, pagePath, title, isTable, fileActions, isProse, c
           <StarRow pageId={pageId} close={close} />
           {pagePath !== undefined && <Row className="md:hidden" icon={<History size={15} />} label={t('header.actions.history')} onSelect={open('history')} />}
           {!fileActions && <Row icon={<Download size={15} />} label={t('header.actions.export')} onSelect={open('export')} />}
+          {offlineAccount && <OfflineRow account={offlineAccount} pageId={pageId} close={close} onSave={onSaveOffline} />}
           <AccessRow pageId={pageId} onSelect={open('access')} />
           {title !== undefined && <CompareRow pageId={pageId} space={space} title={title} close={close} />}
           {((canEdit && isTable) || fileActions) && <Separator />}
@@ -241,6 +276,28 @@ function StarRow({ pageId, close }: { pageId: string; close: () => void }) {
         toggle.mutate({ kind: 'page', id: pageId, starred: !starred });
       }}
     />
+  );
+}
+
+function OfflineRow({ account, pageId, close, onSave }: { account: string; pageId: string; close: () => void; onSave: () => void }) {
+  const { t } = useTranslation('app');
+  const showToast = useToast();
+  const { data: saved, refetch } = useQuery({
+    queryKey: ['offline-reader-saved', account, pageId], queryFn: () => hasOfflineDocument(account, pageId),
+    networkMode: 'always', retry: false,
+  });
+  useEffect(() => subscribeOfflineDocuments(() => { void refetch(); }), [refetch]);
+  if (pwaSwitchedOff() || (!saved && !canRegisterOfflineReader())) return null;
+  return (
+    <Row icon={<BookOpen size={15} />} label={t(saved ? 'offline.reader.removeAction' : 'offline.reader.saveMenu')}
+      disabled={saved === undefined} onSelect={() => {
+        close();
+        if (saved) {
+          void removeOfflineDocument(account, pageId)
+            .then(() => showToast(t('offline.reader.removed'), 'info'))
+            .catch(() => showToast(t('offline.reader.removeFailed')));
+        } else onSave();
+      }} />
   );
 }
 

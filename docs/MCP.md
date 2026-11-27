@@ -116,7 +116,7 @@ Clients are public (no client secret). Redirect URIs must be `https`, or `http` 
 | Tags and properties | `list_tags`, `list_properties` |
 | Bases | `query_base` |
 | Tags, properties, bases (scope `write`) | `rename_tag`, `set_page_properties`, `save_base` |
-| Pages (scope `write`) | `create_page`, `update_page` |
+| Pages (scope `write`) | `create_page`, `update_page`, `move_page` |
 | Artifacts (scope `write`) | `publish_artifact` (read an artifact with `read_page`) |
 | Templates | `list_templates` |
 | Writing rules | `check_page_writing_rules` |
@@ -130,7 +130,7 @@ Clients are public (no client secret). Redirect URIs must be `https`, or `http` 
 | Data tables (scope `write`) | `folio_table_insert`, `folio_table_update`, `folio_table_delete`, `folio_table_add_column`, `folio_table_update_column`, `folio_table_delete_column`, `folio_table_save_view`, `folio_table_delete_view`, `folio_table_create` |
 | Forms (scope `write`) | `create_form`, `update_form` (read a form with `read_page`) |
 
-51 tools: 25 read-only, 26 that write.
+52 tools: 25 read-only, 27 that write.
 
 **Review mode.** If a space admin has set **AI agents** to **Send edits for review**, `update_page`, `create_page` and `PUT /api/pages/:id` with an API token return a proposal instead of changing the page; an editor or admin accepts it in the **On review** list. Only Markdown pages are covered: while the mode is on, the tools for boards, tables, forms, bases, properties, tags and artifacts are refused for that space. `add_comment` and `reply_comment` are not queued. `git push` is not intercepted. `add_comment` also takes `elementId` (a whiteboard element) or `rowId` and `columnId` (a table cell). `read_page` and `fetch` return a `verification` block (owner, verified date, review date and state) for a page that has these properties.
 

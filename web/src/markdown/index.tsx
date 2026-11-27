@@ -34,7 +34,9 @@ import {
   measureWideTables,
   readTableScrollOverrides,
   writeTableScrollOverrides,
+  applyTablePinState,
 } from './tableFit';
+import { readUnpinnedTables, writeUnpinnedTables } from './tablePin';
 import { ensureMentionIndex, mentionName, onMentionsLoaded } from './mentionIndex';
 import { onFolioLinkSettled } from './folioLinkIndex';
 import { MermaidBlock } from '../diagrams';
@@ -195,6 +197,10 @@ export function Markdown({ markdown, space, pagePath, pageId, shareLinksPageId, 
   const [tableScrollOverrides, setTableScrollOverrides] = useState<Set<number>>(() =>
     ownPageId ? readTableScrollOverrides(ownPageId) : new Set(),
   );
+  // Tall tables the reader unpinned (page scroll instead of inner scroll).
+  const [unpinnedTables, setUnpinnedTables] = useState<Set<number>>(() =>
+    ownPageId ? readUnpinnedTables(ownPageId) : new Set(),
+  );
   // Round 15: bumped once this space's @mentionable list lands, purely to
   // invalidate the `rendered` memo below — mentionName() itself always reads
   // straight from mentionIndex.ts's module cache, this is not the data.
@@ -265,6 +271,10 @@ export function Markdown({ markdown, space, pagePath, pageId, shareLinksPageId, 
   // Same re-read-on-key-change reasoning as collapsedSlugs above.
   useEffect(() => {
     setTableScrollOverrides(ownPageId ? readTableScrollOverrides(ownPageId) : new Set());
+  }, [ownPageId]);
+
+  useEffect(() => {
+    setUnpinnedTables(ownPageId ? readUnpinnedTables(ownPageId) : new Set());
   }, [ownPageId]);
 
   // Round 13: ::pagetree{depth=N} directives are pulled out the same way
@@ -460,11 +470,16 @@ export function Markdown({ markdown, space, pagePath, pageId, shareLinksPageId, 
       switchToScroll: t('table.switchToScroll'),
       switchToFit: t('table.switchToFit'),
     });
+    // Pin runs AFTER fit: fixed layout changes the table's height.
+    applyTablePinState(containerRef.current, unpinnedTables, {
+      unpin: t('table.unpinScroll'),
+      pin: t('table.pinScroll'),
+    });
     // i18n.language is listed for the same reason `rendered`'s own memo
     // lists it (see that comment): the button's aria-label is resolved via
     // `t()` at the time this effect runs, not through a binding React would
     // otherwise re-render on its own.
-  }, [rendered, tableScrollOverrides, i18n.language]);
+  }, [rendered, tableScrollOverrides, unpinnedTables, i18n.language]);
 
   function showHint(message: string) {
     clearTimeout(hintTimer.current);
@@ -488,6 +503,16 @@ export function Markdown({ markdown, space, pagePath, pageId, shareLinksPageId, 
       if (next.has(index)) next.delete(index);
       else next.add(index);
       if (ownPageId) writeTableScrollOverrides(ownPageId, next);
+      return next;
+    });
+  }
+
+  function toggleTablePin(index: number) {
+    setUnpinnedTables((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      if (ownPageId) writeUnpinnedTables(ownPageId, next);
       return next;
     });
   }
@@ -516,6 +541,13 @@ export function Markdown({ markdown, space, pagePath, pageId, shareLinksPageId, 
     if (toggle) {
       event.preventDefault();
       toggleCollapse(toggle.dataset.collapseToggle ?? '');
+      return;
+    }
+
+    const tablePin = target.closest<HTMLButtonElement>('[data-table-pin]');
+    if (tablePin) {
+      event.preventDefault();
+      toggleTablePin(Number(tablePin.dataset.tablePin));
       return;
     }
 

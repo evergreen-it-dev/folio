@@ -7,7 +7,7 @@
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LINK_KEY, formatCommand, isFormatActive, linkCommand, quoteCommand, highlightColorCommand } from './format-toolbar';
+import { statusEdit, LINK_KEY, formatCommand, isFormatActive, linkCommand, quoteCommand, highlightColorCommand } from './format-toolbar';
 import { livePreview, livePreviewConfig } from './live-preview';
 import { markdownEditorExtensions } from './markdown-setup';
 
@@ -38,6 +38,7 @@ const bar = (): HTMLElement | null =>
   ) ?? null;
 
 afterEach(() => {
+  document.querySelector('.folio-link-pop__input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   for (const view of views.splice(0)) view.destroy();
   document.body.replaceChildren();
 });
@@ -93,12 +94,16 @@ describe('commands', () => {
     expect(write(doc, (v) => formatCommand('code')(v), at, at + 6)).toContain('`target` tail');
   });
 
-  it('makes a link out of the selection and leaves the target selected', () => {
+  it('opens the link popover and writes nothing until a target is chosen', () => {
     const view = mount('word', 0, 4);
     expect(linkCommand(view)).toBe(true);
-    expect(view.state.doc.toString()).toBe('[word](url)');
-    const { from, to } = view.state.selection.main;
-    expect(view.state.sliceDoc(from, to)).toBe('url');
+    expect(view.state.doc.toString()).toBe('word'); // no `[word]()` left behind
+    expect(document.querySelector('.folio-link-pop')).toBeTruthy();
+    document.querySelector<HTMLInputElement>('.folio-link-pop__input')!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    expect(document.querySelector('.folio-link-pop')).toBeNull();
+    expect(view.state.doc.toString()).toBe('word');
   });
 
   it('answers the link hotkey, which is not the quick switcher\'s ⌘K', () => {
@@ -118,7 +123,8 @@ describe('commands', () => {
         cancelable: true,
       }),
     );
-    expect(view.state.doc.toString()).toBe('[word](url)');
+    expect(document.querySelector('.folio-link-pop')).toBeTruthy();
+    expect(view.state.doc.toString()).toBe('word');
   });
 
   it('quotes and unquotes whole lines', () => {
@@ -170,5 +176,23 @@ describe('live preview of the HTML formats', () => {
   it('leaves an unpaired tag as plain source', () => {
     const view = mount('a <mark>u b', 0, 0);
     expect(view.contentDOM.textContent).toContain('<mark>');
+  });
+});
+
+describe('statusEdit (the cell bar)', () => {
+  const apply = (text: string, from: number, to: number, color: 'green' | 'grey') => {
+    const edit = statusEdit(text, from, to, color);
+    let out = text;
+    for (const c of [...edit.changes].reverse()) out = out.slice(0, c.from) + c.insert + out.slice(c.to ?? c.from);
+    return out;
+  };
+  it('wraps the selection, keeping padding outside', () => {
+    expect(apply('a  Live b', 1, 8, 'green')).toBe('a  :status[Live]{color=green} b');
+  });
+  it('recolours a selection that is already a tag', () => {
+    expect(apply(':status[Live]{color=green}', 0, 26, 'grey')).toBe(':status[Live]');
+  });
+  it('does nothing for a blank selection', () => {
+    expect(apply('   ', 0, 3, 'green')).toBe('   ');
   });
 });

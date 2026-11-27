@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import * as db from './db/pool.js';
 import { setUpTestSchema, deleteTestSpace } from './db/testSchema.js';
 import * as storage from './storage.js';
 import * as authStore from './auth/store.js';
@@ -351,6 +352,75 @@ describe('getSubtree (real fs + real PG)', () => {
   }
 
   const titles = (nodes: SubtreeNode[]): string[] => nodes.map((n) => n.title);
+
+  it('tree reads do not fetch page bodies, search vectors or unrelated frontmatter from PostgreSQL', async () => {
+    const slug = await makeSpace('Tree Metadata', {
+      'index.md': '# Root\n',
+      'guide/index.md': '# Guide\n',
+      'guide/zeta.md': '---\norder: 1\nicon: "book"\ncover: "https://example.com/cover.png"\n---\n\n# Zeta\n',
+      'guide/alpha.md': '---\norder: 2\nstatus: draft\n---\n\n# Alpha\n',
+      'guide/hidden.md': '# Hidden\n',
+      '_templates/sample.md': '# Sample\n',
+    });
+    try {
+      await db.query(
+        `UPDATE pages_index SET plain_text = repeat('Synthetic article text. ', 10000),
+           frontmatter = jsonb_build_object('owner', '@Editor', 'verified', '2020-01-01',
+             'review_by', '2999-01-01', 'unrelated', repeat('x', 100000))
+         WHERE space_slug = $1`,
+        [slug],
+      );
+      const entries = await storage.listEntries(slug);
+      const root = entries.find((e) => e.relPath === 'index.md')!;
+      const allowed = new Set(entries.filter((e) => e.title !== 'Hidden').map((e) => e.id));
+      const reads = vi.spyOn(db, 'query'); // Calls through: inspect actual PG rows before rowToEntry discards columns.
+      try {
+        const operations = [
+          () => storage.getTree(slug, allowed),
+          () => storage.getTemplatesTree(slug, allowed),
+          () => storage.getSubtree(root, 3, allowed),
+          () => storage.listTemplates(slug),
+          () => storage.listEntryMetadata(),
+        ];
+        for (const operation of operations) {
+          reads.mockClear();
+          await operation();
+          const fetched = (await Promise.all(reads.mock.results.map((r) => r.value))).flat()
+            .filter((row) => Object.hasOwn(row, 'path'));
+          expect(fetched.length).toBeGreaterThan(0);
+          for (const row of fetched) {
+            expect(Object.keys(row)).not.toContain('plain_text');
+            expect(Object.keys(row)).not.toContain('tsv');
+          }
+          expect(Buffer.byteLength(JSON.stringify(fetched))).toBeLessThan(16_000);
+        }
+        reads.mockClear();
+        await storage.listEntries(slug);
+        const contentRows = (await Promise.all(reads.mock.results.map((r) => r.value))).flat();
+        for (const row of contentRows) {
+          expect(Object.keys(row)).not.toContain('tsv');
+          expect(row).toHaveProperty('plain_text');
+          expect(row).toHaveProperty('frontmatter.owner', '@Editor');
+          expect(Object.keys((row as { frontmatter: object }).frontmatter)).not.toContain('unrelated');
+        }
+      } finally {
+        reads.mockRestore();
+      }
+
+      const tree = await storage.getTree(slug, allowed);
+      const guide = tree[0].children.find((n) => n.title === 'Guide')!;
+      expect(guide.children.map((n) => n.title)).toEqual(['Zeta', 'Alpha']);
+      expect(guide.children[0]).toMatchObject({ icon: 'book', cover: 'https://example.com/cover.png', order: 1,
+        verification: { owner: 'editor', verified: '2020-01-01', reviewBy: '2999-01-01', state: 'changed' } });
+      expect(guide.children[1].status).toBe('draft');
+      expect((await storage.getTemplatesTree(slug, allowed)).map((n) => n.title)).toContain('Sample');
+      // Content consumers keep the complete indexed text; the optimization is a read projection only.
+      expect(root.body).toBe('Synthetic article text. '.repeat(10000));
+      expect((await storage.requireEntry(root.id)).body).toBe('Synthetic article text. '.repeat(10000));
+    } finally {
+      await deleteTestSpace(slug);
+    }
+  });
 
   describe('form (a): the page is a directory index (index.md / README.md) — getTree\'s own model, scoped', () => {
     it('lists the directory\'s other entries, recursing into subdirectories', async () => {
@@ -1095,10 +1165,10 @@ describe('explicit page order for boards and tables (files are the only truth)',
     const { vi } = await import('vitest');
     const spy = vi.spyOn(getPool(), 'query');
     try {
-      const page = await storage.createPage({ space: space.slug, parentPath: '', title: 'Heavy page' }, { docBody: `# Heavy page\n\n${'needle '.repeat(500)}\n` });
+      const page = await storage.createPage({ space: space.slug, parentPath: '', title: 'Heavy page', kind: 'doc' }, { docBody: `# Heavy page\n\n${'needle '.repeat(500)}\n` });
       const { query } = await import('./db/pool.js');
       await query(`UPDATE pages_index SET frontmatter = $2::jsonb WHERE id = $1`, [page.id, JSON.stringify({ owner: 'ann', verified: '2099-01-01', review_by: '2099-12-31', big: 'x'.repeat(2000) })]);
-      await storage.createPage({ space: space.slug, parentPath: '_templates', title: 'Tpl' });
+      await storage.createPage({ space: space.slug, parentPath: '_templates', title: 'Tpl', kind: 'doc' });
 
       spy.mockClear();
       const tree = await storage.getTree(space.slug);

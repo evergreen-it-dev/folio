@@ -11,6 +11,7 @@
 .cm-folio-preview,
 .cm-folio-format,
 .folio-emoji-pop,
+.folio-link-pop,
 .folio-status-pop,
 .folio-emoji-picker,
 .folio-tablemenu,
@@ -90,6 +91,7 @@ html[data-width='wide'] .folio-editor {
       .cm-folio-preview,
       .cm-folio-format,
       .folio-emoji-pop,
+      .folio-link-pop,
       .folio-status-pop,
       .folio-emoji-picker,
       .folio-tablemenu,
@@ -143,6 +145,7 @@ html[data-width='wide'] .folio-editor {
     .cm-folio-preview,
     .cm-folio-format,
     .folio-emoji-pop,
+    .folio-link-pop,
     .folio-status-pop,
     .folio-emoji-picker,
     .folio-tablemenu,
@@ -1337,7 +1340,40 @@ html[data-theme='dark'] .folio-editor .cm-md-callout-caution {
    `overscroll-behavior-x` keeps that swipe out of the browser's back gesture. */
 .cm-md-table-scroll {
   overflow-x: auto;
+  /* `overflow-x: auto` alone makes overflow-y compute to `auto` too, so the
+     box silently became a second vertical scroller whenever the grid was a
+     pixel taller than it (handle overlay, subpixel rounding) and wheel
+     gestures latched onto it instead of the page. Vertical overflow is now
+     explicit: hidden (page scrolls) unless the table is pinned, see below. */
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
+  /* Vertical overscroll stays `auto` on purpose: at the end of the inner
+     scroll the gesture chains on to the page. */
+}
+
+/* Pinned (default): a tall table scrolls inside its own box, both axes in this
+   one element so the header row can stick to its top. A short table never
+   reaches the cap, so nothing changes for it. */
+.cm-md-table-widget[data-pinned='true'] .cm-md-table-scroll {
+  overflow-y: auto;
+  max-height: 70vh;
+}
+.cm-md-table-widget[data-pinned='true'] .cm-md-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background-clip: padding-box;
+  /* border-collapse borders do not travel with a sticky cell. */
+  box-shadow: 0 1px 0 var(--folio-ed-border), 0 2px 4px -2px rgb(0 0 0 / 0.25);
+}
+.cm-md-table-widget[data-pinned='true'] .cm-md-grid thead th[data-selected='true'] {
+  box-shadow:
+    inset 0 0 0 2px var(--folio-ed-accent),
+    0 1px 0 var(--folio-ed-border),
+    0 2px 4px -2px rgb(0 0 0 / 0.25);
+}
+.cm-md-table-pinbtn[aria-pressed='true'] {
+  color: var(--folio-ed-accent);
 }
 
 /* Like Confluence, a table may leave the prose measure without widening the
@@ -3319,6 +3355,7 @@ body:has([data-app-modal]) :is(
     .cm-folio-format--field,
     .folio-emoji-pop,
     .folio-emoji-picker,
+    .folio-link-pop,
     .folio-status-pop,
     .folio-tablemenu,
     .folio-image-editor
@@ -3473,4 +3510,83 @@ body:has([data-app-modal]) :is(
   font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+
+/* The link popover: one input that takes an address or searches the pages. */
+.folio-link-pop {
+  width: min(22rem, var(--folio-ed-popmax));
+  padding: 0.25rem;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 10px;
+  background: var(--folio-ed-panel);
+  color: var(--folio-ed-fg);
+  box-shadow: var(--folio-ed-shadow);
+  font-family: var(--folio-ed-sans);
+  font-size: 13px;
+}
+
+.folio-link-pop__input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--folio-ed-border);
+  border-radius: 6px;
+  background: var(--folio-ed-bg);
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.folio-link-pop__input:focus {
+  border-color: var(--folio-ed-accent);
+}
+
+.folio-link-pop__list {
+  max-height: min(15rem, 50vh);
+  margin-top: 0.25rem;
+  overflow-y: auto;
+}
+
+.folio-link-pop__row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--folio-ed-fg);
+  font: inherit;
+  text-align: left;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+}
+
+.folio-link-pop__row[data-active='true'] {
+  background: var(--folio-ed-surface);
+}
+
+.folio-link-pop__title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folio-link-pop__path {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--folio-ed-faint);
+  font-size: 11px;
+}
+
+.folio-link-pop__hint {
+  padding: 0.25rem 0.4rem;
+  color: var(--folio-ed-muted);
+  font-size: 12px;
 }
