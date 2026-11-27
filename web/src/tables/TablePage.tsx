@@ -111,6 +111,20 @@ export function TablePage({
   toolbarExtra,
 }: TableEditorProps) {
   const { t } = useTranslation('tables');
+
+  // react-datasheet-grid takes `height` as the grid's MAXIMUM height and falls back to 400px without it, which left
+  // the rest of a tall screen empty under a long table. The box the grid sits in is sized by the page's flex layout;
+  // its client height is the ceiling (a short table still shrinks to its rows).
+  const [gridBox, setGridBox] = useState<HTMLDivElement | null>(null);
+  const [gridHeight, setGridHeight] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (!gridBox || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setGridHeight(gridBox.clientHeight > 0 ? gridBox.clientHeight : undefined);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(gridBox);
+    return () => observer.disconnect();
+  }, [gridBox]);
   const { doc, dispatch } = useDocState(incoming, onPatch, pageId);
 
   const readOnly = !canEdit(role);
@@ -609,11 +623,12 @@ export function TablePage({
       )}
 
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-auto">
+        <div ref={setGridBox} className="min-w-0 flex-1 overflow-auto">
           <Suspense
             fallback={<p className="p-4 text-sm text-neutral-400">{t('grid.loading')}</p>}
           >
             <LazyGrid
+              height={gridHeight}
               rows={rows}
               columns={shownColumns}
               view={view}

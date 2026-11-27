@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { Eye, Pencil } from 'lucide-react';
 import type { SharedPagePayload, SpaceRole, SubtreeNode } from '@shared/contracts';
@@ -77,7 +77,10 @@ export function SharedPageView() {
   // `?as=guest` keeps the guest view, so the owner can still preview what a guest sees. /share lives outside
   // the authenticated router tree, hence a full location replace; nothing of the guest view is shown meanwhile.
   const [searchParams] = useSearchParams();
-  const ownAccess = searchParams.get('as') === 'guest' ? undefined : data?.ownAccess;
+  const asGuest = searchParams.get('as') === 'guest';
+  const ownAccess = asGuest ? undefined : data?.ownAccess;
+  // State D: the owner opted into the guest preview — the redirect above is skipped, the banner explains why.
+  const previewAccess = asGuest ? data?.ownAccess : undefined;
   useEffect(() => {
     if (!ownAccess) return;
     const target = `/s/${encodeURIComponent(ownAccess.space)}/p/${encodeURIComponent(ownAccess.pageId)}${window.location.hash}`;
@@ -108,7 +111,7 @@ export function SharedPageView() {
   }
 
   return (
-    <div className="flex h-full min-h-screen flex-col bg-white dark:bg-neutral-950">
+    <div className="flex h-dvh flex-col bg-white dark:bg-neutral-950">
       <header className="flex shrink-0 items-center gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
         <a
           href={FOLIO_PRODUCT_URL}
@@ -125,6 +128,14 @@ export function SharedPageView() {
             <span className="shrink-0 text-neutral-300 dark:text-neutral-700" aria-hidden="true">
               /
             </span>
+            {data.spaceName && (
+              <>
+                <span className="hidden max-w-[10rem] shrink-0 truncate text-sm text-neutral-500 sm:inline dark:text-neutral-500">{data.spaceName}</span>
+                <span className="hidden shrink-0 text-neutral-300 sm:inline dark:text-neutral-700" aria-hidden="true">
+                  /
+                </span>
+              </>
+            )}
             <span className="min-w-0 truncate text-sm text-neutral-600 dark:text-neutral-400">
               {data.page.icon ? `${data.page.icon} ` : ''}
               {data.page.title}
@@ -134,14 +145,18 @@ export function SharedPageView() {
         {data && (
           <span className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
             {data.mode === 'edit' ? <Pencil size={11} aria-hidden="true" /> : <Eye size={11} aria-hidden="true" />}
-            {/* On an artifact page the header also holds the action buttons: on a phone the pill keeps just its icon. */}
-            <span className={data.page.kind === 'artifact' ? 'max-sm:sr-only' : undefined}>
-              {t('share.public.pill', { mode: t(data.mode === 'edit' ? 'share.public.editMode' : 'share.public.viewMode') })}
+            {/* On a phone the pill keeps just its icon: the page title and who is signed in need the room. */}
+            <span className="max-sm:sr-only">
+              {data.viewer && data.mode === 'view' && !previewAccess
+                ? t('share.public.pillGuest')
+                : t('share.public.pill', { mode: t(data.mode === 'edit' ? 'share.public.editMode' : 'share.public.viewMode') })}
             </span>
           </span>
         )}
         <div ref={setHeaderActions} className="flex shrink-0 items-center empty:hidden" />
+        {data && <ShareHeaderIdentity viewer={data.viewer} />}
       </header>
+      {data && <ShareViewerBanner payload={data} previewAccess={previewAccess} />}
 
       <div className="flex min-h-0 flex-1">
         {nav && (
@@ -172,6 +187,131 @@ export function SharedPageView() {
         </div>
       </div>
     </div>
+  );
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const letters = parts.length > 1 ? [parts[0], parts[parts.length - 1]] : [parts[0] ?? ''];
+  return letters.map((w) => Array.from(w)[0] ?? '').join('').toUpperCase() || '?';
+}
+
+/** Right end of the header: "Sign in" for an anonymous visitor, otherwise who is signed in (an "Admin" badge for an instance admin). */
+function ShareHeaderIdentity({ viewer }: { viewer: SharedPagePayload['viewer'] }) {
+  const { t } = useTranslation('app');
+  const location = useLocation();
+  if (!viewer) {
+    const returnTo = `${location.pathname}${location.search}`;
+    return (
+      <a
+        href={`/login?returnTo=${encodeURIComponent(returnTo)}`}
+        className="shrink-0 whitespace-nowrap rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-900"
+      >
+        {t('share.public.signIn')}
+      </a>
+    );
+  }
+  return (
+    <span className="flex shrink-0 items-center gap-1.5" title={t('share.public.signedInAs', { name: viewer.name })}>
+      {viewer.isInstanceAdmin && (
+        <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-medium leading-4 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+          {t('share.public.adminBadge')}
+        </span>
+      )}
+      <span
+        aria-label={t('share.public.signedInAs', { name: viewer.name })}
+        className="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-semibold text-neutral-700 dark:bg-neutral-700 dark:text-neutral-100"
+      >
+        {initialsOf(viewer.name)}
+      </span>
+    </span>
+  );
+}
+
+const BANNER_BUTTON =
+  'inline-flex min-h-8 items-center justify-center rounded-md px-3 py-1 text-xs font-medium disabled:cursor-default';
+const BANNER_PRIMARY = `${BANNER_BUTTON} bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60`;
+const BANNER_SECONDARY = `${BANNER_BUTTON} border border-neutral-300 text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-800`;
+
+/**
+ * The strip under the header that says why a signed-in visitor still sees the guest view:
+ * B no role in the space (ask for access), C instance admin who is not a member (add themselves),
+ * D has access but opened `?as=guest` (preview). Nothing for an anonymous visitor or a plain guest session-less view.
+ */
+function ShareViewerBanner({ payload, previewAccess }: { payload: SharedPagePayload; previewAccess: SharedPagePayload['ownAccess'] }) {
+  const { t } = useTranslation('app');
+  const { viewer } = payload;
+  const space = payload.page.space;
+  const [requested, setRequested] = useState(false);
+
+  const requestAccess = useMutation({
+    mutationFn: () => api.createAccessRequest(space),
+    onSuccess: () => setRequested(true),
+  });
+  // Through the Access page's bulk endpoint, not PUT .../members: that one records the change as
+  // `access.self_grant`, so an admin letting themselves in from a share link shows up in the space's access log.
+  const addMe = useMutation({
+    mutationFn: async () => {
+      const result = await api.applyAccessBulk({ changes: [{ userId: viewer!.id, space, role: 'viewer' }], reason: 'share link' });
+      if (result.errors.length > 0) throw new Error(result.errors[0]!.error);
+    },
+    onSuccess: () => window.location.replace(`/s/${encodeURIComponent(space)}/p/${encodeURIComponent(payload.page.id)}`),
+  });
+
+  if (!viewer) return null;
+  const spaceName = payload.spaceName || space;
+  const shell = (tone: string, text: string, children: ReactNode, error?: string) => (
+    <div role="status" className={`flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5 text-sm ${tone}`}>
+      <p className="min-w-0 flex-1 basis-64">{text}</p>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+      {error && <p className="basis-full text-xs text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  );
+  const neutral = 'border-neutral-200 bg-neutral-50 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-300';
+
+  if (previewAccess) {
+    const own = `/s/${encodeURIComponent(previewAccess.space)}/p/${encodeURIComponent(previewAccess.pageId)}`;
+    return shell(
+      'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200',
+      t('share.public.bannerPreview'),
+      <>
+        <a href={own} className={BANNER_PRIMARY}>{t('share.public.backToPage')}</a>
+        <a href={own} className={BANNER_SECONDARY}>{t('share.public.manageLink')}</a>
+      </>,
+    );
+  }
+  if (payload.ownAccess) return null; // redirecting to the account
+
+  if (viewer.canAdministerSpace && !viewer.hasSpaceRole) {
+    return shell(
+      'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200',
+      t('share.public.bannerAdmin', { space: spaceName }),
+      <>
+        <button type="button" disabled={addMe.isPending} onClick={() => addMe.mutate()} className={BANNER_PRIMARY}>
+          {t('share.public.addMe')}
+        </button>
+        <a href="/admin/access?tab=spaces" className={BANNER_SECONDARY}>{t('share.public.manageSpace')}</a>
+      </>,
+      addMe.isError ? t('share.public.addMeFailed') : undefined,
+    );
+  }
+
+  const pending = requested || viewer.accessRequestPending === true;
+  return shell(
+    neutral,
+    t('share.public.bannerGuest', { space: spaceName }),
+    <>
+      <button
+        type="button"
+        disabled={pending || requestAccess.isPending}
+        onClick={() => requestAccess.mutate()}
+        className={pending ? `${BANNER_SECONDARY} opacity-60` : BANNER_PRIMARY}
+      >
+        {pending ? t('share.public.accessRequested') : t('share.public.requestAccess')}
+      </button>
+      <a href="/" className={BANNER_SECONDARY}>{t('share.public.myFolio')}</a>
+    </>,
+    requestAccess.isError ? t('share.public.requestFailed') : undefined,
   );
 }
 
@@ -398,7 +538,7 @@ function SharedPageBody({ payload, token, headerActions }: { payload: SharedPage
     // Read-only whatever the link's mode. File cards show the pages this share holds (title and start of a note,
     // resolved by the server for the share's own page set) without opening them, and "No access" for the rest.
     return (
-      <div className="h-[calc(100dvh-6rem)] min-h-[24rem] w-full">
+      <div className="h-full min-h-[24rem] w-full">
         <CanvasPane
           payload={page.canvas}
           pageId={page.id}

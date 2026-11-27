@@ -42,7 +42,7 @@ export function SortPanel({ columns, sort, onChange }: SortPanelProps) {
   }
 
   return (
-    <ToolbarPanel icon={<ArrowUpDown size={12} />} label={t('toolbar.sort')} count={sort.length}>
+    <ToolbarPanel wide icon={<ArrowUpDown size={12} />} label={t('toolbar.sort')} count={sort.length}>
       {() => (
         <div className="flex flex-col gap-2">
           {sort.length === 0 && <p className="py-2 text-center text-xs text-neutral-400">{t('sort.empty')}</p>}
@@ -57,6 +57,8 @@ export function SortPanel({ columns, sort, onChange }: SortPanelProps) {
               <span className="w-4 shrink-0 text-[11px] text-neutral-400">{index + 1}</span>
               <Select
                 hideLabel
+                className="min-w-0 flex-1"
+                selectClassName="w-full"
                 label={t('sort.column')}
                 value={level.column}
                 onChange={(column) =>
@@ -71,6 +73,7 @@ export function SortPanel({ columns, sort, onChange }: SortPanelProps) {
               />
               <Select
                 hideLabel
+                className="min-w-0 shrink-0"
                 label={t('sort.direction')}
                 value={level.dir}
                 onChange={(dir) =>
@@ -83,6 +86,7 @@ export function SortPanel({ columns, sort, onChange }: SortPanelProps) {
               />
               <Button
                 iconOnly
+                className="shrink-0"
                 variant="ghost"
                 disabled={index === 0}
                 icon={<ChevronUp size={12} />}
@@ -92,6 +96,7 @@ export function SortPanel({ columns, sort, onChange }: SortPanelProps) {
               </Button>
               <Button
                 iconOnly
+                className="shrink-0"
                 variant="ghost"
                 disabled={index === sort.length - 1}
                 icon={<ChevronDown size={12} />}
@@ -101,6 +106,7 @@ export function SortPanel({ columns, sort, onChange }: SortPanelProps) {
               </Button>
               <Button
                 iconOnly
+                className="shrink-0"
                 variant="ghost"
                 icon={<Trash2 size={12} />}
                 onClick={() => onChange(sort.filter((_, i) => i !== index))}

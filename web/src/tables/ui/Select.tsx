@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 /**
  * Round 26 (DATA TABLES) — styled native <select>.
@@ -30,6 +31,8 @@ export interface SelectProps<T extends string> {
   hideLabel?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Extra classes for the <select> itself (e.g. `w-full` to fill a flex item). */
+  selectClassName?: string;
   children?: ReactNode;
 }
 
@@ -41,6 +44,7 @@ export function Select<T extends string>({
   hideLabel,
   disabled,
   className,
+  selectClassName,
 }: SelectProps<T>) {
   const select = (
     <select
@@ -48,7 +52,7 @@ export function Select<T extends string>({
       disabled={disabled}
       aria-label={hideLabel ? label : undefined}
       onChange={(event) => onChange(event.target.value as T)}
-      className="min-w-0 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200"
+      className={`min-w-0 truncate appearance-none rounded-md border border-neutral-300 bg-white py-1 pr-6 pl-2 text-xs text-neutral-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 ${selectClassName ?? ''}`}
     >
       {options.map((option) => (
         <option key={option.value} value={option.value} disabled={option.disabled}>
@@ -57,13 +61,32 @@ export function Select<T extends string>({
       ))}
     </select>
   );
+  // Native arrow is hidden (appearance-none) so it can't sit on the border;
+  // this icon replaces it and never intercepts clicks.
+  const chevron = (
+    <ChevronDown
+      size={12}
+      aria-hidden
+      className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-neutral-400 dark:text-neutral-500"
+    />
+  );
 
-  if (hideLabel) return <span className={className}>{select}</span>;
+  if (hideLabel) {
+    return (
+      <span className={`relative inline-flex ${className ?? ''}`}>
+        {select}
+        {chevron}
+      </span>
+    );
+  }
 
   return (
     <label className={`inline-flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 ${className ?? ''}`}>
       <span>{label}</span>
-      {select}
+      <span className="relative inline-flex min-w-0">
+        {select}
+        {chevron}
+      </span>
     </label>
   );
 }

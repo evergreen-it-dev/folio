@@ -198,6 +198,19 @@ describe('F-02: a subtree share excludes restricted pages and everything below t
       expect(stranger.statusCode).toBe(200);
       expect((stranger.json() as SharedPagePayload).ownAccess).toBeUndefined();
       expect(stranger.body).not.toContain('ownAccess');
+
+      // viewer: absent for a guest, present (without admin rights) for a signed-in non-member.
+      expect((guest.json() as SharedPagePayload).viewer).toBeUndefined();
+      expect(guest.body).not.toContain('viewer');
+      const strangerViewer = (stranger.json() as SharedPagePayload).viewer;
+      expect(strangerViewer).toMatchObject({ id: outsider.id, name: 'Outsider', isInstanceAdmin: false, canAdministerSpace: false, hasSpaceRole: false });
+
+      // An instance admin who is not a member: administers membership, still no content access.
+      const rootAdmin = await authStore.createUser({ email: `acl-share-admin-${stamp}@example.com`, name: 'Root Admin', passwordHash: 'x', isAdmin: true });
+      const adminRes = await app.inject({ method: 'GET', url: `/api/share/${token}`, headers: { cookie: await cookieOf(rootAdmin) } });
+      const adminPayload = adminRes.json() as SharedPagePayload;
+      expect(adminPayload.ownAccess).toBeUndefined();
+      expect(adminPayload.viewer).toMatchObject({ isInstanceAdmin: true, canAdministerSpace: true, hasSpaceRole: false });
     } finally {
       await shares.revokeShare(id);
     }

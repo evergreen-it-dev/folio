@@ -41,6 +41,24 @@ const SSO_ERROR_KEYS: Record<string, string> = {
 };
 
 /**
+ * A same-origin path (path + query + hash) from a `returnTo` value, or undefined. Resolved by the URL parser rather
+ * than by prefix checks: browsers strip tabs and newlines from URLs, so `/\t/evil.example` would pass a "starts with
+ * `/` but not `//`" test and still navigate off-site.
+ */
+export function safeReturnPath(value: string | null | undefined): string | undefined {
+  if (!value || typeof window === 'undefined' || !value.startsWith('/')) return undefined;
+  let url: URL;
+  try {
+    url = new URL(value, window.location.origin);
+  } catch {
+    return undefined;
+  }
+  if (url.origin !== window.location.origin) return undefined;
+  if (url.pathname === '/login' || url.pathname.startsWith('/api/')) return undefined;
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
  * The page the person opened before signing in, as a same-origin relative path (path + query + hash) the server
  * brings them back to after single sign-on — or undefined for the root and /login (the default landing), where there
  * is nothing to return to. The `authError` of a previous failed attempt is dropped so a retry does not carry it.
@@ -48,6 +66,8 @@ const SSO_ERROR_KEYS: Record<string, string> = {
 export function currentReturnTo(): string | undefined {
   if (typeof window === 'undefined') return undefined;
   const { pathname, search, hash } = window.location;
+  // `/login?returnTo=<path>` (the share page's "Sign in"): the page named there is where to come back to.
+  if (pathname === '/login') return safeReturnPath(new URLSearchParams(search).get('returnTo'));
   if (!pathname.startsWith('/') || pathname.startsWith('//') || pathname === '/' || pathname === '/login') return undefined;
   const params = new URLSearchParams(search);
   params.delete('authError');

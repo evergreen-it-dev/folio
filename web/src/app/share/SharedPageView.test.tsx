@@ -299,3 +299,83 @@ describe('SharedPageView — own account', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 });
+
+describe('SharedPageView — viewer states', () => {
+  const viewerBase = { id: 'u1', name: 'Ada Lovelace', isInstanceAdmin: false, canAdministerSpace: false, hasSpaceRole: false };
+
+  it('A: anonymous sees "Sign in" with a return-to back to the share URL, and no banner', async () => {
+    stubFetchByUrl({ '/api/share/t1': docPayload({}) });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    const link = screen.getByRole('link', { name: 'Sign in' });
+    expect(link.getAttribute('href')).toBe(`/login?returnTo=${encodeURIComponent('/share/t1')}`);
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText('Space')).toBeTruthy(); // breadcrumb space name
+  });
+
+  it('B: signed in without a role sees the guest banner, request access and My Folio', async () => {
+    stubFetchByUrl({ '/api/share/t1': docPayload({}, { viewer: viewerBase }) });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
+    expect(screen.getByText('As a guest · View only')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain("You don't have a role in the “Space” space yet.");
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'My Folio' }).getAttribute('href')).toBe('/');
+    expect(screen.getByLabelText('Signed in as Ada Lovelace').textContent).toBe('AL');
+  });
+
+  it('B: a pending request shows the disabled "Access requested" state', async () => {
+    stubFetchByUrl({ '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, accessRequestPending: true } }) });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    const button = screen.getByRole('button', { name: 'Access requested' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it('C: an instance admin who is not a member sees the Admin badge and "Add me to the space"', async () => {
+    stubFetchByUrl({ '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, isInstanceAdmin: true, canAdministerSpace: true } }) });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    expect(screen.getByText('Admin')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('not a member of the “Space” space');
+    expect(screen.getByRole('button', { name: 'Add me to the space' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Manage space' }).getAttribute('href')).toBe('/admin/access?tab=spaces');
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+  });
+
+  it('C: "Add me" goes through the audited access endpoint as a viewer self-grant and shows a per-row error', async () => {
+    const fetchMock = stubFetchByUrl({
+      '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, isInstanceAdmin: true, canAdministerSpace: true } }),
+      '/api/access/bulk': { applied: [], errors: [{ userId: 'u1', space: 'sp', error: 'nope' }] } as unknown as SharedPagePayload,
+    });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Add me to the space' }));
+    await waitFor(() => expect(screen.getByText('Could not add you to the space. Try again.')).toBeTruthy());
+    const call = fetchMock.mock.calls.find(([url]) => String(url) === '/api/access/bulk') as unknown as [string, RequestInit] | undefined;
+    expect(call).toBeTruthy();
+    expect(JSON.parse(String(call![1].body))).toEqual({ changes: [{ userId: 'u1', space: 'sp', role: 'viewer' }], reason: 'share link' });
+  });
+
+  it('C is not offered to an admin who already holds a role in the space (it would rewrite that role)', async () => {
+    stubFetchByUrl({
+      '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, canAdministerSpace: true, hasSpaceRole: true } }),
+    });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: 'Add me to the space' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+  });
+
+  it('D: ?as=guest with own access shows the preview banner instead of redirecting', async () => {
+    stubFetchByUrl({
+      '/api/share/t1': docPayload({}, { viewer: viewerBase, ownAccess: { space: 'sp', pageId: 'root1' } }),
+    });
+    renderShare('/share/t1?as=guest');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    expect(screen.getByRole('status').textContent).toContain('This is how a guest sees this page through this link.');
+    expect(screen.getByRole('link', { name: 'Back to the page' }).getAttribute('href')).toBe('/s/sp/p/root1');
+    expect(screen.getByRole('link', { name: 'Manage link' })).toBeTruthy();
+  });
+});

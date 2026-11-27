@@ -106,6 +106,7 @@ import * as proposals from './proposals.js';
 import type { ProposedResult } from '../shared/proposals.js';
 import { assertDemoAgentRootIntact, assertNotDemo, assertNotDemoAccount } from './demo.js';
 import * as authStore from './auth/store.js';
+import * as notificationsStore from './notifications/store.js';
 import { hashPassword } from './auth/passwords.js';
 import { ssoState } from './auth/routes.js';
 import { ssoRequired, toPublicProvider } from './auth/oidc.js';
@@ -1974,6 +1975,19 @@ export function registerPublicShareRoutes(app: FastifyInstance): void {
     if (viewer) {
       const role = await session.effectivePageRole(viewer, entry).catch(() => undefined);
       if (session.roleAtLeast(role, 'viewer')) payload.ownAccess = { space: entry.space, pageId: entry.id };
+      // Who the page header says is signed in, and (without access of their own) which state the banner shows.
+      // Only the visitor's own session reaches this branch, so an anonymous request learns nothing from it.
+      const canAdminister = await session.canAdministerSpace(viewer, entry.space);
+      const hasSpaceRole = (await session.effectiveRole(viewer, entry.space).catch(() => undefined)) !== undefined;
+      const pending = payload.ownAccess || canAdminister ? undefined : await notificationsStore.findPendingAccessRequest(entry.space, viewer.id).catch(() => undefined);
+      payload.viewer = {
+        id: viewer.id,
+        name: viewer.name,
+        isInstanceAdmin: viewer.isAdmin,
+        canAdministerSpace: canAdminister,
+        hasSpaceRole,
+        ...(pending ? { accessRequestPending: true } : {}),
+      };
     }
     return payload;
   });

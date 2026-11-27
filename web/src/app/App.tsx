@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Suspense, lazy, useMemo } from 'react';
+import { Suspense, lazy, useEffect, useMemo } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { PUBLIC_SITE_PATH_PREFIX } from '@shared/contracts';
 import { ToastProvider } from './ui/Toast';
 import { SettingsProvider } from './settings';
 import { AuthProvider } from './auth/AuthProvider';
+import { safeReturnPath } from './auth/LoginScreen';
 import { AssistantHost } from './assistant/AssistantHost';
 import { CompareProvider } from './compare/CompareProvider';
 import { ComparePage } from './compare/ComparePage';
@@ -91,6 +92,18 @@ export function App() {
       </SettingsProvider>
     </QueryClientProvider>
   );
+}
+
+/**
+ * `/login` after the session exists: home, or the page named by `?returnTo=` (the share page's "Sign in" link).
+ * A full location replace, because the target may live outside this router tree (`/share/...`).
+ */
+function LoginReturn() {
+  const target = safeReturnPath(new URLSearchParams(window.location.search).get('returnTo'));
+  useEffect(() => {
+    if (target) window.location.replace(target);
+  }, [target]);
+  return target ? null : <Navigate to="/" replace />;
 }
 
 /**
@@ -189,7 +202,7 @@ function AppRoutes() {
             once the session exists, the tree matched it against the catch-all and
             rendered a 404 to a user who had just logged in successfully. Anyone who
             bookmarks the login URL hits that. Send it home instead. */}
-        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/login" element={<LoginReturn />} />
         {/* OAuth for MCP: after logging in at the consent URL, ask the server for it again. */}
         <Route path="/oauth/authorize" element={<OAuthResume />} />
         {/* Round 27: consolidated into /admin/access (spec-access.md §6) — redirect stale links/bookmarks rather than 404 them. */}

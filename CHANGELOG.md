@@ -16,6 +16,7 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 - `move_page` MCP tool: moves a page with its subpages to another folder of the same space, rewriting the links to and from it, in one Git commit (not available while the space is in review mode).
 - A stdio bridge for the MCP endpoint (`npm run mcp:stdio`, with `FOLIO_URL` and `FOLIO_TOKEN`) for clients that only speak stdio; without a reachable instance it still lists the tools.
 - Published images carry an SBOM and build provenance, and are signed with cosign keyless; the verify command is in `.github/workflows/publish-image.yml` (thanks @babs, #25).
+- A share link says who opened it: a Sign in button for a visitor, and for a signed-in person the avatar plus a banner explaining why they see the guest view — Request access without a role in the space, Add me to the space for a Folio admin who is not a member (recorded in the space's access log as a self-grant), and a note when someone with access previews the link with `?as=guest`. The header also names the space.
 
 ### Fixed
 
@@ -27,6 +28,8 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 - The image is published again: each platform builds on a native runner, since the arm64 build under emulation crashed and no 0.4.5 image was published (reported in #24, fixed by @babs in #25).
 - Expanding a folder with thousands of pages no longer freezes navigation: the sidebar renders only the rows in view, and keyboard navigation, drag and drop and revealing the current page still work (reported in #20).
 - Creating or moving a page where a file already occupies the folder path answers 409 instead of a server error, and saving a page whose file was just moved or deleted answers 404.
+- A long table fills the height of the screen instead of stopping at 400 px with empty space below, in the app and on share links.
+- A table's sort panel fits its rows: the column and direction pickers and the reorder and remove buttons stay visible with longer labels, and the arrows of the table's dropdowns no longer sit on their border.
 
 ### Changed
 

@@ -2205,6 +2205,26 @@ export interface SharedPagePayload {
    * for a signed-in user without access of their own.
    */
   ownAccess?: { space: string; pageId: string };
+  /**
+   * Present only when the request carried a valid session (never for an anonymous visitor): who is signed in, so
+   * the guest view can say so. `canAdministerSpace` is true for an instance admin and for an admin member of the
+   * space — administering membership, not reading content, so it does not imply `ownAccess`.
+   */
+  viewer?: {
+    /** The viewer's own user id (what the space membership endpoint takes as identifier). */
+    id: string;
+    name: string;
+    isInstanceAdmin: boolean;
+    canAdministerSpace: boolean;
+    /**
+     * The viewer already holds a role in the space (explicit membership or the implicit viewer grant). "Add me to
+     * the space" is offered only without one: for a member it would rewrite (and could downgrade) their role, and it
+     * would not open a page closed by a page restriction anyway.
+     */
+    hasSpaceRole: boolean;
+    /** The viewer already asked for access to this space and nobody has decided yet. */
+    accessRequestPending?: boolean;
+  };
 }
 
 // ---------- invitations by link (round 9) ----------
