@@ -6,7 +6,7 @@
 # already bundled them into web/dist, which keeps the runtime image small.
 # Building on Apple Silicon for an x86_64 host needs --platform linux/amd64.
 
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -27,7 +27,7 @@ RUN --mount=type=secret,id=sentry_auth_token \
     if [ -s /run/secrets/sentry_auth_token ]; then export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token)"; fi; \
     npm run build
 
-FROM node:22-alpine
+FROM node:26-alpine
 # git — spaces are git clones; chromium + font-noto — PDF export (round 23):
 # puppeteer-core needs a system browser (see server/export/pdf.ts), and
 # without font-noto Cyrillic renders as boxes. tini — signals + git children.
