@@ -2,8 +2,9 @@ import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { Lock } from 'lucide-react';
 import { useDocumentTitle } from '../hooks';
-import { useSpaceRole } from '../auth/AuthProvider';
+import { useAuthOptional, useSpaceRole } from '../auth/AuthProvider';
 import { RequestAccessButton } from '../notifications/RequestAccessButton';
+import { GiveMyselfAccessButton, RequestPageAccessButton } from '../notifications/PageAccessActions';
 import '../i18n/register';
 
 export interface NoAccessProps {
@@ -21,6 +22,8 @@ export interface NoAccessProps {
    * have access".
    */
   page?: boolean;
+  /** The page that answered 403, when the route knows it: lets the screen offer the page-level actions. */
+  pageId?: string;
 }
 
 /**
@@ -34,21 +37,26 @@ export interface NoAccessProps {
  * keeps anonymous visitors out), so a "request access" button is always
  * addressed to a signed-in user. The public site has its own views.
  */
-export function NoAccess({ space, page = false }: NoAccessProps) {
+export function NoAccess({ space, page = false, pageId }: NoAccessProps) {
   const { t } = useTranslation('app');
   const role = useSpaceRole(space);
+  const isInstanceAdmin = useAuthOptional()?.user.isAdmin === true;
   useDocumentTitle(t('routes.noAccess.title'));
 
+  // An instance admin on a page that answered 403 can let themselves in (a recorded grant — there is no admin bypass).
+  const canSelfGrant = isInstanceAdmin && page && Boolean(pageId);
   // No role in the space: access to the whole space can be requested.
-  const canRequest = Boolean(space) && role === undefined;
+  const canRequest = !canSelfGrant && Boolean(space) && role === undefined;
   // A role in the space, yet a page answered 403: the page itself is restricted.
-  const restrictedPage = Boolean(space) && role !== undefined && page;
+  const restrictedPage = !canSelfGrant && Boolean(space) && role !== undefined && page;
 
-  const message = canRequest
-    ? t('routes.noAccess.space', { space })
-    : restrictedPage
-      ? t('routes.noAccess.restrictedPage')
-      : t('routes.noAccess.generic');
+  const message = canSelfGrant
+    ? t('routes.noAccess.restrictedPageAdmin')
+    : canRequest
+      ? t('routes.noAccess.space', { space })
+      : restrictedPage
+        ? t('routes.noAccess.restrictedPage')
+        : t('routes.noAccess.generic');
 
   return (
     <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
@@ -56,6 +64,8 @@ export function NoAccess({ space, page = false }: NoAccessProps) {
       <h1 className="text-xl font-semibold text-neutral-700 dark:text-neutral-300">{t('routes.noAccess.title')}</h1>
       <p className="max-w-sm text-sm text-neutral-500 dark:text-neutral-400">{message}</p>
       {canRequest && space && <RequestAccessButton space={space} />}
+      {canSelfGrant && pageId && <GiveMyselfAccessButton pageId={pageId} />}
+      {restrictedPage && space && pageId && <RequestPageAccessButton space={space} pageId={pageId} />}
       <Link to="/" className="text-sm text-blue-600 underline underline-offset-2 dark:text-blue-400">
         {t('admin.backHome')}
       </Link>

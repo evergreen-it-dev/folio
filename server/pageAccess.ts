@@ -6,7 +6,8 @@ import * as roles from './access/roles.js';
 import { closedPagesSql, groupInSpaceSql, notClosedSql } from './access/roleSql.js';
 import * as groupStore from './groups/store.js';
 import { recordAudit } from './audit.js';
-import { badRequest } from './errors.js';
+import { badRequest, conflict } from './errors.js';
+import * as storage from './storage.js';
 import { AGENT_FOLDER, isAgentPath } from './agentPath.js';
 
 /** The page role on top of `spaceRole` (access/roles.ts resolvePageRole over the page's restriction chain: its own rule and its restricted ancestors'). */
@@ -276,4 +277,101 @@ async function auditGroupGrantChanges(
       pageId: entry.id,
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Getting INTO a restricted page: an instance admin letting themselves in, and a
+// page owner approving a request. Both write plain user grants (the same rows
+// the access dialog writes) and leave an `access.*` audit row on the SPACE
+// target, so the space's access log shows who opened what. Neither is a bypass
+// of resolvePageRole: access still comes from a membership and grant rows.
+// ---------------------------------------------------------------------------
+
+/**
+ * An instance admin gives THEMSELVES access to a page restricted to named people (there is deliberately no admin
+ * bypass, so the way in is a grant — recorded, never silent). In one transaction:
+ *  - no space role (explicit or implicit) -> a `viewer` membership, audited as `access.self_grant` on the space;
+ *  - every restriction on the page's chain the admin does not pass -> a `viewer` user grant, audited as
+ *    `access.self_grant` (meta.pageId = the restricted page). A restriction the admin already passes (owner, or any
+ *    existing grant — an editor grant is never touched) gets nothing.
+ * Idempotent: with nothing missing it changes nothing and records nothing.
+ */
+export async function selfGrantPageAccess(actor: User, entry: PageIndexEntry): Promise<{ space: string; pageId: string }> {
+  const spaceRole = await roles.effectiveSpaceRole(roles.roleSubject(actor, false), entry.space);
+  const { restrictions } = await roles.loadPageRoleSources(actor.id, entry.id);
+  const missing = restrictions.filter((rule) => roles.restrictionRole(actor.id, rule) === undefined);
+  if (spaceRole === undefined || missing.length > 0) {
+    await withTransaction(async (client) => {
+      if (spaceRole === undefined) {
+        await client.query(
+          `INSERT INTO space_members (space_slug, user_id, role) VALUES ($1, $2, 'viewer')
+           ON CONFLICT (space_slug, user_id) DO NOTHING`,
+          [entry.space, actor.id],
+        );
+      }
+      for (const rule of missing) {
+        await client.query(
+          `INSERT INTO page_access_grants (page_id, user_id, role) VALUES ($1, $2, 'viewer')
+           ON CONFLICT (page_id, user_id) DO NOTHING`,
+          [rule.pageId, actor.id],
+        );
+      }
+    });
+    if (spaceRole === undefined) {
+      recordAudit(actor.id, 'access.self_grant', entry.space, { targetUserId: actor.id, role: 'viewer', previousRole: null, reason: 'page access' });
+    }
+    for (const rule of missing) {
+      recordAudit(actor.id, 'access.self_grant', entry.space, { targetUserId: actor.id, role: 'viewer', pageId: rule.pageId, reason: 'page access' });
+    }
+  }
+  return { space: entry.space, pageId: entry.id };
+}
+
+/**
+ * The restrictions on `entry`'s chain that `decider` may open for somebody else: those whose page they hold an
+ * `editor`+ page role on (an owner is an editor of their own restriction, but a restriction below one they do not
+ * pass themselves does not count — the same right that lets them use that page's access dialog).
+ */
+export async function restrictionsDeciderMayGrant(decider: User, entry: PageIndexEntry, spaceRole: SpaceRole | undefined): Promise<string[]> {
+  if (!spaceRole || decider.disabled) return [];
+  const mine: string[] = [];
+  for (const rule of await roles.restrictionChain(entry.id)) {
+    const ruleEntry = rule.pageId === entry.id ? entry : await storage.getEntry(rule.pageId);
+    if (!ruleEntry) continue;
+    if (roles.roleAtLeast(await effectivePageRole(decider, ruleEntry, spaceRole), 'editor')) mine.push(rule.pageId);
+  }
+  return mine;
+}
+
+/**
+ * Approval of a page access request: a user grant (`viewer` | `editor`) for `requester` on each page of
+ * `restrictedPageIds`, never lowering a grant they already hold, audited as `access.grant` (target = the space,
+ * meta.pageId) per page. The requester must still hold a role in the space — a grant to anybody else would be dormant.
+ * Returns whether the requester now opens `entry`: a restriction owned by somebody else on the chain may still shut them out.
+ */
+export async function grantRequestedPageAccess(
+  actor: User,
+  requester: User,
+  entry: PageIndexEntry,
+  restrictedPageIds: string[],
+  role: PageAccessGrantRole,
+): Promise<{ opensPage: boolean }> {
+  const requesterSpaceRole = await roles.effectiveSpaceRole(roles.roleSubject(requester, false), entry.space);
+  if (!requesterSpaceRole) throw conflict('the requester no longer has a role in this space');
+  const previous = new Map<string, PageAccessGrantRole | null>();
+  await withTransaction(async (client) => {
+    for (const pageId of restrictedPageIds) {
+      const row = await client.query<{ role: PageAccessGrantRole }>('SELECT role FROM page_access_grants WHERE page_id = $1 AND user_id = $2 FOR UPDATE', [pageId, requester.id]);
+      previous.set(pageId, row.rows[0]?.role ?? null);
+      await client.query(
+        `INSERT INTO page_access_grants (page_id, user_id, role) VALUES ($1, $2, $3)
+         ON CONFLICT (page_id, user_id) DO UPDATE SET role = CASE WHEN page_access_grants.role = 'editor' THEN 'editor' ELSE EXCLUDED.role END`,
+        [pageId, requester.id, role],
+      );
+    }
+  });
+  for (const pageId of restrictedPageIds) {
+    recordAudit(actor.id, 'access.grant', entry.space, { targetUserId: requester.id, role, previousRole: previous.get(pageId) ?? null, pageId });
+  }
+  return { opensPage: (await effectivePageRole(requester, entry, requesterSpaceRole)) !== undefined };
 }

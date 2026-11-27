@@ -301,7 +301,7 @@ describe('SharedPageView — own account', () => {
 });
 
 describe('SharedPageView — viewer states', () => {
-  const viewerBase = { id: 'u1', name: 'Ada Lovelace', isInstanceAdmin: false, canAdministerSpace: false, hasSpaceRole: false };
+  const viewerBase = { id: 'u1', name: 'Ada Lovelace', isInstanceAdmin: false, canAdministerSpace: false, hasSpaceRole: false, pageRestricted: false };
 
   it('A: anonymous sees "Sign in" with a return-to back to the share URL, and no banner', async () => {
     stubFetchByUrl({ '/api/share/t1': docPayload({}) });
@@ -358,14 +358,67 @@ describe('SharedPageView — viewer states', () => {
     expect(JSON.parse(String(call![1].body))).toEqual({ changes: [{ userId: 'u1', space: 'sp', role: 'viewer' }], reason: 'share link' });
   });
 
-  it('C is not offered to an admin who already holds a role in the space (it would rewrite that role)', async () => {
+  it('C is not offered to a space admin who already holds a role (it would rewrite that role): a restricted page asks its owner instead', async () => {
     stubFetchByUrl({
-      '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, canAdministerSpace: true, hasSpaceRole: true } }),
+      '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, canAdministerSpace: true, hasSpaceRole: true, pageRestricted: true } }),
     });
     renderShare('/share/t1');
     await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
     expect(screen.queryByRole('button', { name: 'Add me to the space' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+  });
+
+  it('restricted page, instance admin: "Give myself access" posts the page self-grant and then opens the page in the account', async () => {
+    const replace = vi.fn();
+    vi.stubGlobal('location', { ...window.location, replace });
+    const fetchMock = stubFetchByUrl({
+      '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, isInstanceAdmin: true, canAdministerSpace: true, pageRestricted: true } }),
+      '/api/pages/root1/access/self-grant': { space: 'sp', pageId: 'root1' } as unknown as SharedPagePayload,
+    });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    expect(screen.getByRole('status').textContent).toContain('As a Folio admin you can give yourself access');
+    expect(screen.queryByRole('button', { name: 'Add me to the space' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'My Folio' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Give myself access' }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/s/sp/p/root1'));
+    const call = fetchMock.mock.calls.find(([url]) => String(url) === '/api/pages/root1/access/self-grant') as unknown as [string, RequestInit] | undefined;
+    expect(call![1].method).toBe('POST');
+  });
+
+  it('restricted page, member without page access: "Request access" posts a PAGE request, and a pending one shows "Request sent"', async () => {
+    const fetchMock = stubFetchByUrl({
+      '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, hasSpaceRole: true, pageRestricted: true } }),
+      '/api/access-requests': { request: { id: 'r1' } } as unknown as SharedPagePayload,
+    });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    expect(screen.getByRole('status').textContent).toContain('Request access and its owner will get the request');
+    expect(screen.queryByRole('button', { name: 'Give myself access' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Request sent' }) as HTMLButtonElement).disabled).toBe(true));
+    const call = fetchMock.mock.calls.find(([url]) => String(url) === '/api/access-requests') as unknown as [string, RequestInit] | undefined;
+    expect(JSON.parse(String(call![1].body))).toEqual({ space: 'sp', pageId: 'root1' });
+
+    cleanup();
+    stubFetchByUrl({ '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, hasSpaceRole: true, pageRestricted: true, accessRequestPending: true } }) });
+    renderShare('/share/t1');
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Request sent' }) as HTMLButtonElement).disabled).toBe(true));
+  });
+
+  it('restricted page, no role in the space and not an admin: the space request (B) stays, with no page request', async () => {
+    const fetchMock = stubFetchByUrl({
+      '/api/share/t1': docPayload({}, { viewer: { ...viewerBase, pageRestricted: true } }),
+      '/api/access-requests': { request: { id: 'r1' } } as unknown as SharedPagePayload,
+    });
+    renderShare('/share/t1');
+    await waitFor(() => expect(screen.getByTestId('markdown-body')).toBeTruthy());
+    expect(screen.getByRole('status').textContent).toContain("You don't have a role in the “Space” space yet.");
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Access requested' })).toBeTruthy());
+    const call = fetchMock.mock.calls.find(([url]) => String(url) === '/api/access-requests') as unknown as [string, RequestInit] | undefined;
+    expect(JSON.parse(String(call![1].body))).toEqual({ space: 'sp' });
   });
 
   it('D: ?as=guest with own access shows the preview banner instead of redirecting', async () => {

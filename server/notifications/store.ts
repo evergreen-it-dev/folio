@@ -10,7 +10,7 @@
  * requester, and fetching them with separate requests per row is N+1 for nothing.
  */
 import { query, queryOne } from '../db/pool.js';
-import { spaceRoleSql } from '../access/roleSql.js';
+import { restrictionChainSql, spaceRoleSql } from '../access/roleSql.js';
 import type { AccessRequestStatus, AccessRequestSummary, NotificationItem, NotificationKind, NotificationPayload, PageNotificationKind, SpaceRole } from '../../shared/contracts.js';
 
 /** How many feed rows are returned at a time: a feed is "what happened recently", not an archive. */
@@ -25,6 +25,8 @@ export interface AccessRequestRow {
   decided_by_user_id: string | null;
   created_at: Date;
   decided_at: Date | null;
+  /** The restricted page a page request is about; null = a request for the space. */
+  page_id: string | null;
 }
 
 /**
@@ -38,6 +40,8 @@ const SUMMARY_COLUMNS = `ar.id,
          ar.granted_role,
          ar.created_at,
          ar.decided_at,
+         ar.page_id   AS request_page_id,
+         pg.title     AS request_page_title,
          s.name       AS space_name,
          req.id       AS requester_id,
          req.name     AS requester_name,
@@ -47,6 +51,7 @@ const SUMMARY_COLUMNS = `ar.id,
          dec.username AS decider_username`;
 
 const SUMMARY_JOINS = `JOIN spaces s ON s.slug = ar.space_slug
+    LEFT JOIN pages_index pg ON pg.id = ar.page_id
     JOIN users req ON req.id = ar.requester_user_id
     LEFT JOIN users dec ON dec.id = ar.decided_by_user_id`;
 
@@ -61,6 +66,8 @@ interface SummaryRow {
   granted_role: SpaceRole | null;
   created_at: Date;
   decided_at: Date | null;
+  request_page_id: string | null;
+  request_page_title: string | null;
   space_name: string;
   requester_id: string;
   requester_name: string;
@@ -81,6 +88,7 @@ function toSummary(row: SummaryRow): AccessRequestSummary {
     decidedAt: row.decided_at ? row.decided_at.toISOString() : null,
     decidedBy: row.decider_id ? { id: row.decider_id, name: row.decider_name!, username: row.decider_username } : null,
     grantedRole: row.granted_role,
+    ...(row.request_page_id ? { pageId: row.request_page_id, pageTitle: row.request_page_title } : {}),
   };
 }
 
@@ -93,20 +101,23 @@ export async function findAccessRequest(id: string): Promise<AccessRequestRow | 
   return queryOne<AccessRequestRow>('SELECT * FROM access_requests WHERE id = $1', [id]);
 }
 
-/** The live request of this person for this space — the one a repeated request returns. */
-export async function findPendingAccessRequest(space: string, requesterId: string): Promise<AccessRequestRow | undefined> {
+/**
+ * The live request of this person for this space — the one a repeated request returns. With `pageId` it is the
+ * live request for that page; without, the space-level one (a page request never counts as one for the space).
+ */
+export async function findPendingAccessRequest(space: string, requesterId: string, pageId?: string | null): Promise<AccessRequestRow | undefined> {
   return queryOne<AccessRequestRow>(
-    "SELECT * FROM access_requests WHERE space_slug = $1 AND requester_user_id = $2 AND status = 'pending'",
-    [space, requesterId],
+    "SELECT * FROM access_requests WHERE space_slug = $1 AND requester_user_id = $2 AND status = 'pending' AND COALESCE(page_id, '') = $3",
+    [space, requesterId, pageId ?? ''],
   );
 }
 
-export async function createAccessRequest(space: string, requesterId: string): Promise<AccessRequestRow> {
+export async function createAccessRequest(space: string, requesterId: string, pageId?: string | null): Promise<AccessRequestRow> {
   const row = await queryOne<AccessRequestRow>(
-    `INSERT INTO access_requests (space_slug, requester_user_id, status)
-     VALUES ($1, $2, 'pending')
+    `INSERT INTO access_requests (space_slug, requester_user_id, status, page_id)
+     VALUES ($1, $2, 'pending', $3)
      RETURNING *`,
-    [space, requesterId],
+    [space, requesterId, pageId ?? null],
   );
   return row!;
 }
@@ -160,6 +171,24 @@ export async function listAccessRequestRecipients(space: string, requesterId: st
     [space, requesterId],
   );
   return rows.map((r) => r.user_id);
+}
+
+/**
+ * Who a PAGE request goes to: the owners (`page_access.owner_id`) of the restrictions the page is under — its own
+ * and its restricted ancestors' — active people only, deduplicated, the requester excluded. When none of them is
+ * an active user (the owner was disabled), the space's admins hear about it instead, so the request is never
+ * addressed to nobody.
+ */
+export async function listPageRequestRecipients(space: string, pageId: string, requesterId: string): Promise<string[]> {
+  const owners = await query<{ user_id: string }>(
+    `SELECT DISTINCT u.id AS user_id
+       FROM (${restrictionChainSql('$1')}) c
+       JOIN users u ON u.id = c.owner_id
+      WHERE u.disabled = false AND NOT u.is_system AND u.id <> $2`,
+    [pageId, requesterId],
+  );
+  if (owners.length > 0) return owners.map((row) => row.user_id);
+  return (await listSpaceAdminIds(space)).filter((id) => id !== requesterId);
 }
 
 /** Active people with the admin role in a space (the instance administrators among them, as the role query sees them): who hears about a page nobody owns. */
@@ -269,6 +298,7 @@ const NOTIFICATION_SELECT = `SELECT n.id AS notification_id,
     FROM notifications n
     LEFT JOIN access_requests ar ON ar.id = n.access_request_id
     LEFT JOIN spaces s ON s.slug = ar.space_slug
+    LEFT JOIN pages_index pg ON pg.id = ar.page_id
     LEFT JOIN users req ON req.id = ar.requester_user_id
     LEFT JOIN users dec ON dec.id = ar.decided_by_user_id`;
 

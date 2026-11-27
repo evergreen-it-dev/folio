@@ -168,6 +168,13 @@ describe('accessLogDetail', () => {
     expect(accessLogDetail({ action: 'access.revoke', meta: { targetUserId: 'u1' } }, t)).toBeNull();
   });
 
+  it('marks a grant on one page (an approved page request, an admin letting themselves in) as page-level', () => {
+    const meta = { role: 'viewer', targetUserId: 'u1', targetUserName: 'Ada', pageId: 'p1' };
+    expect(accessLogDetail({ action: 'access.self_grant', meta }, t, { person: true })).toBe(' · Ada → viewer (access.log.pageLevel)');
+    expect(accessLogDetail({ action: 'access.grant', meta }, t)).toBe(' → viewer (access.log.pageLevel)');
+    expect(accessLogDetail({ action: 'access.grant', meta: { role: 'viewer', targetUserId: 'u1' } }, t)).toBe(' → viewer');
+  });
+
   it('names the person in a space log, and only there', () => {
     const grant = { action: 'access.grant' as const, meta: { role: 'editor', targetUserId: 'u1', targetUserName: 'Jane Doe' } };
     expect(accessLogDetail(grant, t, { person: true })).toBe(' · Jane Doe → editor');

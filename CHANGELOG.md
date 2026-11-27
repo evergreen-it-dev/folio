@@ -4,6 +4,14 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 ## [Unreleased]
 
+### Added
+
+- Pages restricted to named people have their own access flow. A member shut out by the restriction can request access to that page; the request goes to the owner of the restriction (the space admins only when no owner is active), who grants viewer or editor from the notification bell. A Folio admin can give themselves access from the share banner or the "no access" screen: a recorded grant (and a viewer membership if they have no role), shown as `access.self_grant` in the space access log.
+
+### Fixed
+
+- A share link to a page restricted to named people no longer offers a Folio admin "Add me to the space": a space role, an admin's included, does not open such a page, so the banner says only its owner can let them in.
+
 ## [0.4.6] - 2026-11-27
 
 ### Added

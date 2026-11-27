@@ -589,7 +589,12 @@ Data tables, forms, file uploads and templates need a connection.
   A signed-in person can accept one with the current account, or sign out to
   use another account.
 - **Access requests**: a user who runs into a 403 sends a request; the space
-  administrators are notified and decide.
+  administrators are notified and decide. A page restricted to named people has
+  its own request: a space member the restriction shuts out asks for that page,
+  the request goes to the restriction's owner (the space admins only when no
+  owner is active) who grants viewer or editor. A Folio admin can give
+  themselves access from the share banner or the "no access" screen; it is a
+  recorded grant (`access.self_grant`, with the page) in the space access log.
 - **Deactivating a person cuts off all access.** A disabled account at once loses
   its browser sessions, personal API tokens, OAuth connections of apps (Claude,
   ChatGPT, chat previews) and the open editor and notification connections. The

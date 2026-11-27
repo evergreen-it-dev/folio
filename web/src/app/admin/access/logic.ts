@@ -162,7 +162,9 @@ export function accessLogDetail(entry: Pick<AccessLogEntry, 'action' | 'meta'>, 
   if (options.person && (entry.action === 'access.grant' || entry.action === 'access.revoke' || entry.action === 'access.self_grant')) {
     const person = typeof meta.targetUserName === 'string' && meta.targetUserName ? ` · ${meta.targetUserName}` : '';
     const role = entry.action !== 'access.revoke' && typeof meta.role === 'string' ? ` → ${meta.role}` : '';
-    return person || role ? person + role : null;
+    // A grant on one restricted page (a page request approved, an admin letting themselves in) says so.
+    const page = typeof meta.pageId === 'string' && meta.pageId ? ` (${t('access.log.pageLevel')})` : '';
+    return person || role || page ? person + role + page : null;
   }
   if (entry.action === 'space.visibility') {
     const v = meta.visibility;
@@ -191,7 +193,9 @@ export function accessLogDetail(entry: Pick<AccessLogEntry, 'action' | 'meta'>, 
     if (typeof meta.targetUserName !== 'string' || !meta.targetUserName) return null;
     return ` · ${meta.targetUserName} (${t(meta.isManager === true ? 'access.log.managerOn' : 'access.log.managerOff')})`;
   }
-  return typeof meta.role === 'string' ? ` → ${meta.role}` : null;
+  const page = (entry.action === 'access.grant' || entry.action === 'access.self_grant') && typeof meta.pageId === 'string' && meta.pageId ? ` (${t('access.log.pageLevel')})` : '';
+  const role = typeof meta.role === 'string' ? ` → ${meta.role}` : '';
+  return role || page ? role + page : null;
 }
 
 /** What a log row names as its subject: the group's name for `group.*` events (their `target` is a bare id), otherwise `target` (a space slug). */

@@ -2222,6 +2222,11 @@ export interface SharedPagePayload {
      * would not open a page closed by a page restriction anyway.
      */
     hasSpaceRole: boolean;
+    /**
+     * The page (or a page above it) is restricted to named people and this viewer is not one of them, so a role in the
+     * space would not open it — only the page's owner (or someone with an editor grant on it) can let them in.
+     */
+    pageRestricted: boolean;
     /** The viewer already asked for access to this space and nobody has decided yet. */
     accessRequestPending?: boolean;
   };
@@ -3058,8 +3063,9 @@ export interface AccessRequestPerson {
 }
 
 /**
- * A request for access to a SPACE (owner's decision: not to a page — page
- * rights stay a separate story). It lives as an entity of its own, not as a
+ * A request for access to a SPACE, or — with `pageId` — to one PAGE that is
+ * restricted to named people (the person has a role in the space, the page
+ * restriction shuts them out; the owners of the restrictions decide). It lives as an entity of its own, not as a
  * field inside a notification: there are several administrators, each has a
  * feed of their own, and without a shared status two of them would grant
  * access twice.
@@ -3075,6 +3081,14 @@ export interface AccessRequestSummary {
   decidedBy?: AccessRequestPerson | null;
   /** The role granted on approval — the administrator chooses it at the moment of the decision. */
   grantedRole?: SpaceRole | null;
+  /** A page request: the page asked for and its title (null once the page is gone). Absent for a space request. */
+  pageId?: string | null;
+  pageTitle?: string | null;
+  /**
+   * Page request, in the decision answer only: after approval the requester still does not pass the whole restriction
+   * chain (a restriction owned by somebody else has to be opened by its own owner).
+   */
+  stillRestricted?: boolean;
 }
 
 /** The kinds that are about a page (everything except the two access-request kinds). */
@@ -3113,8 +3127,11 @@ export interface NotificationListResponse {
   unread: number;
 }
 
-/** POST /api/access-requests — the requester asks for access to the space where they hit a 403. */
-export const createAccessRequestBodySchema = z.object({ space: z.string().min(1) });
+/**
+ * POST /api/access-requests — the requester asks for access to the space where they hit a 403. With `pageId` the
+ * request is for one restricted page of that space and goes to the owners of its restrictions.
+ */
+export const createAccessRequestBodySchema = z.object({ space: z.string().min(1), pageId: z.string().min(1).optional() });
 export type CreateAccessRequestBody = z.infer<typeof createAccessRequestBodySchema>;
 
 /**

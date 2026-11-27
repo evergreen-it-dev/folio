@@ -1630,8 +1630,15 @@ export const api = {
    * already there; a repeated click is idempotent — the server returns THE
    * SAME live request, so the button needs no double-click guard of its own.
    */
-  createAccessRequest: (space: string) =>
-    request<{ request: AccessRequestSummary }>('/api/access-requests', { method: 'POST', body: JSON.stringify({ space }) }),
+  createAccessRequest: (space: string, pageId?: string) =>
+    request<{ request: AccessRequestSummary }>('/api/access-requests', { method: 'POST', body: JSON.stringify(pageId ? { space, pageId } : { space }) }),
+
+  /** POST /api/pages/:id/access/self-grant — an instance admin lets themselves into a restricted page (recorded in the space's access log). */
+  selfGrantPageAccess: (pageId: string) =>
+    request<{ space: string; pageId: string }>(`/api/pages/${encodeURIComponent(pageId)}/access/self-grant`, { method: 'POST', body: '{}' }),
+
+  /** GET /api/pages/:id/access-request — does the caller have a live request for this page (needs a role in its space). */
+  getPageAccessRequestState: (pageId: string) => request<{ pending: boolean }>(`/api/pages/${encodeURIComponent(pageId)}/access-request`),
 
   /** POST /api/access-requests/:id/decision — `role` is mandatory for `approve`; 403 for a non-admin, 409 for an already decided one. */
   decideAccessRequest: (id: string, body: DecideAccessRequestBody) =>

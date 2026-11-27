@@ -95,29 +95,43 @@ function AccessNotificationRow({ item, request }: { item: NotificationItem; requ
   const errorText = useApiErrorText();
   const [role, setRole] = useState<SpaceRole>('viewer');
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  // A page request asks for one page: it is opened as viewer or editor (the page ACL has no admin level).
+  const pageRequest = Boolean(request.pageId);
+  const roleOptions = pageRequest ? ROLES.filter((option) => option !== 'admin') : ROLES;
 
   const decide = useMutation({
     mutationFn: (body: DecideAccessRequestBody) => api.decideAccessRequest(request.id, body),
-    onMutate: () => setError(null),
+    onMutate: () => {
+      setError(null);
+      setNote(null);
+    },
     // A decision changes the state of the request for ALL administrators, so
     // re-reading the feed is cheaper than guessing the new row locally.
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_QUERY_KEY }),
+    onSuccess: (data) => {
+      if (data.request.stillRestricted) setNote(t('notifications.request.stillRestricted'));
+      void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_QUERY_KEY });
+    },
     onError: (err) => setError(errorText(err, 'notifications.decideFailed')),
   });
 
   const pending = item.kind === 'access_request' && request.status === 'pending';
   const spaceName = request.spaceName || request.space;
+  const pageTitle = request.pageTitle || t('notifications.untitledPage');
 
   let headline: string;
   if (item.kind === 'access_request') {
-    headline = t('notifications.request.asks', { name: describePerson(request.requester), space: spaceName });
+    headline = pageRequest
+      ? t('notifications.request.asksPage', { name: describePerson(request.requester), page: pageTitle, space: spaceName })
+      : t('notifications.request.asks', { name: describePerson(request.requester), space: spaceName });
   } else if (request.status === 'approved') {
-    headline = t('notifications.decision.approved', {
+    headline = t(pageRequest ? 'notifications.decision.approvedPage' : 'notifications.decision.approved', {
       space: spaceName,
+      page: pageTitle,
       role: t(`roles.${request.grantedRole ?? 'viewer'}`),
     });
   } else {
-    headline = t('notifications.decision.denied', { space: spaceName });
+    headline = t(pageRequest ? 'notifications.decision.deniedPage' : 'notifications.decision.denied', { space: spaceName, page: pageTitle });
   }
 
   // A decided request stays visible in the ADMIN row, but without buttons —
@@ -153,7 +167,7 @@ function AccessNotificationRow({ item, request }: { item: NotificationItem; requ
             onChange={(event) => setRole(event.target.value as SpaceRole)}
             className="rounded-md border border-neutral-300 bg-white px-1.5 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-800"
           >
-            {ROLES.map((option) => (
+            {roleOptions.map((option) => (
               <option key={option} value={option}>
                 {t(`roles.${option}`)}
               </option>
@@ -178,6 +192,7 @@ function AccessNotificationRow({ item, request }: { item: NotificationItem; requ
         </div>
       )}
 
+      {note && <span className="ml-3.5 text-xs text-amber-700 dark:text-amber-400">{note}</span>}
       {error && <span className="ml-3.5 text-xs text-red-600 dark:text-red-400">{error}</span>}
     </li>
   );

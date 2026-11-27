@@ -324,7 +324,8 @@
     "noAccess": {
       "title": "No access",
       "space": "You don't have access to the space “{{space}}”.",
-      "restrictedPage": "This page is restricted to specific people. Ask the page owner or a space admin to add you.",
+      "restrictedPage": "This page is open only to specific people. Request access and its owner will get the request.",
+      "restrictedPageAdmin": "This page is open only to specific people. As a Folio admin you can give yourself access (it's recorded in the access log).",
       "generic": "You don't have access to this page."
     },
     "root": {
@@ -613,7 +614,14 @@
       "requestFailed": "Could not send the request. Try again.",
       "myFolio": "My Folio",
       "adminBadge": "Admin",
+      "bannerRestricted": "This page is open only to specific people, so a role in the “{{space}}” space doesn't open it. Its owner can give you access.",
       "bannerAdmin": "You're a Folio admin but not a member of the “{{space}}” space, so you see this page as a guest.",
+      "bannerRestrictedAdmin": "This page is open only to specific people. As a Folio admin you can give yourself access (it's recorded in the access log).",
+      "bannerRestrictedMember": "This page is open only to specific people. Request access and its owner will get the request.",
+      "giveMyselfAccess": "Give myself access",
+      "giveMyselfAccessFailed": "Could not give you access. Try again.",
+      "requestPageAccess": "Request access",
+      "pageAccessRequested": "Request sent",
       "addMe": "Add me to the space",
       "addMeFailed": "Could not add you to the space. Try again.",
       "manageSpace": "Manage space",
@@ -1840,6 +1848,8 @@
     "decideFailed": "Could not save the decision",
     "request": {
       "asks": "{{name}} is asking for access to \u201c{{space}}\u201d",
+      "asksPage": "{{name}} is asking for access to the page \u201c{{page}}\u201d in \u201c{{space}}\u201d",
+      "stillRestricted": "Access granted, but a restriction on a page above this one is owned by somebody else \u2014 its owner has to open it too.",
       "roleLabel": "Role",
       "approve": "Grant access",
       "deny": "Deny",
@@ -1849,13 +1859,20 @@
     },
     "decision": {
       "approved": "Access to \u201c{{space}}\u201d granted \u2014 {{role}}",
-      "denied": "Access to \u201c{{space}}\u201d was denied"
+      "denied": "Access to \u201c{{space}}\u201d was denied",
+      "approvedPage": "Access to the page \u201c{{page}}\u201d granted \u2014 {{role}}",
+      "deniedPage": "Access to the page \u201c{{page}}\u201d was denied"
     },
     "requestAccess": {
       "action": "Request access",
       "sending": "Sending\u2026",
       "sent": "Request sent \u2014 the space administrators will see it.",
       "already": "You already have access to this space \u2014 try reloading the page.",
+      "pageSent": "Request sent \u2014 the page owner will see it.",
+      "pageAlready": "You already have access to this page \u2014 try reloading.",
+      "selfGrant": "Give myself access",
+      "selfGranting": "Opening\u2026",
+      "selfGrantFailed": "Could not give you access",
       "failed": "Could not send the request"
     }
   },

@@ -203,14 +203,31 @@ describe('F-02: a subtree share excludes restricted pages and everything below t
       expect((guest.json() as SharedPagePayload).viewer).toBeUndefined();
       expect(guest.body).not.toContain('viewer');
       const strangerViewer = (stranger.json() as SharedPagePayload).viewer;
-      expect(strangerViewer).toMatchObject({ id: outsider.id, name: 'Outsider', isInstanceAdmin: false, canAdministerSpace: false, hasSpaceRole: false });
+      expect(strangerViewer).toMatchObject({ id: outsider.id, name: 'Outsider', isInstanceAdmin: false, canAdministerSpace: false, hasSpaceRole: false, pageRestricted: false });
 
       // An instance admin who is not a member: administers membership, still no content access.
       const rootAdmin = await authStore.createUser({ email: `acl-share-admin-${stamp}@example.com`, name: 'Root Admin', passwordHash: 'x', isAdmin: true });
       const adminRes = await app.inject({ method: 'GET', url: `/api/share/${token}`, headers: { cookie: await cookieOf(rootAdmin) } });
       const adminPayload = adminRes.json() as SharedPagePayload;
       expect(adminPayload.ownAccess).toBeUndefined();
-      expect(adminPayload.viewer).toMatchObject({ isInstanceAdmin: true, canAdministerSpace: true, hasSpaceRole: false });
+      expect(adminPayload.viewer).toMatchObject({ isInstanceAdmin: true, canAdministerSpace: true, hasSpaceRole: false, pageRestricted: false });
+
+      // A page restricted to named people: a space role would not open it (no admin bypass), for the admin and for a
+      // member alike, so the banner must not offer "Add me" or a space access request.
+      const secretLink = await link(secret.id, owner.id, false);
+      try {
+        const adminSecret = (await app.inject({ method: 'GET', url: `/api/share/${secretLink.token}`, headers: { cookie: await cookieOf(rootAdmin) } })).json() as SharedPagePayload;
+        expect(adminSecret.ownAccess).toBeUndefined();
+        expect(adminSecret.viewer).toMatchObject({ isInstanceAdmin: true, hasSpaceRole: false, pageRestricted: true });
+        const memberSecret = (await app.inject({ method: 'GET', url: `/api/share/${secretLink.token}`, headers: { cookie: await cookieOf(editor) } })).json() as SharedPagePayload;
+        expect(memberSecret.ownAccess).toBeUndefined();
+        expect(memberSecret.viewer).toMatchObject({ hasSpaceRole: true, pageRestricted: true });
+        const ownerSecret = (await app.inject({ method: 'GET', url: `/api/share/${secretLink.token}`, headers: { cookie: await cookieOf(owner) } })).json() as SharedPagePayload;
+        expect(ownerSecret.ownAccess).toEqual({ space, pageId: secret.id });
+        expect(ownerSecret.viewer).toMatchObject({ pageRestricted: false });
+      } finally {
+        await shares.revokeShare(secretLink.id);
+      }
     } finally {
       await shares.revokeShare(id);
     }

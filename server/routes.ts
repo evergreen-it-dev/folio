@@ -1132,6 +1132,22 @@ export function registerRoutes(app: FastifyInstance): void {
     return storage.toPageMeta(moved);
   });
 
+  /**
+   * An instance admin lets THEMSELVES into a page restricted to named people (no admin bypass exists, so the way in is
+   * a recorded grant: a space `viewer` membership if they have no role, plus a `viewer` grant on every restriction of
+   * the page's chain they do not pass — all audited as `access.self_grant`). Instance admins only, cookie session.
+   */
+  app.post('/api/pages/:id/access/self-grant', async (request) => {
+    assertNotDemoAccount(request.authUser!, 'Changing page permissions');
+    session.requireCookieAuth(request);
+    session.requireWriteScope(request);
+    if (!request.authUser!.isAdmin) throw forbidden('requires instance admin');
+    const { id } = request.params as { id: string };
+    const entry = await storage.getEntry(id);
+    if (!entry) throw notFound('page');
+    return pageAccess.selfGrantPageAccess(request.authUser!, entry);
+  });
+
   app.put('/api/pages/:id/access', async (request) => {
     assertNotDemoAccount(request.authUser!, 'Changing page permissions');
     const { id } = request.params as { id: string };
@@ -1979,13 +1995,27 @@ export function registerPublicShareRoutes(app: FastifyInstance): void {
       // Only the visitor's own session reaches this branch, so an anonymous request learns nothing from it.
       const canAdminister = await session.canAdministerSpace(viewer, entry.space);
       const hasSpaceRole = (await session.effectiveRole(viewer, entry.space).catch(() => undefined)) !== undefined;
-      const pending = payload.ownAccess || canAdminister ? undefined : await notificationsStore.findPendingAccessRequest(entry.space, viewer.id).catch(() => undefined);
+      // A page restricted to named people stays closed whatever the space role (there is no space- or instance-admin
+      // bypass): asked as if the viewer were a space viewer, so neither "Add me" nor a space access request is offered
+      // where it cannot open the page.
+      const pageRestricted =
+        !payload.ownAccess && (await pageAccess.effectivePageRole(viewer, entry, 'viewer').catch(() => undefined)) === undefined;
+      // Which live request the banner reflects: a member shut out by the page restriction asked its owner (a page
+      // request); somebody with no space role asked the space — unless they administer it (they add themselves).
+      const pending = payload.ownAccess
+        ? undefined
+        : pageRestricted && hasSpaceRole
+          ? await notificationsStore.findPendingAccessRequest(entry.space, viewer.id, entry.id).catch(() => undefined)
+          : canAdminister
+            ? undefined
+            : await notificationsStore.findPendingAccessRequest(entry.space, viewer.id).catch(() => undefined);
       payload.viewer = {
         id: viewer.id,
         name: viewer.name,
         isInstanceAdmin: viewer.isAdmin,
         canAdministerSpace: canAdminister,
         hasSpaceRole,
+        pageRestricted,
         ...(pending ? { accessRequestPending: true } : {}),
       };
     }

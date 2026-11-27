@@ -258,6 +258,18 @@ function ShareViewerBanner({ payload, previewAccess }: { payload: SharedPagePayl
     onSuccess: () => window.location.replace(`/s/${encodeURIComponent(space)}/p/${encodeURIComponent(payload.page.id)}`),
   });
 
+  // A member shut out by a page restriction asks the page's owner (not the space).
+  const requestPageAccess = useMutation({
+    mutationFn: () => api.createAccessRequest(space, payload.page.id),
+    onSuccess: () => setRequested(true),
+  });
+  // An instance admin lets themselves into a restricted page: one recorded grant (a space membership too when they
+  // have no role), then the page opens in their own account.
+  const giveMyselfAccess = useMutation({
+    mutationFn: () => api.selfGrantPageAccess(payload.page.id),
+    onSuccess: (result) => window.location.replace(`/s/${encodeURIComponent(result.space)}/p/${encodeURIComponent(result.pageId)}`),
+  });
+
   if (!viewer) return null;
   const spaceName = payload.spaceName || space;
   const shell = (tone: string, text: string, children: ReactNode, error?: string) => (
@@ -282,7 +294,46 @@ function ShareViewerBanner({ payload, previewAccess }: { payload: SharedPagePayl
   }
   if (payload.ownAccess) return null; // redirecting to the account
 
-  if (viewer.canAdministerSpace && !viewer.hasSpaceRole) {
+  // A page restricted to named people: no role in the space opens it (no admin bypass either), so neither
+  // "Add me" nor a space access request would help. An instance admin records a grant for themselves; a member asks
+  // the page's owner. Somebody with no role in the space at all falls through to the space request below.
+  if (viewer.pageRestricted && viewer.isInstanceAdmin) {
+    return shell(
+      neutral,
+      t('share.public.bannerRestrictedAdmin'),
+      <>
+        <button type="button" disabled={giveMyselfAccess.isPending} onClick={() => giveMyselfAccess.mutate()} className={BANNER_PRIMARY}>
+          {t('share.public.giveMyselfAccess')}
+        </button>
+        <a href="/" className={BANNER_SECONDARY}>{t('share.public.myFolio')}</a>
+      </>,
+      giveMyselfAccess.isError ? t('share.public.giveMyselfAccessFailed') : undefined,
+    );
+  }
+  if (viewer.pageRestricted && viewer.hasSpaceRole) {
+    const pagePending = requested || viewer.accessRequestPending === true;
+    return shell(
+      neutral,
+      t('share.public.bannerRestrictedMember'),
+      <>
+        <button
+          type="button"
+          disabled={pagePending || requestPageAccess.isPending}
+          onClick={() => requestPageAccess.mutate()}
+          className={pagePending ? `${BANNER_SECONDARY} opacity-60` : BANNER_PRIMARY}
+        >
+          {pagePending ? t('share.public.pageAccessRequested') : t('share.public.requestPageAccess')}
+        </button>
+        <a href="/" className={BANNER_SECONDARY}>{t('share.public.myFolio')}</a>
+      </>,
+      requestPageAccess.isError ? t('share.public.requestFailed') : undefined,
+    );
+  }
+  if (viewer.hasSpaceRole) {
+    return shell(neutral, t('share.public.bannerRestricted', { space: spaceName }), <a href="/" className={BANNER_SECONDARY}>{t('share.public.myFolio')}</a>);
+  }
+
+  if (viewer.canAdministerSpace) {
     return shell(
       'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200',
       t('share.public.bannerAdmin', { space: spaceName }),

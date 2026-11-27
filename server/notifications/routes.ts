@@ -27,7 +27,10 @@ import {
 import * as storage from '../storage.js';
 import * as session from '../auth/session.js';
 import { applyAccessBulk } from '../access/routes.js';
-import { conflict, forbidden, notFound } from '../errors.js';
+import { badRequest, conflict, forbidden, notFound } from '../errors.js';
+import { isAgentPath } from '../agentPath.js';
+import * as pageAccess from '../pageAccess.js';
+import * as authStore from '../auth/store.js';
 import { parseBody } from '../validate.js';
 import * as store from './store.js';
 import * as dispatch from './dispatch.js';
@@ -52,6 +55,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export async function createAccessRequest(actor: User, body: CreateAccessRequestBody): Promise<AccessRequestSummary> {
   const space = body.space;
   if (!(await storage.spaceExists(space))) throw notFound('space');
+  if (body.pageId) return createPageAccessRequest(actor, space, body.pageId);
 
   // Access is already there (explicit membership, or the space is visible to
   // the whole instance) — a request is pointless, and creating one so that an
@@ -76,6 +80,48 @@ export async function createAccessRequest(actor: User, body: CreateAccessRequest
   await dispatch.deliver(recipients, 'access_request', created.id);
 
   return (await store.getAccessRequestSummary(created.id))!;
+}
+
+/**
+ * "Let me into this page": for a person who HAS a role in the space but is shut out by a page restricted to named
+ * people. Goes to the owners of the restrictions on the page's chain (store.listPageRequestRecipients), not to the
+ * space's admins — a space admin has no say over a page they were not given (there is no admin bypass). Idempotent per
+ * (person, page) like the space request; a person with no space role must ask for the space first (400, and nothing
+ * about the page is revealed to them).
+ */
+async function createPageAccessRequest(actor: User, space: string, pageId: string): Promise<AccessRequestSummary> {
+  const spaceRole = await session.effectiveRole(actor, space);
+  if (!spaceRole) throw badRequest('request access to the space first');
+  const entry = await storage.getEntry(pageId);
+  // `.agent/**` is invisible to non-admins, so it is "not found" for them whatever the restrictions say.
+  if (!entry || entry.space !== space || (isAgentPath(entry.relPath) && !(await session.canAdministerSpace(actor, space)))) throw notFound('page');
+  if (session.roleAtLeast(await session.effectivePageRole(actor, entry), 'viewer')) throw conflict('you already have access to this page');
+
+  const existing = await store.findPendingAccessRequest(space, actor.id, pageId);
+  if (existing) return (await store.getAccessRequestSummary(existing.id))!;
+
+  let created: store.AccessRequestRow;
+  try {
+    created = await store.createAccessRequest(space, actor.id, pageId);
+  } catch (err) {
+    if ((err as { code?: string }).code !== PG_UNIQUE_VIOLATION) throw err;
+    const raced = await store.findPendingAccessRequest(space, actor.id, pageId);
+    if (!raced) throw err;
+    return (await store.getAccessRequestSummary(raced.id))!;
+  }
+  await dispatch.deliver(await store.listPageRequestRecipients(space, pageId, actor.id), 'access_request', created.id);
+  return (await store.getAccessRequestSummary(created.id))!;
+}
+
+/**
+ * GET /api/pages/:id/access-request — whether the caller has a live request for this page (the "no access" screen
+ * shows "request sent" instead of the button). Needs a role in the page's space, so it says nothing to an outsider.
+ */
+export async function getPageAccessRequestState(actor: User, pageId: string): Promise<{ pending: boolean }> {
+  const entry = await storage.getEntry(pageId);
+  if (!entry) throw notFound('page');
+  if (!(await session.effectiveRole(actor, entry.space))) throw forbidden('requires a role in this space');
+  return { pending: Boolean(await store.findPendingAccessRequest(entry.space, actor.id, pageId)) };
 }
 
 // ---------------------------------------------------------------------------
@@ -125,13 +171,24 @@ export async function decideAccessRequest(actor: User, id: string, body: DecideA
   if (!UUID_RE.test(id)) throw notFound('access request');
   const request = await store.findAccessRequest(id);
   if (!request) throw notFound('access request');
-  if (!(await session.canAdministerSpace(actor, request.space_slug))) {
+  const pageEntry = request.page_id ? await storage.getEntry(request.page_id) : undefined;
+  if (request.page_id && !pageEntry) throw notFound('access request');
+  // A page request is decided by the people who hold editor rights on the restricted page(s) of its chain — owners
+  // first of all — NOT by space admins (a restriction has no admin bypass). Space requests: space admin / instance admin.
+  let grantOn: string[] = [];
+  if (pageEntry) {
+    grantOn = await pageAccess.restrictionsDeciderMayGrant(actor, pageEntry, await session.effectiveRole(actor, request.space_slug));
+    if (grantOn.length === 0) throw forbidden('requires editor rights on a page this request is restricted by');
+  } else if (!(await session.canAdministerSpace(actor, request.space_slug))) {
     throw forbidden('requires instance admin, or admin role in this space');
   }
   if (request.status !== 'pending') throw conflict('access request is already decided');
 
   const approving = body.decision === 'approve';
   const role = approving ? body.role! : null;
+  // A page grant is viewer | editor (the page ACL has no admin level).
+  if (pageEntry && role === 'admin') throw badRequest('a page can be opened as viewer or editor');
+  let stillRestricted = false;
 
   // The state is changed FIRST and conditionally (WHERE status = 'pending'):
   // the race of two administrators is won by the one whose UPDATE arrived
@@ -139,7 +196,19 @@ export async function decideAccessRequest(actor: User, id: string, body: DecideA
   const decided = await store.decideAccessRequest(id, approving ? 'approved' : 'denied', role, actor.id);
   if (!decided) throw conflict('access request is already decided');
 
-  if (approving) {
+  if (approving && pageEntry) {
+    try {
+      const requester = await authStore.findUserById(request.requester_user_id);
+      if (!requester || requester.disabled) throw conflict('the requester is not an active user');
+      // Grants go on every restriction of the chain the decider passes as editor (normally exactly one). A restriction
+      // owned by somebody else may still shut the requester out — the decision stands, and the answer says so
+      // (`stillRestricted`) so the decider is not left thinking the page is open.
+      stillRestricted = !(await pageAccess.grantRequestedPageAccess(actor, requester, pageEntry, grantOn, role as 'viewer' | 'editor')).opensPage;
+    } catch (err) {
+      await store.revertAccessRequestToPending(id);
+      throw err;
+    }
+  } else if (approving) {
     const result = await applyAccessBulk(actor, { changes: [{ userId: request.requester_user_id, space: request.space_slug, role: role! }] });
     if (result.errors.length > 0) {
       // The role was not granted — the request must not stay "approved": put
@@ -158,7 +227,8 @@ export async function decideAccessRequest(actor: User, id: string, body: DecideA
   const stale = (await store.listNotifiedRecipients(id, 'access_request')).filter((userId) => userId !== request.requester_user_id);
   dispatch.notifyRefresh(stale);
 
-  return (await store.getAccessRequestSummary(id))!;
+  const summary = (await store.getAccessRequestSummary(id))!;
+  return stillRestricted ? { ...summary, stillRestricted: true } : summary;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +244,12 @@ export function registerNotificationRoutes(app: FastifyInstance): void {
     const created = await createAccessRequest(request.authUser!, body);
     reply.status(201);
     return { request: created };
+  });
+
+  app.get('/api/pages/:id/access-request', async (request) => {
+    session.requireCookieAuth(request);
+    const { id } = request.params as { id: string };
+    return getPageAccessRequestState(request.authUser!, id);
   });
 
   app.get('/api/notifications', async (request) => {

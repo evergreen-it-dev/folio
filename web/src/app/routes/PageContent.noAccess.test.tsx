@@ -24,6 +24,7 @@ vi.mock('../Shell', () => ({ useSetHeaderInfo: () => undefined }));
 const role = vi.hoisted(() => ({ current: undefined as SpaceRole | undefined }));
 vi.mock('../auth/AuthProvider', () => ({
   useSpaceRole: () => role.current,
+  useAuthOptional: () => ({ user: { isAdmin: false } }),
 }));
 
 beforeAll(async () => {
@@ -71,12 +72,14 @@ describe('PageContent, a page that did not open', () => {
     expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
   });
 
-  it('403 for a member of the space -> the page is restricted; no space-level request button', async () => {
+  it('403 for a member of the space -> the page is restricted; the request is for the PAGE (its id is passed down)', async () => {
     role.current = 'editor';
     vi.spyOn(api, 'getPage').mockRejectedValue(new ApiError(403, 'requires viewer+ role on this page'));
+    const state = vi.spyOn(api, 'getPageAccessRequestState').mockResolvedValue({ pending: false });
     renderPage();
-    await waitFor(() => expect(screen.getByText(/restricted to specific people/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/open only to specific people/)).toBeTruthy());
     expect(screen.queryByText('404')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(state).toHaveBeenCalledWith('page-1');
   });
 });

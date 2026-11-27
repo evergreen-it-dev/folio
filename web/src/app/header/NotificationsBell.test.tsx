@@ -173,6 +173,26 @@ describe('NotificationsBell', () => {
     );
   });
 
+  it('a page request names the page, offers viewer/editor only, and says when a restriction above is still closed', async () => {
+    const base = pendingItem();
+    const pageItem = pendingItem({ accessRequest: { ...base.accessRequest!, pageId: 'p1', pageTitle: 'Budget' } });
+    const fetchMock = stubFetch((url) => {
+      if (url === '/api/notifications') return { body: { items: [pageItem], unread: 0 } };
+      return { body: { request: { ...pageItem.accessRequest, status: 'approved', stillRestricted: true } } };
+    });
+    renderBell({ items: [], unread: 0 });
+
+    fireEvent.click(await screen.findByRole('button'));
+    expect(await screen.findByText(/asking for access to the page “Budget” in “Docs”/)).toBeTruthy();
+    const select = await screen.findByRole('combobox', { name: 'Role' });
+    expect(Array.from((select as HTMLSelectElement).options).map((o) => o.value).sort()).toEqual(['editor', 'viewer']);
+    fireEvent.click(screen.getByRole('button', { name: 'Grant access' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/access-requests/r1/decision', expect.objectContaining({ body: JSON.stringify({ decision: 'approve', role: 'viewer' }) })),
+    );
+    expect(await screen.findByText(/owned by somebody else/)).toBeTruthy();
+  });
+
   it('adds a socket-delivered row to the already-open panel without re-reading the feed', async () => {
     vi.stubGlobal('WebSocket', FakeSocket as unknown as typeof WebSocket);
     const fetchMock = stubFetch(() => ({ body: { items: [], unread: 0 } satisfies NotificationListResponse }));

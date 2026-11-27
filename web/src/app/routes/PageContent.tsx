@@ -291,7 +291,7 @@ export function PageContent({ id, embedded = false }: PageContentProps) {
       return <PageGone space={routeSpace} />;
     }
     if (error instanceof ApiError && error.status === 403) {
-      return embedded ? <EmbeddedNotice kind="noAccess" /> : <NoAccess space={routeSpace} page />;
+      return embedded ? <EmbeddedNotice kind="noAccess" /> : <NoAccess space={routeSpace} page pageId={id} />;
     }
     // No network and nothing of this page on this device: not a failure to
     // apologise for in red, just something that has to wait.
