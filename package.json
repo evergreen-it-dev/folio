@@ -26,7 +26,7 @@
     "@cursor/sdk": "^1.0.35",
     "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^11.0.0",
-    "@fastify/multipart": "^9.0.0",
+    "@fastify/multipart": "^10.1.9",
     "@fastify/static": "^10.1.5",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@node-saml/node-saml": "5.1.0",
