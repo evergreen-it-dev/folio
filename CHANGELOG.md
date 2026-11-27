@@ -14,6 +14,7 @@ Notable changes to Folio. Versions follow [Semantic Versioning](https://semver.o
 
 - Folio works on a home server opened over plain `http://` without `PUBLIC_URL`. When `PUBLIC_URL` is unset, the sign-in cookie is HTTPS-only only for requests that arrive over HTTPS (directly or via `X-Forwarded-Proto` from a proxy `TRUST_PROXY` trusts), and invitation, share, sign-in and integration links use the address the request came to, port included (before, the port was dropped and such links led nowhere). With `PUBLIC_URL` set, nothing changes. Instances reachable from the internet, and any with single sign-on, should still set `PUBLIC_URL`.
 - A share link to a page restricted to named people no longer offers a Folio admin "Add me to the space": a space role, an admin's included, does not open such a page, so the banner says only its owner can let them in.
+- Data tables follow the dark theme. The grid stayed white with dark text and faint column headers inside a dark page, in the app and on public sites alike; rows, grid lines, headers and the selection now use the dark palette, and the light theme is unchanged.
 
 ## [0.4.6] - 2026-11-27
 

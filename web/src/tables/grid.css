@@ -11,9 +11,14 @@
  * entry point, so the CSS ships in the same lazily-loaded chunk as the
  * library itself and never costs a page that has no table on it.
  *
- * Dark mode keys off `.dark` on an ancestor, matching the `dark:` variant
- * Tailwind uses everywhere else in this app (class strategy, not
- * prefers-color-scheme) — so the grid follows the app's own theme switch.
+ * Dark mode follows the app's own theme switch, the same two-block rule as
+ * markdown.css and editor.css: `prefers-color-scheme: dark` for "system"
+ * unless <html> carries an explicit data-theme="light", plus a separate
+ * html[data-theme='dark'] block for an explicit "dark" choice (see
+ * web/src/app/settings.tsx). There is no `.dark` class anywhere in this app
+ * (styles.css redefines Tailwind's `dark:` variant onto that same pair), so a
+ * `.dark …` selector here never matches — which is how the grid once stayed
+ * white inside a dark page. Each dark block below is duplicated on purpose.
  */
 
 .folio-table-grid {
@@ -29,9 +34,26 @@
   --dsg-scroll-shadow-color: rgb(0 0 0 / 0.12);
   --dsg-selection-border-radius: 3px;
   --dsg-selection-border-width: 2px;
+  /* Ours, not the library's: the text colour of a cell (see .dsg-container below). */
+  --folio-grid-text-color: #000000;
 }
 
-.dark .folio-table-grid {
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-table-grid {
+    --dsg-border-color: var(--color-neutral-700, #404040);
+    --dsg-cell-background-color: var(--color-neutral-900, #171717);
+    --dsg-cell-disabled-background-color: var(--color-neutral-800, #262626);
+    --dsg-header-text-color: var(--color-neutral-400, #a3a3a3);
+    --dsg-header-active-text-color: var(--color-neutral-50, #fafafa);
+    --dsg-selection-border-color: #60a5fa;
+    --dsg-selection-background-color: rgb(96 165 250 / 0.14);
+    --dsg-selection-disabled-border-color: var(--color-neutral-500, #737373);
+    --dsg-selection-disabled-background-color: rgb(115 115 115 / 0.14);
+    --dsg-scroll-shadow-color: rgb(0 0 0 / 0.5);
+    --folio-grid-text-color: var(--color-neutral-100, #f5f5f5);
+  }
+}
+html[data-theme='dark'] .folio-table-grid {
   --dsg-border-color: var(--color-neutral-700, #404040);
   --dsg-cell-background-color: var(--color-neutral-900, #171717);
   --dsg-cell-disabled-background-color: var(--color-neutral-800, #262626);
@@ -42,6 +64,19 @@
   --dsg-selection-disabled-border-color: var(--color-neutral-500, #737373);
   --dsg-selection-disabled-background-color: rgb(115 115 115 / 0.14);
   --dsg-scroll-shadow-color: rgb(0 0 0 / 0.5);
+  --folio-grid-text-color: var(--color-neutral-100, #f5f5f5);
+}
+
+/*
+ * The one place the library does NOT go through its `--dsg-*` properties: the
+ * container hard-codes `color: black; background: white`, and every cell
+ * inherits its text colour from it. Mapping the properties alone therefore
+ * leaves black text on a dark cell. Light values equal the library's own, so
+ * nothing changes there.
+ */
+.folio-table-grid .dsg-container {
+  color: var(--folio-grid-text-color);
+  background: var(--dsg-cell-background-color);
 }
 
 /* Header cells carry our own component; strip the library's own padding so
@@ -106,6 +141,11 @@
   color: inherit;
 }
 
-.dark .folio-table-grid mark {
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) .folio-table-grid mark {
+    background-color: rgb(234 179 8 / 0.35);
+  }
+}
+html[data-theme='dark'] .folio-table-grid mark {
   background-color: rgb(234 179 8 / 0.35);
 }
